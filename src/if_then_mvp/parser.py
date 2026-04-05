@@ -87,11 +87,13 @@ def _find_message_start_indices(lines: list[str]) -> list[int]:
             continue
         if index > 0 and lines[index - 1].strip():
             continue
-        next_content_index = _next_nonblank_line_index(lines, index + 1)
-        if next_content_index is None:
+        timestamp_index = _next_nonblank_line_index(lines, index + 1)
+        if timestamp_index is None or not _TIMESTAMP_LINE_RE.match(lines[timestamp_index]):
             continue
-        if _TIMESTAMP_LINE_RE.match(lines[next_content_index]):
-            start_indices.append(index)
+        content_index = _next_nonblank_line_index(lines, timestamp_index + 1)
+        if content_index is None or not _CONTENT_RE.match(lines[content_index]):
+            continue
+        start_indices.append(index)
     return start_indices
 
 

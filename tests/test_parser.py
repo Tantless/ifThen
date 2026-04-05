@@ -29,7 +29,7 @@ def test_parse_qq_export_extracts_messages_and_flags():
         "昵称:\n"
         "\n"
         "Bob:\n"
-        "时间: 这只是上一条消息的正文续行\n"
+        "时间: 2025-03-02 20:19:04\n"
         "继续这一条的第二行"
     )
 
