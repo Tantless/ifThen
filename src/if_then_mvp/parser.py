@@ -104,7 +104,7 @@ def _find_message_ranges(lines: list[str], message_count_hint: int | None) -> li
 
     start_indices = candidate_start_indices
     if message_count_hint and 0 < message_count_hint < len(candidate_start_indices):
-        resolved = _resolve_sequential_message_starts(candidate_start_indices, message_count_hint)
+        resolved = _resolve_sequential_message_starts(lines, candidate_start_indices, message_count_hint)
         if resolved is not None:
             start_indices = list(resolved)
 
@@ -118,6 +118,7 @@ def _find_message_ranges(lines: list[str], message_count_hint: int | None) -> li
 
 
 def _resolve_sequential_message_starts(
+    lines: list[str],
     candidate_start_indices: list[int],
     message_count_hint: int,
 ) -> tuple[int, ...] | None:
@@ -125,21 +126,98 @@ def _resolve_sequential_message_starts(
         return None
 
     @lru_cache(maxsize=None)
-    def choose_from(current_position: int, remaining_count: int) -> tuple[int, ...] | None:
+    def choose_from(
+        current_position: int,
+        remaining_count: int,
+    ) -> tuple[tuple[int, ...], tuple[tuple[int, int, int], ...]] | None:
         current_start = candidate_start_indices[current_position]
         if remaining_count == 1:
-            if current_position != len(candidate_start_indices) - 1:
-                return None
-            return (current_start,)
+            return (current_start,), ()
 
         max_next_position = len(candidate_start_indices) - remaining_count + 1
+        best_choice: tuple[tuple[int, ...], tuple[tuple[int, int, int], ...]] | None = None
         for next_position in range(current_position + 1, max_next_position + 1):
             rest = choose_from(next_position, remaining_count - 1)
             if rest is not None:
-                return (current_start, *rest)
-        return None
+                rest_sequence, rest_score = rest
+                following_position = rest_sequence[1] if len(rest_sequence) > 1 else None
+                selected_start_score = _score_selected_start(
+                    lines=lines,
+                    candidate_start_indices=candidate_start_indices,
+                    previous_start_index=current_start,
+                    selected_start_index=rest_sequence[0],
+                    following_start_index=following_position,
+                )
+                candidate_choice = (
+                    (current_start, *rest_sequence),
+                    rest_score + (selected_start_score,),
+                )
+                if best_choice is None or candidate_choice[1] < best_choice[1]:
+                    best_choice = candidate_choice
+        return best_choice
 
-    return choose_from(0, message_count_hint)
+    resolved = choose_from(0, message_count_hint)
+    if resolved is None:
+        return None
+    return resolved[0]
+
+
+def _score_selected_start(
+    lines: list[str],
+    candidate_start_indices: list[int],
+    previous_start_index: int,
+    selected_start_index: int,
+    following_start_index: int | None,
+) -> tuple[int, int, int]:
+    if following_start_index is not None:
+        return (0, 0, selected_start_index)
+
+    return (
+        _final_block_continuation_tail_penalty(lines, candidate_start_indices, selected_start_index),
+        _same_timestamp_penalty(lines, previous_start_index, selected_start_index),
+        selected_start_index,
+    )
+
+
+def _final_block_continuation_tail_penalty(
+    lines: list[str],
+    candidate_start_indices: list[int],
+    selected_start_index: int,
+) -> int:
+    first_nested_candidate_index = next(
+        (start_index for start_index in candidate_start_indices if start_index > selected_start_index),
+        None,
+    )
+    if first_nested_candidate_index is None:
+        return 0
+
+    timestamp_index = _next_nonblank_line_index(lines, selected_start_index + 1)
+    if timestamp_index is None:
+        return 0
+    content_index = _next_nonblank_line_index(lines, timestamp_index + 1)
+    if content_index is None:
+        return 0
+
+    for line in lines[content_index + 1 : first_nested_candidate_index]:
+        if line.strip():
+            return 1
+    return 0
+
+
+def _same_timestamp_penalty(lines: list[str], previous_start_index: int, selected_start_index: int) -> int:
+    previous_timestamp = _timestamp_for_start(lines, previous_start_index)
+    selected_timestamp = _timestamp_for_start(lines, selected_start_index)
+    return int(bool(previous_timestamp and selected_timestamp and previous_timestamp == selected_timestamp))
+
+
+def _timestamp_for_start(lines: list[str], start_index: int) -> str:
+    timestamp_index = _next_nonblank_line_index(lines, start_index + 1)
+    if timestamp_index is None:
+        return ""
+    match = _TIMESTAMP_LINE_RE.match(lines[timestamp_index])
+    if match is None:
+        return ""
+    return match.group("timestamp").strip()
 
 
 def _next_nonblank_line_index(lines: list[str], start_index: int) -> int | None:

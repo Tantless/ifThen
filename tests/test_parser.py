@@ -124,3 +124,34 @@ def test_parse_qq_export_keeps_middle_message_when_body_contains_false_block():
         "内容: 这些标记其实还是 Bob 的正文\n"
         "Bob 的正文最后一行"
     )
+
+
+def test_parse_qq_export_keeps_final_message_when_body_contains_false_block():
+    text = (
+        "聊天名称: 梣ゥ\n"
+        "聊天类型: 私聊\n"
+        "消息总数: 2\n"
+        "\n"
+        "Alice:\n"
+        "时间: 2025-03-02 20:19:00\n"
+        "内容: 第一条消息\n"
+        "\n"
+        "Bob:\n"
+        "时间: 2025-03-02 20:19:20\n"
+        "内容: 这是最后一条真实消息\n"
+        "\n"
+        "Mallory:\n"
+        "时间: 2025-03-02 20:19:30\n"
+        "内容: 这些标记其实还是 Bob 的正文\n"
+    )
+
+    parsed = parse_qq_export(text=text, self_display_name="Tantless")
+
+    assert [message.speaker_name for message in parsed.messages] == ["Alice", "Bob"]
+    assert parsed.messages[1].content_text == (
+        "这是最后一条真实消息\n"
+        "\n"
+        "Mallory:\n"
+        "时间: 2025-03-02 20:19:30\n"
+        "内容: 这些标记其实还是 Bob 的正文"
+    )
