@@ -44,7 +44,7 @@ def parse_qq_export(text: str, self_display_name: str) -> ParsedConversation:
     message_count_hint = _extract_header_int(lines, "消息总数")
 
     messages: list[ParsedMessage] = []
-    message_ranges = _find_message_ranges(lines, message_count_hint)
+    message_ranges = _find_message_ranges(lines, message_count_hint, chat_name, self_display_name)
 
     for start_index, end_index in message_ranges:
         block_lines = lines[start_index:end_index]
@@ -97,14 +97,25 @@ def _find_message_start_indices(lines: list[str]) -> list[int]:
     return start_indices
 
 
-def _find_message_ranges(lines: list[str], message_count_hint: int | None) -> list[tuple[int, int]]:
+def _find_message_ranges(
+    lines: list[str],
+    message_count_hint: int | None,
+    chat_name: str | None,
+    self_display_name: str,
+) -> list[tuple[int, int]]:
     candidate_start_indices = _find_message_start_indices(lines)
     if not candidate_start_indices:
         return []
 
     start_indices = candidate_start_indices
     if message_count_hint and 0 < message_count_hint < len(candidate_start_indices):
-        resolved = _resolve_sequential_message_starts(lines, candidate_start_indices, message_count_hint)
+        resolved = _resolve_sequential_message_starts(
+            lines,
+            candidate_start_indices,
+            message_count_hint,
+            chat_name,
+            self_display_name,
+        )
         if resolved is not None:
             start_indices = list(resolved)
 
@@ -121,6 +132,8 @@ def _resolve_sequential_message_starts(
     lines: list[str],
     candidate_start_indices: list[int],
     message_count_hint: int,
+    chat_name: str | None,
+    self_display_name: str,
 ) -> tuple[int, ...] | None:
     if message_count_hint > len(candidate_start_indices):
         return None
@@ -144,9 +157,9 @@ def _resolve_sequential_message_starts(
                 selected_start_score = _score_selected_start(
                     lines=lines,
                     candidate_start_indices=candidate_start_indices,
-                    previous_start_index=current_start,
                     selected_start_index=rest_sequence[0],
                     following_start_index=following_position,
+                    known_participants=_known_participants(chat_name, self_display_name),
                 )
                 candidate_choice = (
                     (current_start, *rest_sequence),
@@ -165,18 +178,40 @@ def _resolve_sequential_message_starts(
 def _score_selected_start(
     lines: list[str],
     candidate_start_indices: list[int],
-    previous_start_index: int,
     selected_start_index: int,
     following_start_index: int | None,
-) -> tuple[int, int, int]:
+    known_participants: frozenset[str],
+) -> tuple[int, int]:
     if following_start_index is not None:
-        return (0, 0, selected_start_index)
+        return (0, selected_start_index)
 
     return (
         _final_block_continuation_tail_penalty(lines, candidate_start_indices, selected_start_index),
-        _same_timestamp_penalty(lines, previous_start_index, selected_start_index),
+        _known_participant_penalty(lines, selected_start_index, known_participants),
         selected_start_index,
     )
+
+
+def _known_participants(chat_name: str | None, self_display_name: str) -> frozenset[str]:
+    participants = {self_display_name}
+    if chat_name:
+        participants.add(chat_name)
+    return frozenset(participants)
+
+
+def _known_participant_penalty(
+    lines: list[str],
+    selected_start_index: int,
+    known_participants: frozenset[str],
+) -> int:
+    return int(_speaker_label_for_start(lines, selected_start_index) not in known_participants)
+
+
+def _speaker_label_for_start(lines: list[str], start_index: int) -> str:
+    match = _SPEAKER_LINE_RE.match(lines[start_index])
+    if match is None:
+        return ""
+    return match.group("label").strip()
 
 
 def _final_block_continuation_tail_penalty(
@@ -202,22 +237,6 @@ def _final_block_continuation_tail_penalty(
         if line.strip():
             return 1
     return 0
-
-
-def _same_timestamp_penalty(lines: list[str], previous_start_index: int, selected_start_index: int) -> int:
-    previous_timestamp = _timestamp_for_start(lines, previous_start_index)
-    selected_timestamp = _timestamp_for_start(lines, selected_start_index)
-    return int(bool(previous_timestamp and selected_timestamp and previous_timestamp == selected_timestamp))
-
-
-def _timestamp_for_start(lines: list[str], start_index: int) -> str:
-    timestamp_index = _next_nonblank_line_index(lines, start_index + 1)
-    if timestamp_index is None:
-        return ""
-    match = _TIMESTAMP_LINE_RE.match(lines[timestamp_index])
-    if match is None:
-        return ""
-    return match.group("timestamp").strip()
 
 
 def _next_nonblank_line_index(lines: list[str], start_index: int) -> int | None:
