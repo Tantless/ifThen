@@ -98,14 +98,15 @@ def _find_message_start_indices(lines: list[str]) -> list[int]:
 
 
 def _find_message_ranges(lines: list[str], message_count_hint: int | None) -> list[tuple[int, int]]:
-    start_indices = _find_message_start_indices(lines)
-    if not start_indices:
+    candidate_start_indices = _find_message_start_indices(lines)
+    if not candidate_start_indices:
         return []
 
-    if message_count_hint and 0 < message_count_hint < len(start_indices):
-        resolved = _resolve_message_starts(start_indices, message_count_hint)
+    start_indices = candidate_start_indices
+    if message_count_hint and 0 < message_count_hint < len(candidate_start_indices):
+        resolved = _resolve_sequential_message_starts(candidate_start_indices, message_count_hint)
         if resolved is not None:
-            start_indices = resolved
+            start_indices = list(resolved)
 
     return [
         (
@@ -116,24 +117,29 @@ def _find_message_ranges(lines: list[str], message_count_hint: int | None) -> li
     ]
 
 
-def _resolve_message_starts(start_indices: list[int], message_count_hint: int) -> tuple[int, ...] | None:
-    if message_count_hint > len(start_indices):
+def _resolve_sequential_message_starts(
+    candidate_start_indices: list[int],
+    message_count_hint: int,
+) -> tuple[int, ...] | None:
+    if message_count_hint > len(candidate_start_indices):
         return None
 
     @lru_cache(maxsize=None)
-    def choose(current_position: int, remaining_count: int) -> tuple[int, ...] | None:
-        current_start = start_indices[current_position]
+    def choose_from(current_position: int, remaining_count: int) -> tuple[int, ...] | None:
+        current_start = candidate_start_indices[current_position]
         if remaining_count == 1:
+            if current_position != len(candidate_start_indices) - 1:
+                return None
             return (current_start,)
 
-        max_next_position = len(start_indices) - remaining_count + 1
-        for next_position in range(max_next_position, current_position, -1):
-            rest = choose(next_position, remaining_count - 1)
+        max_next_position = len(candidate_start_indices) - remaining_count + 1
+        for next_position in range(current_position + 1, max_next_position + 1):
+            rest = choose_from(next_position, remaining_count - 1)
             if rest is not None:
                 return (current_start, *rest)
         return None
 
-    return choose(0, message_count_hint)
+    return choose_from(0, message_count_hint)
 
 
 def _next_nonblank_line_index(lines: list[str], start_index: int) -> int | None:

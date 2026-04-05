@@ -87,3 +87,40 @@ def test_parse_qq_export_keeps_triple_marker_continuation_inside_body():
         "内容: 这三行其实都还是正文"
     )
     assert parsed.messages[1].speaker_name == "梣ゥ"
+
+
+def test_parse_qq_export_keeps_middle_message_when_body_contains_false_block():
+    text = (
+        "聊天名称: 梣ゥ\n"
+        "聊天类型: 私聊\n"
+        "消息总数: 3\n"
+        "\n"
+        "Alice:\n"
+        "时间: 2025-03-02 20:19:00\n"
+        "内容: 第一条消息\n"
+        "\n"
+        "Bob:\n"
+        "时间: 2025-03-02 20:19:20\n"
+        "内容: 这是 Bob 的正文第一行\n"
+        "\n"
+        "Mallory:\n"
+        "时间: 2025-03-02 20:19:30\n"
+        "内容: 这些标记其实还是 Bob 的正文\n"
+        "Bob 的正文最后一行\n"
+        "\n"
+        "Carol:\n"
+        "时间: 2025-03-02 20:19:50\n"
+        "内容: 最后一条真实消息\n"
+    )
+
+    parsed = parse_qq_export(text=text, self_display_name="Tantless")
+
+    assert [message.speaker_name for message in parsed.messages] == ["Alice", "Bob", "Carol"]
+    assert parsed.messages[1].content_text == (
+        "这是 Bob 的正文第一行\n"
+        "\n"
+        "Mallory:\n"
+        "时间: 2025-03-02 20:19:30\n"
+        "内容: 这些标记其实还是 Bob 的正文\n"
+        "Bob 的正文最后一行"
+    )
