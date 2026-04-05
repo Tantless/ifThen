@@ -28,7 +28,7 @@ class ParsedConversation:
     messages: list[ParsedMessage] = field(default_factory=list)
 
 
-_SPEAKER_LINE_RE = re.compile(r"^(?P<label>[^:]+):\s*$")
+_SPEAKER_LINE_RE = re.compile(r"^(?P<label>.+):\s*$")
 _TIMESTAMP_RE = re.compile(r"^时间:\s*(?P<timestamp>.*)$")
 _CONTENT_RE = re.compile(r"^内容:\s*(?P<content>.*)$")
 _RESOURCE_ITEM_RE = re.compile(r"^\s*-\s*(?P<kind>[^:]+):\s*(?P<name>.+?)\s*$")
@@ -104,13 +104,13 @@ def _parse_message_block(block_lines: list[str], start_line: int, self_display_n
 
     speaker_line = block_lines[0]
     timestamp_line = block_lines[1] if len(block_lines) > 1 else ""
-    content_line = block_lines[2] if len(block_lines) > 2 else ""
+    body_lines = block_lines[2:] if len(block_lines) > 2 else []
 
     speaker_label = _SPEAKER_LINE_RE.match(speaker_line).group("label").strip() if _SPEAKER_LINE_RE.match(speaker_line) else ""
     timestamp = _TIMESTAMP_RE.match(timestamp_line).group("timestamp").strip() if _TIMESTAMP_RE.match(timestamp_line) else ""
-    content_text = _CONTENT_RE.match(content_line).group("content").strip() if _CONTENT_RE.match(content_line) else ""
+    content_text, resource_lines = _parse_body_lines(body_lines)
 
-    resource_items = _parse_resource_items(block_lines[3:])
+    resource_items = _parse_resource_items(resource_lines)
     message_type = _classify_message_type(content_text, resource_items, speaker_label)
     speaker_role = _classify_speaker_role(speaker_label, self_display_name)
 
@@ -133,6 +133,27 @@ def _parse_message_block(block_lines: list[str], start_line: int, self_display_n
         source_line_start=start_line,
         source_line_end=end_line,
     )
+
+
+def _parse_body_lines(lines: list[str]) -> tuple[str, list[str]]:
+    content_lines: list[str] = []
+    resource_lines: list[str] = []
+    in_resources = False
+
+    for line in lines:
+        if not in_resources and _CONTENT_RE.match(line):
+            content_lines.append(_CONTENT_RE.match(line).group("content"))
+            continue
+        if line == "资源:":
+            in_resources = True
+            continue
+        if in_resources:
+            resource_lines.append(line)
+            continue
+        content_lines.append(line)
+
+    content_text = "\n".join(content_lines)
+    return content_text, resource_lines
 
 
 def _parse_resource_items(lines: list[str]) -> list[dict[str, Any]] | None:

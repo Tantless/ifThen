@@ -21,6 +21,11 @@ def test_parse_qq_export_extracts_messages_and_flags():
     assert image_message.message_type == "image"
     assert image_message.resource_items == [{"kind": "image", "name": "1DA1EB4EA41F53A9407923B093C213B6.jpg"}]
 
+    colon_speaker_message = parsed.messages[3]
+    assert colon_speaker_message.speaker_name == "A:B"
+    assert colon_speaker_message.speaker_role == "other"
+    assert colon_speaker_message.content_text == "收到了\n继续这一条的第二行"
+
     unknown_message = parsed.messages[5]
     assert unknown_message.speaker_role == "unknown"
     assert "unknown_speaker" in unknown_message.parse_flags
