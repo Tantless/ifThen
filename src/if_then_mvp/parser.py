@@ -83,6 +83,8 @@ def _find_message_start_indices(lines: list[str]) -> list[int]:
     for index, line in enumerate(lines):
         if not _SPEAKER_LINE_RE.match(line):
             continue
+        if index > 0 and lines[index - 1].strip():
+            continue
         next_content_index = _next_nonblank_line_index(lines, index + 1)
         if next_content_index is None:
             continue
