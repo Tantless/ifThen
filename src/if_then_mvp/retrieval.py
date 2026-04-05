@@ -18,6 +18,33 @@ def _segment_cutoff_position(
     return max(positions)
 
 
+def _sort_messages(message_ids: list[int], message_lookup: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        (message_lookup[message_id] for message_id in message_ids if message_id in message_lookup),
+        key=_message_position,
+    )
+
+
+def _build_segment_digest(
+    segment: dict[str, Any],
+    message_ids: list[int],
+    message_lookup: dict[int, dict[str, Any]],
+) -> dict[str, Any]:
+    ordered_messages = _sort_messages(message_ids, message_lookup)
+    preview_parts = [
+        f"{message['speaker_role']}: {message['content_text']}"
+        for message in ordered_messages[:2]
+    ]
+    return {
+        "segment_id": segment["id"],
+        "start_time": segment["start_time"],
+        "end_time": segment["end_time"],
+        "message_count": len(ordered_messages),
+        "last_speaker_role": ordered_messages[-1]["speaker_role"] if ordered_messages else None,
+        "summary_hint": " | ".join(preview_parts),
+    }
+
+
 def build_context_pack(
     *,
     messages: list[dict[str, Any]],
@@ -42,11 +69,14 @@ def build_context_pack(
     if target_segment is None:
         raise ValueError(f"Target message {target_message_id} is not covered by any segment")
 
-    current_segment_history = [
-        message_lookup[message_id]
-        for message_id in (target_segment.get("source_message_ids") or [])
-        if message_id in message_lookup and _message_position(message_lookup[message_id]) < target_position
-    ]
+    current_segment_history = _sort_messages(
+        [
+            message_id
+            for message_id in (target_segment.get("source_message_ids") or [])
+            if message_id in message_lookup and _message_position(message_lookup[message_id]) < target_position
+        ],
+        message_lookup,
+    )
 
     current_segment_brief = {
         "message_count": len(current_segment_history),
@@ -54,38 +84,39 @@ def build_context_pack(
     }
 
     target_day = str(target["timestamp"]).split("T", 1)[0]
+    ordered_segments = [
+        (segment, _segment_cutoff_position(segment, message_lookup))
+        for segment in segments
+    ]
+    ordered_segments = [
+        (segment, position)
+        for segment, position in ordered_segments
+        if position is not None
+    ]
+    ordered_segments.sort(key=lambda item: item[1])
+
+    target_segment_index = next(
+        (
+            index
+            for index, (segment, _position) in enumerate(ordered_segments)
+            if segment.get("id") == target_segment.get("id")
+        ),
+        None,
+    )
     same_day_prior_segments = []
-    for segment in segments:
-        if segment.get("id") == target_segment.get("id"):
-            continue
-
-        segment_position = _segment_cutoff_position(segment, message_lookup)
-        if segment_position is None:
-            continue
-
-        segment_day = str(segment.get("start_time") or segment_position[0]).split("T", 1)[0]
-        if segment_day != target_day or segment_position >= target_position:
-            continue
-
-        eligible_message_ids = [
-            message_id
-            for message_id in (segment.get("source_message_ids") or [])
-            if message_id in message_lookup and _message_position(message_lookup[message_id]) < target_position
-        ]
-        if not eligible_message_ids:
-            continue
-
-        same_day_prior_segments.append(
-            {
-                "segment_id": segment["id"],
-                "start_time": segment["start_time"],
-                "end_time": segment["end_time"],
-                "message_ids": eligible_message_ids,
-                "message_count": len(eligible_message_ids),
-            }
-        )
-
-    same_day_prior_segments.sort(key=lambda item: (item["end_time"], item["segment_id"]))
+    if target_segment_index is not None and target_segment_index > 0:
+        prior_segment, prior_position = ordered_segments[target_segment_index - 1]
+        prior_day = str(prior_segment.get("start_time") or prior_position[0]).split("T", 1)[0]
+        if prior_day == target_day and prior_position < target_position:
+            eligible_message_ids = [
+                message_id
+                for message_id in (prior_segment.get("source_message_ids") or [])
+                if message_id in message_lookup and _message_position(message_lookup[message_id]) < target_position
+            ]
+            if eligible_message_ids:
+                same_day_prior_segments.append(
+                    _build_segment_digest(prior_segment, eligible_message_ids, message_lookup)
+                )
 
     snapshot = base_relationship_snapshot or {}
     moment_state_estimate = {
@@ -95,6 +126,7 @@ def build_context_pack(
         "initiative_balance": snapshot.get("initiative_balance", "unknown"),
         "defensiveness_level": snapshot.get("defensiveness_level", "unknown"),
         "relationship_phase": snapshot.get("relationship_phase", "unknown"),
+        "active_sensitive_topics": snapshot.get("active_sensitive_topics", []),
         "state_rationale": "Derived from the latest cutoff-safe relationship snapshot and current segment history.",
     }
 

@@ -40,7 +40,7 @@ def test_build_context_pack_excludes_target_and_future_messages():
         segments=[
             {
                 "id": 11,
-                "source_message_ids": [1, 2, 3, 4],
+                "source_message_ids": [3, 1, 2, 4],
                 "start_time": "2025-03-02T20:18:03",
                 "end_time": "2025-03-02T20:19:00",
             }
@@ -65,6 +65,7 @@ def test_build_context_pack_excludes_target_and_future_messages():
     assert context["related_topic_digests"] == []
     assert context["base_relationship_snapshot"] == {"relationship_temperature": "warm"}
     assert context["moment_state_estimate"]["relationship_temperature"] == "warm"
+    assert context["moment_state_estimate"]["active_sensitive_topics"] == []
     assert context["persona_self"] == {"global_persona_summary": "友好"}
     assert context["persona_other"] == {"global_persona_summary": "轻松"}
     assert context["retrieval_warnings"] == ["related_topic_digests_empty"]
@@ -94,9 +95,9 @@ def test_build_context_pack_collects_same_day_prior_segments_only():
                 "id": 3,
                 "conversation_id": 8,
                 "sequence_no": 3,
-                "timestamp": "2025-03-01T22:00:00",
+                "timestamp": "2025-03-02T12:00:00",
                 "speaker_role": "other",
-                "content_text": "昨晚的消息",
+                "content_text": "中午的消息",
             },
             {
                 "id": 4,
@@ -133,12 +134,12 @@ def test_build_context_pack_collects_same_day_prior_segments_only():
             {
                 "id": 102,
                 "source_message_ids": [3],
-                "start_time": "2025-03-01T22:00:00",
-                "end_time": "2025-03-01T22:00:00",
+                "start_time": "2025-03-02T12:00:00",
+                "end_time": "2025-03-02T12:00:00",
             },
             {
                 "id": 103,
-                "source_message_ids": [4, 5],
+                "source_message_ids": [5, 4],
                 "start_time": "2025-03-02T20:18:03",
                 "end_time": "2025-03-02T20:18:04",
             },
@@ -160,12 +161,14 @@ def test_build_context_pack_collects_same_day_prior_segments_only():
     assert [item["id"] for item in context["current_segment_history"]] == [4]
     assert context["same_day_prior_segments"] == [
         {
-            "segment_id": 101,
-            "start_time": "2025-03-02T09:00:00",
-            "end_time": "2025-03-02T09:01:00",
-            "message_ids": [1, 2],
-            "message_count": 2,
+            "segment_id": 102,
+            "start_time": "2025-03-02T12:00:00",
+            "end_time": "2025-03-02T12:00:00",
+            "message_count": 1,
+            "last_speaker_role": "other",
+            "summary_hint": "other: 中午的消息",
         }
     ]
     assert context["moment_state_estimate"]["relationship_temperature"] == "unknown"
+    assert context["moment_state_estimate"]["active_sensitive_topics"] == []
     assert context["retrieval_warnings"] == ["base_relationship_snapshot_missing"]
