@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from if_then_mvp.analysis import (
     build_persona_payload,
@@ -51,20 +51,39 @@ def _load_next_queued_job(session) -> AnalysisJob | None:
     ).scalar_one_or_none()
 
 
-def _claim_next_job() -> int | None:
+def _claim_next_job() -> tuple[int, int] | None:
     session = get_sessionmaker()()
     try:
-        job = _load_next_queued_job(session)
-        if job is None:
+        next_job_id = (
+            select(AnalysisJob.id)
+            .where(AnalysisJob.status == "queued", AnalysisJob.job_type == "full_analysis")
+            .order_by(AnalysisJob.id.asc())
+            .limit(1)
+            .scalar_subquery()
+        )
+        row = session.execute(
+            update(AnalysisJob)
+            .where(AnalysisJob.id == next_job_id, AnalysisJob.status == "queued")
+            .values(
+                status="running",
+                current_stage="parsing",
+                progress_percent=_STAGE_PROGRESS["parsing"],
+                started_at=_utcnow(),
+                finished_at=None,
+                error_message=None,
+            )
+            .returning(AnalysisJob.id, AnalysisJob.conversation_id)
+        ).first()
+        if row is None:
             session.rollback()
             return None
-        job.status = "running"
-        job.current_stage = "parsing"
-        job.progress_percent = _STAGE_PROGRESS["parsing"]
-        job.started_at = _utcnow()
-        job.error_message = None
+        session.execute(
+            update(Conversation)
+            .where(Conversation.id == row.conversation_id)
+            .values(status="analyzing")
+        )
         session.commit()
-        return job.id
+        return row.id, row.conversation_id
     except Exception:
         session.rollback()
         raise
@@ -89,10 +108,27 @@ def _update_job(job_id: int, **fields) -> None:
         session.close()
 
 
+def _update_conversation_status(conversation_id: int, status: str) -> None:
+    session = get_sessionmaker()()
+    try:
+        session.execute(
+            update(Conversation)
+            .where(Conversation.id == conversation_id)
+            .values(status=status)
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def run_next_job(*, llm_client) -> bool:
-    job_id = _claim_next_job()
-    if job_id is None:
+    claim = _claim_next_job()
+    if claim is None:
         return False
+    job_id, conversation_id = claim
 
     current_stage = "parsing"
     progress_percent = _STAGE_PROGRESS[current_stage]
@@ -103,9 +139,9 @@ def run_next_job(*, llm_client) -> bool:
         if job is None:
             raise RuntimeError(f"Analysis job {job_id} disappeared after claim")
 
-        conversation = session.get(Conversation, job.conversation_id)
+        conversation = session.get(Conversation, conversation_id)
         if conversation is None:
-            raise RuntimeError(f"Conversation {job.conversation_id} was not found")
+            raise RuntimeError(f"Conversation {conversation_id} was not found")
 
         import_id = job.payload_json.get("import_id")
         batch = session.get(ImportBatch, import_id)
@@ -137,11 +173,11 @@ def run_next_job(*, llm_client) -> bool:
                     )
                 )
         session.flush()
-        session.commit()
 
         current_stage = "segmenting"
         progress_percent = _STAGE_PROGRESS[current_stage]
-        _update_job(job_id, current_stage=current_stage, progress_percent=progress_percent)
+        job.current_stage = current_stage
+        job.progress_percent = progress_percent
 
         settings = get_settings()
         messages = session.execute(
@@ -169,11 +205,11 @@ def run_next_job(*, llm_client) -> bool:
                 )
             )
         session.flush()
-        session.commit()
 
         current_stage = "summarizing"
         progress_percent = _STAGE_PROGRESS[current_stage]
-        _update_job(job_id, current_stage=current_stage, progress_percent=progress_percent)
+        job.current_stage = current_stage
+        job.progress_percent = progress_percent
 
         segment_rows = session.execute(
             select(Segment).where(Segment.conversation_id == conversation.id).order_by(Segment.id.asc())
@@ -196,11 +232,11 @@ def run_next_job(*, llm_client) -> bool:
             session.add(SegmentSummary(segment_id=segment.id, **summary.model_dump()))
             previous_snapshot_summary = summary.summary_text
         session.flush()
-        session.commit()
 
         current_stage = "topic_persona_snapshot"
         progress_percent = _STAGE_PROGRESS[current_stage]
-        _update_job(job_id, current_stage=current_stage, progress_percent=progress_percent)
+        job.current_stage = current_stage
+        job.progress_percent = progress_percent
 
         summary_pairs = session.execute(
             select(SegmentSummary, Segment)
@@ -271,19 +307,16 @@ def run_next_job(*, llm_client) -> bool:
             prior_snapshot_summary = snapshot.snapshot_summary
 
         conversation.status = "ready"
+        job.status = "completed"
+        job.current_stage = "completed"
+        job.progress_percent = _STAGE_PROGRESS["completed"]
+        job.finished_at = _utcnow()
+        job.error_message = None
         session.commit()
-
-        _update_job(
-            job_id,
-            status="completed",
-            current_stage="completed",
-            progress_percent=_STAGE_PROGRESS["completed"],
-            finished_at=_utcnow(),
-            error_message=None,
-        )
         return True
     except Exception as exc:
         session.rollback()
+        _update_conversation_status(conversation_id, "failed")
         _update_job(
             job_id,
             status="failed",

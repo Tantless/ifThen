@@ -12,7 +12,7 @@ from if_then_mvp.models import (
     SegmentSummary,
     Topic,
 )
-from if_then_mvp.worker import run_next_job
+from if_then_mvp.worker import _claim_next_job, run_next_job
 
 
 class FakeLLM:
@@ -102,6 +102,9 @@ def test_run_next_job_parses_messages_and_creates_analysis_artifacts(tmp_path, m
 
     with session_scope() as session:
         assert session.query(Message).count() == 6
+        sequence_numbers = [message.sequence_no for message in session.query(Message).order_by(Message.sequence_no.asc()).all()]
+        assert sequence_numbers == [1, 2, 3, 4, 5, 6]
+        assert all(message.import_id == 1 for message in session.query(Message).all())
         assert session.query(Segment).count() >= 1
         assert session.query(SegmentSummary).count() >= 1
         assert session.query(Topic).count() == 1
@@ -111,6 +114,8 @@ def test_run_next_job_parses_messages_and_creates_analysis_artifacts(tmp_path, m
         assert job.status == "completed"
         assert job.current_stage == "completed"
         assert job.progress_percent == 100
+        conversation = session.query(Conversation).one()
+        assert conversation.status == "ready"
 
 
 def test_run_next_job_marks_job_failed_when_stage_raises(tmp_path, monkeypatch):
@@ -129,3 +134,32 @@ def test_run_next_job_marks_job_failed_when_stage_raises(tmp_path, monkeypatch):
         assert job.current_stage == "failed"
         assert job.progress_percent > 0
         assert "boom" in job.error_message
+        assert session.query(Message).count() == 0
+        assert session.query(Segment).count() == 0
+        assert session.query(SegmentSummary).count() == 0
+        assert session.query(Topic).count() == 0
+        assert session.query(PersonaProfile).count() == 0
+        assert session.query(RelationshipSnapshot).count() == 0
+        conversation = session.query(Conversation).one()
+        assert conversation.status == "failed"
+
+
+def test_claim_next_job_is_single_use_and_marks_conversation_analyzing(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    fixture_path = Path("tests/fixtures/qq_export_sample.txt")
+    init_db()
+    _seed_job(fixture_path=fixture_path)
+
+    first_claim = _claim_next_job()
+    second_claim = _claim_next_job()
+
+    assert first_claim == (1, 1)
+    assert second_claim is None
+
+    with session_scope() as session:
+        job = session.query(AnalysisJob).one()
+        assert job.status == "running"
+        assert job.current_stage == "parsing"
+        assert job.progress_percent == 10
+        conversation = session.query(Conversation).one()
+        assert conversation.status == "analyzing"
