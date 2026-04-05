@@ -29,7 +29,9 @@ class ParsedConversation:
 
 
 _SPEAKER_LINE_RE = re.compile(r"^(?P<label>.+):\s*$")
-_TIMESTAMP_RE = re.compile(r"^时间:\s*(?P<timestamp>.*)$")
+_TIMESTAMP_LINE_RE = re.compile(
+    r"^时间:\s*(?P<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s*$"
+)
 _CONTENT_RE = re.compile(r"^内容:\s*(?P<content>.*)$")
 _RESOURCE_ITEM_RE = re.compile(r"^\s*-\s*(?P<kind>[^:]+):\s*(?P<name>.+?)\s*$")
 
@@ -88,7 +90,7 @@ def _find_message_start_indices(lines: list[str]) -> list[int]:
         next_content_index = _next_nonblank_line_index(lines, index + 1)
         if next_content_index is None:
             continue
-        if _TIMESTAMP_RE.match(lines[next_content_index]):
+        if _TIMESTAMP_LINE_RE.match(lines[next_content_index]):
             start_indices.append(index)
     return start_indices
 
@@ -109,7 +111,7 @@ def _parse_message_block(block_lines: list[str], start_line: int, self_display_n
     body_lines = block_lines[2:] if len(block_lines) > 2 else []
 
     speaker_label = _SPEAKER_LINE_RE.match(speaker_line).group("label").strip() if _SPEAKER_LINE_RE.match(speaker_line) else ""
-    timestamp = _TIMESTAMP_RE.match(timestamp_line).group("timestamp").strip() if _TIMESTAMP_RE.match(timestamp_line) else ""
+    timestamp = _TIMESTAMP_LINE_RE.match(timestamp_line).group("timestamp").strip() if _TIMESTAMP_LINE_RE.match(timestamp_line) else ""
     content_text, resource_lines = _parse_body_lines(body_lines)
 
     resource_items = _parse_resource_items(resource_lines)
