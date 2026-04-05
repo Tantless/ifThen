@@ -28,7 +28,7 @@ class ParsedConversation:
     messages: list[ParsedMessage] = field(default_factory=list)
 
 
-_MESSAGE_START_RE = re.compile(r"^说话人:\s*(?P<label>.*)$")
+_SPEAKER_LINE_RE = re.compile(r"^(?P<label>[^:]+):\s*$")
 _TIMESTAMP_RE = re.compile(r"^时间:\s*(?P<timestamp>.*)$")
 _CONTENT_RE = re.compile(r"^内容:\s*(?P<content>.*)$")
 _RESOURCE_ITEM_RE = re.compile(r"^\s*-\s*(?P<kind>[^:]+):\s*(?P<name>.+?)\s*$")
@@ -41,7 +41,7 @@ def parse_qq_export(text: str, self_display_name: str) -> ParsedConversation:
     message_count_hint = _extract_header_int(lines, "消息总数")
 
     messages: list[ParsedMessage] = []
-    start_indices = [index for index, line in enumerate(lines) if _MESSAGE_START_RE.match(line)]
+    start_indices = _find_message_start_indices(lines)
 
     for position, start_index in enumerate(start_indices):
         end_index = start_indices[position + 1] if position + 1 < len(start_indices) else len(lines)
@@ -78,6 +78,26 @@ def _extract_header_int(lines: list[str], header_name: str) -> int | None:
         return None
 
 
+def _find_message_start_indices(lines: list[str]) -> list[int]:
+    start_indices: list[int] = []
+    for index, line in enumerate(lines):
+        if not _SPEAKER_LINE_RE.match(line):
+            continue
+        next_content_index = _next_nonblank_line_index(lines, index + 1)
+        if next_content_index is None:
+            continue
+        if _TIMESTAMP_RE.match(lines[next_content_index]):
+            start_indices.append(index)
+    return start_indices
+
+
+def _next_nonblank_line_index(lines: list[str], start_index: int) -> int | None:
+    for index in range(start_index, len(lines)):
+        if lines[index].strip():
+            return index
+    return None
+
+
 def _parse_message_block(block_lines: list[str], start_line: int, self_display_name: str) -> ParsedMessage:
     raw_block_text = "\n".join(block_lines)
     end_line = start_line + len(block_lines) - 1
@@ -86,7 +106,7 @@ def _parse_message_block(block_lines: list[str], start_line: int, self_display_n
     timestamp_line = block_lines[1] if len(block_lines) > 1 else ""
     content_line = block_lines[2] if len(block_lines) > 2 else ""
 
-    speaker_label = _MESSAGE_START_RE.match(speaker_line).group("label").strip() if _MESSAGE_START_RE.match(speaker_line) else ""
+    speaker_label = _SPEAKER_LINE_RE.match(speaker_line).group("label").strip() if _SPEAKER_LINE_RE.match(speaker_line) else ""
     timestamp = _TIMESTAMP_RE.match(timestamp_line).group("timestamp").strip() if _TIMESTAMP_RE.match(timestamp_line) else ""
     content_text = _CONTENT_RE.match(content_line).group("content").strip() if _CONTENT_RE.match(content_line) else ""
 

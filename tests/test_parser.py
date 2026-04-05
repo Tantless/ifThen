@@ -36,7 +36,7 @@ def test_parse_qq_export_preserves_raw_block_and_line_range():
     assert image_message.source_line_start == 13
     assert image_message.source_line_end == 17
     assert image_message.raw_block_text == (
-        "说话人: 梣ゥ\n"
+        "梣ゥ:\n"
         "时间: 2025-03-02 20:18:41\n"
         "内容: [图片: 1DA1EB4EA41F53A9407923B093C213B6.jpg]\n"
         "资源:\n"
