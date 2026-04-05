@@ -1,0 +1,272 @@
+from fastapi.testclient import TestClient
+
+from if_then_mvp.api import create_app
+from if_then_mvp.db import init_db, session_scope
+from if_then_mvp.models import (
+    AnalysisJob,
+    AppSetting,
+    Conversation,
+    ImportBatch,
+    Message,
+    PersonaProfile,
+    RelationshipSnapshot,
+    Segment,
+    SegmentSummary,
+    Topic,
+)
+
+
+def test_query_endpoints_return_conversation_artifacts(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        message = Message(
+            conversation_id=conversation.id,
+            import_id=batch.id,
+            sequence_no=1,
+            speaker_name="Tantless",
+            speaker_role="self",
+            timestamp="2025-03-02T20:18:04",
+            content_text="你好",
+            message_type="text",
+            resource_items=[{"kind": "emoji", "value": "wave"}],
+        )
+        session.add(message)
+        session.flush()
+
+        segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=message.id,
+            end_message_id=message.id,
+            start_time="2025-03-02T20:18:04",
+            end_time="2025-03-02T20:18:04",
+            message_count=1,
+            self_message_count=1,
+            other_message_count=0,
+            segment_kind="isolated",
+            source_message_ids=[message.id],
+        )
+        session.add(segment)
+        session.flush()
+
+        session.add(
+            SegmentSummary(
+                segment_id=segment.id,
+                summary_text="打招呼",
+                main_topics=["开场聊天"],
+                self_stance="主动",
+                other_stance="未出现",
+                emotional_tone="轻松",
+                interaction_pattern="单次触达",
+                has_conflict=False,
+                has_repair=False,
+                has_closeness_signal=False,
+                outcome="等待回应",
+                relationship_impact="neutral",
+                confidence=0.7,
+            )
+        )
+        session.add(
+            Topic(
+                conversation_id=conversation.id,
+                topic_name="开场聊天",
+                topic_summary="建立联系",
+                first_seen_at="2025-03-02T20:18:04",
+                last_seen_at="2025-03-02T20:18:04",
+                segment_count=1,
+                topic_status="ongoing",
+            )
+        )
+        session.add(
+            RelationshipSnapshot(
+                conversation_id=conversation.id,
+                as_of_message_id=message.id,
+                as_of_time="2025-03-02T20:18:04",
+                relationship_temperature="warm",
+                tension_level="low",
+                openness_level="medium",
+                initiative_balance="self_leading",
+                defensiveness_level="low",
+                unresolved_conflict_flags=[],
+                relationship_phase="warming",
+                snapshot_summary="初步建立联系",
+            )
+        )
+        session.add(
+            PersonaProfile(
+                conversation_id=conversation.id,
+                subject_role="other",
+                global_persona_summary="轻松",
+                style_traits=["简短"],
+                conflict_traits=["回避"],
+                relationship_specific_patterns=["接梗"],
+                evidence_segment_ids=[segment.id],
+                confidence=0.8,
+            )
+        )
+        session.add(
+            AnalysisJob(
+                conversation_id=conversation.id,
+                job_type="full_analysis",
+                status="completed",
+                current_stage="completed",
+                progress_percent=100,
+                retry_count=0,
+                payload_json={"import_id": batch.id},
+            )
+        )
+        session.add(AppSetting(setting_key="llm.chat_model", setting_value="gpt-4.1-mini", is_secret=False))
+
+    with TestClient(create_app()) as client:
+        conversations_response = client.get("/conversations")
+        assert conversations_response.status_code == 200
+        assert conversations_response.json() == [
+            {
+                "id": 1,
+                "title": "梣ゥ",
+                "chat_type": "private",
+                "self_display_name": "Tantless",
+                "other_display_name": "梣ゥ",
+                "source_format": "qq_chat_exporter_v5",
+                "status": "ready",
+            }
+        ]
+
+        conversation_response = client.get("/conversations/1")
+        assert conversation_response.status_code == 200
+        assert conversation_response.json()["title"] == "梣ゥ"
+
+        job_response = client.get("/jobs/1")
+        assert job_response.status_code == 200
+        assert job_response.json() == {
+            "id": 1,
+            "status": "completed",
+            "current_stage": "completed",
+            "progress_percent": 100,
+        }
+
+        messages_response = client.get("/conversations/1/messages")
+        assert messages_response.status_code == 200
+        assert messages_response.json() == [
+            {
+                "id": 1,
+                "sequence_no": 1,
+                "speaker_name": "Tantless",
+                "speaker_role": "self",
+                "timestamp": "2025-03-02T20:18:04",
+                "content_text": "你好",
+                "message_type": "text",
+                "resource_items": [{"kind": "emoji", "value": "wave"}],
+            }
+        ]
+
+        message_response = client.get("/messages/1")
+        assert message_response.status_code == 200
+        assert message_response.json()["content_text"] == "你好"
+
+        segments_response = client.get("/conversations/1/segments")
+        assert segments_response.status_code == 200
+        assert segments_response.json() == [
+            {
+                "id": 1,
+                "start_message_id": 1,
+                "end_message_id": 1,
+                "start_time": "2025-03-02T20:18:04",
+                "end_time": "2025-03-02T20:18:04",
+                "message_count": 1,
+                "segment_kind": "isolated",
+            }
+        ]
+
+        topics_response = client.get("/conversations/1/topics")
+        assert topics_response.status_code == 200
+        assert topics_response.json() == [
+            {
+                "id": 1,
+                "topic_name": "开场聊天",
+                "topic_summary": "建立联系",
+                "topic_status": "ongoing",
+            }
+        ]
+
+        profile_response = client.get("/conversations/1/profile")
+        assert profile_response.status_code == 200
+        assert profile_response.json() == [
+            {
+                "subject_role": "other",
+                "global_persona_summary": "轻松",
+                "style_traits": ["简短"],
+                "conflict_traits": ["回避"],
+                "relationship_specific_patterns": ["接梗"],
+                "confidence": 0.8,
+            }
+        ]
+
+        timeline_response = client.get("/conversations/1/timeline-state?at=2025-03-02T20:18:04")
+        assert timeline_response.status_code == 200
+        assert timeline_response.json() == {
+            "id": 1,
+            "as_of_message_id": 1,
+            "as_of_time": "2025-03-02T20:18:04",
+            "relationship_temperature": "warm",
+            "tension_level": "low",
+            "openness_level": "medium",
+            "initiative_balance": "self_leading",
+            "defensiveness_level": "low",
+            "unresolved_conflict_flags": [],
+            "relationship_phase": "warming",
+            "snapshot_summary": "初步建立联系",
+        }
+
+        settings_response = client.get("/settings")
+        assert settings_response.status_code == 200
+        assert settings_response.json() == [
+            {
+                "setting_key": "llm.chat_model",
+                "setting_value": "gpt-4.1-mini",
+                "is_secret": False,
+            }
+        ]
+
+        put_response = client.put(
+            "/settings",
+            json={"setting_key": "llm.chat_model", "setting_value": "gpt-4.1", "is_secret": False},
+        )
+        assert put_response.status_code == 200
+        assert put_response.json() == {
+            "setting_key": "llm.chat_model",
+            "setting_value": "gpt-4.1",
+            "is_secret": False,
+        }
+
+        settings_after_put = client.get("/settings")
+        assert settings_after_put.status_code == 200
+        assert settings_after_put.json() == [
+            {
+                "setting_key": "llm.chat_model",
+                "setting_value": "gpt-4.1",
+                "is_secret": False,
+            }
+        ]

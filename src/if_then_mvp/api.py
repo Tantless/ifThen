@@ -3,12 +3,34 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from sqlalchemy import select
 
 from if_then_mvp.config import get_settings
 from if_then_mvp.db import init_db, session_scope
-from if_then_mvp.models import AnalysisJob, Conversation, ImportBatch
+from if_then_mvp.models import (
+    AnalysisJob,
+    AppSetting,
+    Conversation,
+    ImportBatch,
+    Message,
+    PersonaProfile,
+    RelationshipSnapshot,
+    Segment,
+    Topic,
+)
 from if_then_mvp.parser import parse_qq_export
-from if_then_mvp.schemas import ConversationRead, ImportResponse, JobRead
+from if_then_mvp.schemas import (
+    ConversationRead,
+    ImportResponse,
+    JobRead,
+    MessageRead,
+    PersonaProfileRead,
+    SegmentRead,
+    SettingRead,
+    SettingWrite,
+    SnapshotRead,
+    TopicRead,
+)
 
 INVALID_TEXT_DETAIL = "Uploaded file must be valid UTF-8 text"
 INVALID_EXPORT_DETAIL = "Uploaded file must be a valid QQ private chat export"
@@ -24,6 +46,121 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/conversations", response_model=list[ConversationRead])
+    def list_conversations() -> list[ConversationRead]:
+        with session_scope() as session:
+            rows = session.execute(select(Conversation).order_by(Conversation.id.asc())).scalars().all()
+            return [ConversationRead.model_validate(item, from_attributes=True) for item in rows]
+
+    @app.get("/conversations/{conversation_id}", response_model=ConversationRead)
+    def get_conversation(conversation_id: int) -> ConversationRead:
+        with session_scope() as session:
+            row = session.get(Conversation, conversation_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            return ConversationRead.model_validate(row, from_attributes=True)
+
+    @app.get("/jobs/{job_id}", response_model=JobRead)
+    def get_job(job_id: int) -> JobRead:
+        with session_scope() as session:
+            row = session.get(AnalysisJob, job_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="Job not found")
+            return JobRead.model_validate(row, from_attributes=True)
+
+    @app.get("/conversations/{conversation_id}/messages", response_model=list[MessageRead])
+    def list_messages(conversation_id: int, limit: int = 50) -> list[MessageRead]:
+        with session_scope() as session:
+            rows = (
+                session.execute(
+                    select(Message)
+                    .where(Message.conversation_id == conversation_id)
+                    .order_by(Message.sequence_no.asc())
+                    .limit(limit)
+                )
+                .scalars()
+                .all()
+            )
+            return [MessageRead.model_validate(item, from_attributes=True) for item in rows]
+
+    @app.get("/messages/{message_id}", response_model=MessageRead)
+    def get_message(message_id: int) -> MessageRead:
+        with session_scope() as session:
+            row = session.get(Message, message_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="Message not found")
+            return MessageRead.model_validate(row, from_attributes=True)
+
+    @app.get("/conversations/{conversation_id}/segments", response_model=list[SegmentRead])
+    def list_segments(conversation_id: int) -> list[SegmentRead]:
+        with session_scope() as session:
+            rows = session.execute(
+                select(Segment).where(Segment.conversation_id == conversation_id).order_by(Segment.id.asc())
+            ).scalars().all()
+            return [SegmentRead.model_validate(item, from_attributes=True) for item in rows]
+
+    @app.get("/conversations/{conversation_id}/topics", response_model=list[TopicRead])
+    def list_topics(conversation_id: int) -> list[TopicRead]:
+        with session_scope() as session:
+            rows = session.execute(select(Topic).where(Topic.conversation_id == conversation_id).order_by(Topic.id.asc())).scalars().all()
+            return [TopicRead.model_validate(item, from_attributes=True) for item in rows]
+
+    @app.get("/conversations/{conversation_id}/profile", response_model=list[PersonaProfileRead])
+    def get_profile(conversation_id: int) -> list[PersonaProfileRead]:
+        with session_scope() as session:
+            rows = (
+                session.execute(
+                    select(PersonaProfile)
+                    .where(PersonaProfile.conversation_id == conversation_id)
+                    .order_by(PersonaProfile.subject_role.asc())
+                )
+                .scalars()
+                .all()
+            )
+            return [PersonaProfileRead.model_validate(item, from_attributes=True) for item in rows]
+
+    @app.get("/conversations/{conversation_id}/timeline-state", response_model=SnapshotRead)
+    def get_timeline_state(conversation_id: int, at: str) -> SnapshotRead:
+        with session_scope() as session:
+            row = (
+                session.execute(
+                    select(RelationshipSnapshot)
+                    .where(
+                        RelationshipSnapshot.conversation_id == conversation_id,
+                        RelationshipSnapshot.as_of_time <= at,
+                    )
+                    .order_by(RelationshipSnapshot.as_of_time.desc())
+                )
+                .scalars()
+                .first()
+            )
+            if row is None:
+                raise HTTPException(status_code=404, detail="No snapshot found")
+            return SnapshotRead.model_validate(row, from_attributes=True)
+
+    @app.get("/settings", response_model=list[SettingRead])
+    def get_settings_entries() -> list[SettingRead]:
+        with session_scope() as session:
+            rows = session.execute(select(AppSetting).order_by(AppSetting.setting_key.asc())).scalars().all()
+            return [SettingRead.model_validate(item, from_attributes=True) for item in rows]
+
+    @app.put("/settings", response_model=SettingRead)
+    def put_setting(payload: SettingWrite) -> SettingRead:
+        with session_scope() as session:
+            row = session.get(AppSetting, payload.setting_key)
+            if row is None:
+                row = AppSetting(
+                    setting_key=payload.setting_key,
+                    setting_value=payload.setting_value,
+                    is_secret=payload.is_secret,
+                )
+                session.add(row)
+            else:
+                row.setting_value = payload.setting_value
+                row.is_secret = payload.is_secret
+            session.flush()
+            return SettingRead.model_validate(row, from_attributes=True)
 
     @app.post("/imports/qq-text", response_model=ImportResponse, status_code=201)
     async def import_qq_text(file: UploadFile = File(...), self_display_name: str = Form(...)) -> ImportResponse:

@@ -18,6 +18,69 @@ class JobRead(BaseModel):
     progress_percent: int
 
 
+class MessageRead(BaseModel):
+    id: int
+    sequence_no: int
+    speaker_name: str
+    speaker_role: str
+    timestamp: str
+    content_text: str
+    message_type: str
+    resource_items: list[dict] | None = None
+
+
+class SegmentRead(BaseModel):
+    id: int
+    start_message_id: int
+    end_message_id: int
+    start_time: str
+    end_time: str
+    message_count: int
+    segment_kind: str
+
+
+class TopicRead(BaseModel):
+    id: int
+    topic_name: str
+    topic_summary: str
+    topic_status: str
+
+
+class SnapshotRead(BaseModel):
+    id: int
+    as_of_message_id: int
+    as_of_time: str
+    relationship_temperature: str
+    tension_level: str
+    openness_level: str
+    initiative_balance: str
+    defensiveness_level: str
+    unresolved_conflict_flags: list[str]
+    relationship_phase: str
+    snapshot_summary: str
+
+
+class PersonaProfileRead(BaseModel):
+    subject_role: str
+    global_persona_summary: str
+    style_traits: list[str]
+    conflict_traits: list[str]
+    relationship_specific_patterns: list[str]
+    confidence: float
+
+
+class SettingRead(BaseModel):
+    setting_key: str
+    setting_value: str
+    is_secret: bool
+
+
+class SettingWrite(BaseModel):
+    setting_key: str
+    setting_value: str
+    is_secret: bool = False
+
+
 class ImportResponse(BaseModel):
     conversation: ConversationRead
     job: JobRead
