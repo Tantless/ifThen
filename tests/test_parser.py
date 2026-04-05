@@ -54,3 +54,36 @@ def test_parse_qq_export_preserves_raw_block_and_line_range():
         "资源:\n"
         "  - image: 1DA1EB4EA41F53A9407923B093C213B6.jpg"
     )
+
+
+def test_parse_qq_export_keeps_triple_marker_continuation_inside_body():
+    text = (
+        "聊天名称: 梣ゥ\n"
+        "聊天类型: 私聊\n"
+        "消息总数: 2\n"
+        "\n"
+        "Alice:\n"
+        "时间: 2025-03-02 20:19:00\n"
+        "内容: 第一行正文\n"
+        "\n"
+        "Bob:\n"
+        "时间: 2025-03-02 20:19:00\n"
+        "内容: 这三行其实都还是正文\n"
+        "\n"
+        "梣ゥ:\n"
+        "时间: 2025-03-02 20:19:29\n"
+        "内容: 好的\n"
+    )
+
+    parsed = parse_qq_export(text=text, self_display_name="Tantless")
+
+    assert len(parsed.messages) == 2
+    assert parsed.messages[0].speaker_name == "Alice"
+    assert parsed.messages[0].content_text == (
+        "第一行正文\n"
+        "\n"
+        "Bob:\n"
+        "时间: 2025-03-02 20:19:00\n"
+        "内容: 这三行其实都还是正文"
+    )
+    assert parsed.messages[1].speaker_name == "梣ゥ"

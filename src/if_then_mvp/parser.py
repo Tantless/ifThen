@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 import re
 from typing import Any
 
@@ -43,10 +44,9 @@ def parse_qq_export(text: str, self_display_name: str) -> ParsedConversation:
     message_count_hint = _extract_header_int(lines, "消息总数")
 
     messages: list[ParsedMessage] = []
-    start_indices = _find_message_start_indices(lines)
+    message_ranges = _find_message_ranges(lines, message_count_hint)
 
-    for position, start_index in enumerate(start_indices):
-        end_index = start_indices[position + 1] if position + 1 < len(start_indices) else len(lines)
+    for start_index, end_index in message_ranges:
         block_lines = lines[start_index:end_index]
         while block_lines and not block_lines[-1].strip():
             block_lines.pop()
@@ -97,6 +97,45 @@ def _find_message_start_indices(lines: list[str]) -> list[int]:
     return start_indices
 
 
+def _find_message_ranges(lines: list[str], message_count_hint: int | None) -> list[tuple[int, int]]:
+    start_indices = _find_message_start_indices(lines)
+    if not start_indices:
+        return []
+
+    if message_count_hint and 0 < message_count_hint < len(start_indices):
+        resolved = _resolve_message_starts(start_indices, message_count_hint)
+        if resolved is not None:
+            start_indices = resolved
+
+    return [
+        (
+            start_index,
+            start_indices[position + 1] if position + 1 < len(start_indices) else len(lines),
+        )
+        for position, start_index in enumerate(start_indices)
+    ]
+
+
+def _resolve_message_starts(start_indices: list[int], message_count_hint: int) -> tuple[int, ...] | None:
+    if message_count_hint > len(start_indices):
+        return None
+
+    @lru_cache(maxsize=None)
+    def choose(current_position: int, remaining_count: int) -> tuple[int, ...] | None:
+        current_start = start_indices[current_position]
+        if remaining_count == 1:
+            return (current_start,)
+
+        max_next_position = len(start_indices) - remaining_count + 1
+        for next_position in range(max_next_position, current_position, -1):
+            rest = choose(next_position, remaining_count - 1)
+            if rest is not None:
+                return (current_start, *rest)
+        return None
+
+    return choose(0, message_count_hint)
+
+
 def _next_nonblank_line_index(lines: list[str], start_index: int) -> int | None:
     for index in range(start_index, len(lines)):
         if lines[index].strip():
@@ -145,10 +184,12 @@ def _parse_body_lines(lines: list[str]) -> tuple[str, list[str]]:
     content_lines: list[str] = []
     resource_lines: list[str] = []
     in_resources = False
+    content_started = False
 
     for line in lines:
-        if not in_resources and _CONTENT_RE.match(line):
+        if not in_resources and not content_started and _CONTENT_RE.match(line):
             content_lines.append(_CONTENT_RE.match(line).group("content"))
+            content_started = True
             continue
         if line == "资源:":
             in_resources = True
@@ -157,6 +198,7 @@ def _parse_body_lines(lines: list[str]) -> tuple[str, list[str]]:
             resource_lines.append(line)
             continue
         content_lines.append(line)
+        content_started = True
 
     content_text = "\n".join(content_lines)
     return content_text, resource_lines
