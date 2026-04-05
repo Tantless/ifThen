@@ -2,7 +2,7 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 
 from if_then_mvp.config import get_settings
@@ -70,14 +70,25 @@ def create_app() -> FastAPI:
             return JobRead.model_validate(row, from_attributes=True)
 
     @app.get("/conversations/{conversation_id}/messages", response_model=list[MessageRead])
-    def list_messages(conversation_id: int, limit: int = 50) -> list[MessageRead]:
+    def list_messages(
+        conversation_id: int,
+        limit: int = Query(default=50, ge=1, le=200),
+        before: int | None = Query(default=None, ge=1),
+        after: int | None = Query(default=None, ge=1),
+        keyword: str | None = None,
+    ) -> list[MessageRead]:
         with session_scope() as session:
+            _require_conversation(session, conversation_id)
+            query = select(Message).where(Message.conversation_id == conversation_id)
+            if before is not None:
+                query = query.where(Message.sequence_no < before)
+            if after is not None:
+                query = query.where(Message.sequence_no > after)
+            if keyword:
+                query = query.where(Message.content_text.contains(keyword))
             rows = (
                 session.execute(
-                    select(Message)
-                    .where(Message.conversation_id == conversation_id)
-                    .order_by(Message.sequence_no.asc())
-                    .limit(limit)
+                    query.order_by(Message.sequence_no.asc()).limit(limit)
                 )
                 .scalars()
                 .all()
@@ -95,6 +106,7 @@ def create_app() -> FastAPI:
     @app.get("/conversations/{conversation_id}/segments", response_model=list[SegmentRead])
     def list_segments(conversation_id: int) -> list[SegmentRead]:
         with session_scope() as session:
+            _require_conversation(session, conversation_id)
             rows = session.execute(
                 select(Segment).where(Segment.conversation_id == conversation_id).order_by(Segment.id.asc())
             ).scalars().all()
@@ -103,12 +115,14 @@ def create_app() -> FastAPI:
     @app.get("/conversations/{conversation_id}/topics", response_model=list[TopicRead])
     def list_topics(conversation_id: int) -> list[TopicRead]:
         with session_scope() as session:
+            _require_conversation(session, conversation_id)
             rows = session.execute(select(Topic).where(Topic.conversation_id == conversation_id).order_by(Topic.id.asc())).scalars().all()
             return [TopicRead.model_validate(item, from_attributes=True) for item in rows]
 
     @app.get("/conversations/{conversation_id}/profile", response_model=list[PersonaProfileRead])
     def get_profile(conversation_id: int) -> list[PersonaProfileRead]:
         with session_scope() as session:
+            _require_conversation(session, conversation_id)
             rows = (
                 session.execute(
                     select(PersonaProfile)
@@ -123,20 +137,22 @@ def create_app() -> FastAPI:
     @app.get("/conversations/{conversation_id}/timeline-state", response_model=SnapshotRead)
     def get_timeline_state(conversation_id: int, at: str) -> SnapshotRead:
         with session_scope() as session:
+            _require_conversation(session, conversation_id)
             row = (
                 session.execute(
                     select(RelationshipSnapshot)
-                    .where(
+                .where(
                         RelationshipSnapshot.conversation_id == conversation_id,
                         RelationshipSnapshot.as_of_time <= at,
                     )
-                    .order_by(RelationshipSnapshot.as_of_time.desc())
+                    .join(Message, RelationshipSnapshot.as_of_message_id == Message.id)
+                    .order_by(RelationshipSnapshot.as_of_time.desc(), Message.sequence_no.desc())
                 )
                 .scalars()
                 .first()
             )
             if row is None:
-                raise HTTPException(status_code=404, detail="No snapshot found")
+                raise HTTPException(status_code=404, detail="No snapshot found before the requested time")
             return SnapshotRead.model_validate(row, from_attributes=True)
 
     @app.get("/settings", response_model=list[SettingRead])
@@ -243,3 +259,10 @@ def _remove_file_if_present(path: Path) -> None:
         path.unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def _require_conversation(session, conversation_id: int) -> Conversation:
+    conversation = session.get(Conversation, conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conversation

@@ -270,3 +270,181 @@ def test_query_endpoints_return_conversation_artifacts(tmp_path, monkeypatch):
                 "is_secret": False,
             }
         ]
+
+
+def test_message_queries_validate_pagination_and_missing_conversation(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=3,
+        )
+        session.add(batch)
+        session.flush()
+
+        session.add_all(
+            [
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=1,
+                    speaker_name="梣ゥ",
+                    speaker_role="other",
+                    timestamp="2025-03-02T20:18:03",
+                    content_text="第一句",
+                    message_type="text",
+                ),
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=2,
+                    speaker_name="Tantless",
+                    speaker_role="self",
+                    timestamp="2025-03-02T20:18:04",
+                    content_text="第二句 关键词",
+                    message_type="text",
+                ),
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=3,
+                    speaker_name="梣ゥ",
+                    speaker_role="other",
+                    timestamp="2025-03-02T20:18:05",
+                    content_text="第三句",
+                    message_type="text",
+                ),
+            ]
+        )
+
+    with TestClient(create_app()) as client:
+        response = client.get("/conversations/1/messages?after=1&limit=1")
+        assert response.status_code == 200
+        assert [item["sequence_no"] for item in response.json()] == [2]
+
+        response = client.get("/conversations/1/messages?before=3&keyword=关键词")
+        assert response.status_code == 200
+        assert [item["sequence_no"] for item in response.json()] == [2]
+
+        response = client.get("/conversations/1/messages?limit=-1")
+        assert response.status_code == 422
+
+        response = client.get("/conversations/1/messages?before=-1")
+        assert response.status_code == 422
+
+        response = client.get("/conversations/1/messages?after=-1")
+        assert response.status_code == 422
+
+        for path in (
+            "/conversations/999/messages",
+            "/conversations/999/segments",
+            "/conversations/999/topics",
+            "/conversations/999/profile",
+            "/conversations/999/timeline-state?at=2025-03-02T20:18:04",
+        ):
+            response = client.get(path)
+            assert response.status_code == 404
+            assert response.json() == {"detail": "Conversation not found"}
+
+
+def test_timeline_state_prefers_latest_same_second_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=2,
+        )
+        session.add(batch)
+        session.flush()
+
+        second_message = Message(
+            conversation_id=conversation.id,
+            import_id=batch.id,
+            sequence_no=2,
+            speaker_name="Tantless",
+            speaker_role="self",
+            timestamp="2025-03-02T20:18:04",
+            content_text="同秒第二句",
+            message_type="text",
+        )
+        first_message = Message(
+            conversation_id=conversation.id,
+            import_id=batch.id,
+            sequence_no=1,
+            speaker_name="梣ゥ",
+            speaker_role="other",
+            timestamp="2025-03-02T20:18:04",
+            content_text="先说一句",
+            message_type="text",
+        )
+        session.add_all([first_message, second_message])
+        session.flush()
+
+        session.add_all(
+            [
+                RelationshipSnapshot(
+                    conversation_id=conversation.id,
+                    as_of_message_id=first_message.id,
+                    as_of_time="2025-03-02T20:18:04",
+                    relationship_temperature="warm",
+                    tension_level="low",
+                    openness_level="medium",
+                    initiative_balance="balanced",
+                    defensiveness_level="low",
+                    unresolved_conflict_flags=[],
+                    relationship_phase="warming",
+                    snapshot_summary="第一条快照",
+                ),
+                RelationshipSnapshot(
+                    conversation_id=conversation.id,
+                    as_of_message_id=second_message.id,
+                    as_of_time="2025-03-02T20:18:04",
+                    relationship_temperature="warmer",
+                    tension_level="low",
+                    openness_level="high",
+                    initiative_balance="balanced",
+                    defensiveness_level="low",
+                    unresolved_conflict_flags=[],
+                    relationship_phase="warming",
+                    snapshot_summary="第二条快照",
+                ),
+            ]
+        )
+
+    with TestClient(create_app()) as client:
+        response = client.get("/conversations/1/timeline-state?at=2025-03-02T20:18:04")
+        assert response.status_code == 200
+        assert response.json()["as_of_message_id"] == 2
+        assert response.json()["snapshot_summary"] == "第二条快照"
