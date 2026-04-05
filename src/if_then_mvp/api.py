@@ -16,9 +16,11 @@ from if_then_mvp.models import (
     PersonaProfile,
     RelationshipSnapshot,
     Segment,
+    SegmentSummary,
     Simulation,
     SimulationTurn,
     Topic,
+    TopicLink,
 )
 from if_then_mvp.parser import parse_qq_export
 from if_then_mvp.retrieval import build_context_pack
@@ -231,6 +233,11 @@ def create_app() -> FastAPI:
                 .scalars()
                 .first()
             )
+            related_topic_digests = _load_related_topic_digests(
+                session=session,
+                conversation_id=payload.conversation_id,
+                target_message=target_message,
+            )
             personas = (
                 session.execute(
                     select(PersonaProfile).where(PersonaProfile.conversation_id == payload.conversation_id)
@@ -241,16 +248,19 @@ def create_app() -> FastAPI:
             persona_self = next((item for item in personas if item.subject_role == "self"), None)
             persona_other = next((item for item in personas if item.subject_role == "other"), None)
 
-            context_pack = build_context_pack(
-                messages=[_message_to_context_dict(item) for item in messages],
-                segments=[_segment_to_context_dict(item) for item in segments],
-                target_message_id=payload.target_message_id,
-                replacement_content=payload.replacement_content,
-                related_topic_digests=[],
-                base_relationship_snapshot=_snapshot_to_context_dict(snapshot),
-                persona_self=_persona_to_context_dict(persona_self),
-                persona_other=_persona_to_context_dict(persona_other),
-            )
+            try:
+                context_pack = build_context_pack(
+                    messages=[_message_to_context_dict(item) for item in messages],
+                    segments=[_segment_to_context_dict(item) for item in segments],
+                    target_message_id=payload.target_message_id,
+                    replacement_content=payload.replacement_content,
+                    related_topic_digests=related_topic_digests,
+                    base_relationship_snapshot=_snapshot_to_context_dict(snapshot),
+                    persona_self=_persona_to_context_dict(persona_self),
+                    persona_other=_persona_to_context_dict(persona_other),
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             assessment = assess_branch(context_pack)
             first_reply_text, _style_notes = generate_first_reply(context_pack, assessment)
             turns = (
@@ -425,3 +435,62 @@ def _persona_to_context_dict(persona: PersonaProfile | None) -> dict[str, object
         "relationship_specific_patterns": persona.relationship_specific_patterns,
         "confidence": persona.confidence,
     }
+
+
+def _load_related_topic_digests(
+    *,
+    session,
+    conversation_id: int,
+    target_message: Message,
+) -> list[dict[str, object]]:
+    rows = (
+        session.execute(
+            select(Topic, TopicLink, Segment, SegmentSummary, Message)
+            .join(TopicLink, TopicLink.topic_id == Topic.id)
+            .join(Segment, TopicLink.segment_id == Segment.id)
+            .join(SegmentSummary, SegmentSummary.segment_id == Segment.id)
+            .join(Message, Segment.end_message_id == Message.id)
+            .where(
+                Topic.conversation_id == conversation_id,
+                (
+                    (Segment.end_time < target_message.timestamp)
+                    | (
+                        (Segment.end_time == target_message.timestamp)
+                        & (Message.sequence_no < target_message.sequence_no)
+                    )
+                ),
+            )
+            .order_by(Topic.id.asc(), Segment.end_time.asc(), Message.sequence_no.asc(), Segment.id.asc())
+        )
+        .all()
+    )
+    if not rows:
+        return []
+
+    digest_map: dict[int, dict[str, object]] = {}
+    for topic, topic_link, segment, segment_summary, _end_message in rows:
+        digest = digest_map.setdefault(
+            topic.id,
+            {
+                "topic_id": topic.id,
+                "topic_name": topic.topic_name,
+                "cutoff_safe_summary_parts": [],
+                "supporting_segment_ids": [],
+                "relevance_reason": topic_link.link_reason,
+                "topic_status": topic.topic_status,
+            },
+        )
+        digest["cutoff_safe_summary_parts"].append(segment_summary.summary_text)
+        digest["supporting_segment_ids"].append(segment.id)
+
+    return [
+        {
+            "topic_id": topic_id,
+            "topic_name": digest["topic_name"],
+            "cutoff_safe_summary": " | ".join(digest["cutoff_safe_summary_parts"][:3]),
+            "supporting_segment_ids": digest["supporting_segment_ids"],
+            "relevance_reason": digest["relevance_reason"],
+            "topic_status": digest["topic_status"],
+        }
+        for topic_id, digest in digest_map.items()
+    ]
