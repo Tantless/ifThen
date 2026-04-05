@@ -1,16 +1,24 @@
-from if_then_mvp.config import get_settings
+from pathlib import Path
+
+import pytest
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session as SASession, sessionmaker
 
 
 def test_core_models_persist_and_are_mapped_with_sqlalchemy(tmp_path, monkeypatch):
-    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    first_data_dir = tmp_path / "app_data_first"
+    second_data_dir = tmp_path / "app_data_second"
 
-    from sqlalchemy.orm import Session as SASession
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(first_data_dir))
 
-    from if_then_mvp.db import Base, init_db, session_scope
+    from if_then_mvp.db import Base, get_engine, init_db, session_scope
     from if_then_mvp.models import AnalysisJob, AppSetting, Conversation, ImportBatch, Message
 
-    init_db()
+    first_engine = get_engine()
+    first_db_path = Path(first_engine.url.database)
+    assert first_db_path == first_data_dir / "db" / "if_then_mvp.sqlite3"
 
+    init_db()
     assert "conversations" in Base.metadata.tables
     assert Conversation.__table__.name == "conversations"
     assert ImportBatch.__table__.name == "imports"
@@ -68,8 +76,50 @@ def test_core_models_persist_and_are_mapped_with_sqlalchemy(tmp_path, monkeypatc
         session.add(AppSetting(setting_key="llm.chat_model", setting_value="gpt-4.1-mini", is_secret=False))
 
     with session_scope() as session:
-        assert session.query(Conversation).count() == 1
-        assert session.query(ImportBatch).count() == 1
-        assert session.query(Message).count() == 1
-        assert session.query(AnalysisJob).count() == 1
-        assert session.query(AppSetting).count() == 1
+        with pytest.raises(IntegrityError):
+            session.add(
+                ImportBatch(
+                    conversation_id=999999,
+                    source_file_name="broken.txt",
+                    source_file_path="app_data/uploads/broken.txt",
+                    source_file_hash="broken",
+                    message_count_hint=1,
+                )
+            )
+            session.flush()
+        session.rollback()
+
+    first_verify_session = sessionmaker(bind=first_engine, class_=SASession, expire_on_commit=False)
+    with first_verify_session() as verify_session:
+        assert verify_session.query(Conversation).count() == 1
+        assert verify_session.query(ImportBatch).count() == 1
+        assert verify_session.query(Message).count() == 1
+        assert verify_session.query(AnalysisJob).count() == 1
+        assert verify_session.query(AppSetting).count() == 1
+
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(second_data_dir))
+
+    second_engine = get_engine()
+    assert second_engine is not first_engine
+    assert Path(second_engine.url.database) == second_data_dir / "db" / "if_then_mvp.sqlite3"
+
+    init_db()
+
+    with session_scope() as session:
+        session.add(
+            Conversation(
+                title="第二组",
+                chat_type="private",
+                self_display_name="Tantless",
+                other_display_name="第二组",
+                source_format="qq_chat_exporter_v5",
+                status="queued",
+            )
+        )
+
+    second_verify_session = sessionmaker(bind=second_engine, class_=SASession, expire_on_commit=False)
+    with second_verify_session() as verify_session:
+        assert verify_session.query(Conversation).count() == 1
+
+    with first_verify_session() as verify_session:
+        assert verify_session.query(Conversation).count() == 1
