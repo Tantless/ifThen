@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ConversationRead(BaseModel):
@@ -84,3 +84,29 @@ class SettingWrite(BaseModel):
 class ImportResponse(BaseModel):
     conversation: ConversationRead
     job: JobRead
+
+
+class SimulationCreate(BaseModel):
+    conversation_id: int
+    target_message_id: int
+    replacement_content: str
+    mode: str = Field(pattern="^(single_reply|short_thread)$")
+    turn_count: int = Field(default=4, ge=0, le=8)
+
+
+class SimulationTurnRead(BaseModel):
+    turn_index: int
+    speaker_role: str
+    message_text: str
+    strategy_used: str
+    state_after_turn: dict
+    generation_notes: str | None = None
+
+
+class SimulationRead(BaseModel):
+    id: int
+    mode: str
+    replacement_content: str
+    first_reply_text: str | None = None
+    impact_summary: str | None = None
+    simulated_turns: list[SimulationTurnRead] = Field(default_factory=list)

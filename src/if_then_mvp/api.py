@@ -16,9 +16,12 @@ from if_then_mvp.models import (
     PersonaProfile,
     RelationshipSnapshot,
     Segment,
+    Simulation,
+    SimulationTurn,
     Topic,
 )
 from if_then_mvp.parser import parse_qq_export
+from if_then_mvp.retrieval import build_context_pack
 from if_then_mvp.schemas import (
     ConversationRead,
     ImportResponse,
@@ -28,9 +31,13 @@ from if_then_mvp.schemas import (
     SegmentRead,
     SettingRead,
     SettingWrite,
+    SimulationCreate,
+    SimulationRead,
+    SimulationTurnRead,
     SnapshotRead,
     TopicRead,
 )
+from if_then_mvp.simulation import assess_branch, generate_first_reply, simulate_short_thread
 
 INVALID_TEXT_DETAIL = "Uploaded file must be valid UTF-8 text"
 INVALID_EXPORT_DETAIL = "Uploaded file must be a valid QQ private chat export"
@@ -178,6 +185,112 @@ def create_app() -> FastAPI:
             session.flush()
             return SettingRead.model_validate(row, from_attributes=True)
 
+    @app.post("/simulations", response_model=SimulationRead, status_code=201)
+    def create_simulation(payload: SimulationCreate) -> SimulationRead:
+        with session_scope() as session:
+            _require_conversation(session, payload.conversation_id)
+
+            target_message = session.get(Message, payload.target_message_id)
+            if target_message is None or target_message.conversation_id != payload.conversation_id:
+                raise HTTPException(status_code=404, detail="Target message not found")
+
+            messages = (
+                session.execute(
+                    select(Message)
+                    .where(Message.conversation_id == payload.conversation_id)
+                    .order_by(Message.timestamp.asc(), Message.sequence_no.asc(), Message.id.asc())
+                )
+                .scalars()
+                .all()
+            )
+            segments = (
+                session.execute(
+                    select(Segment)
+                    .where(Segment.conversation_id == payload.conversation_id)
+                    .order_by(Segment.start_time.asc(), Segment.id.asc())
+                )
+                .scalars()
+                .all()
+            )
+            snapshot = (
+                session.execute(
+                    select(RelationshipSnapshot)
+                    .join(Message, RelationshipSnapshot.as_of_message_id == Message.id)
+                    .where(
+                        RelationshipSnapshot.conversation_id == payload.conversation_id,
+                        (
+                            (RelationshipSnapshot.as_of_time < target_message.timestamp)
+                            | (
+                                (RelationshipSnapshot.as_of_time == target_message.timestamp)
+                                & (Message.sequence_no < target_message.sequence_no)
+                            )
+                        ),
+                    )
+                    .order_by(RelationshipSnapshot.as_of_time.desc(), Message.sequence_no.desc())
+                )
+                .scalars()
+                .first()
+            )
+            personas = (
+                session.execute(
+                    select(PersonaProfile).where(PersonaProfile.conversation_id == payload.conversation_id)
+                )
+                .scalars()
+                .all()
+            )
+            persona_self = next((item for item in personas if item.subject_role == "self"), None)
+            persona_other = next((item for item in personas if item.subject_role == "other"), None)
+
+            context_pack = build_context_pack(
+                messages=[_message_to_context_dict(item) for item in messages],
+                segments=[_segment_to_context_dict(item) for item in segments],
+                target_message_id=payload.target_message_id,
+                replacement_content=payload.replacement_content,
+                related_topic_digests=[],
+                base_relationship_snapshot=_snapshot_to_context_dict(snapshot),
+                persona_self=_persona_to_context_dict(persona_self),
+                persona_other=_persona_to_context_dict(persona_other),
+            )
+            assessment = assess_branch(context_pack)
+            first_reply_text, _style_notes = generate_first_reply(context_pack, assessment)
+            turns = (
+                simulate_short_thread(context_pack, assessment, payload.turn_count)
+                if payload.mode == "short_thread"
+                else []
+            )
+
+            simulation = Simulation(
+                conversation_id=payload.conversation_id,
+                target_message_id=payload.target_message_id,
+                mode=payload.mode,
+                replacement_content=payload.replacement_content,
+                context_pack_snapshot=context_pack,
+                branch_assessment=assessment,
+                first_reply_text=first_reply_text,
+                impact_summary=assessment["state_shift_summary"],
+                status="completed",
+            )
+            session.add(simulation)
+            session.flush()
+
+            turn_rows = []
+            for turn in turns:
+                turn_row = SimulationTurn(simulation_id=simulation.id, **turn)
+                session.add(turn_row)
+                turn_rows.append(turn_row)
+            session.flush()
+
+            return SimulationRead(
+                id=simulation.id,
+                mode=simulation.mode,
+                replacement_content=simulation.replacement_content,
+                first_reply_text=simulation.first_reply_text,
+                impact_summary=simulation.impact_summary,
+                simulated_turns=[
+                    SimulationTurnRead.model_validate(item, from_attributes=True) for item in turn_rows
+                ],
+            )
+
     @app.post("/imports/qq-text", response_model=ImportResponse, status_code=201)
     async def import_qq_text(file: UploadFile = File(...), self_display_name: str = Form(...)) -> ImportResponse:
         settings = get_settings()
@@ -266,3 +379,49 @@ def _require_conversation(session, conversation_id: int) -> Conversation:
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
+
+
+def _message_to_context_dict(message: Message) -> dict[str, object]:
+    return {
+        "id": message.id,
+        "conversation_id": message.conversation_id,
+        "sequence_no": message.sequence_no,
+        "timestamp": message.timestamp,
+        "speaker_role": message.speaker_role,
+        "content_text": message.content_text,
+    }
+
+
+def _segment_to_context_dict(segment: Segment) -> dict[str, object]:
+    return {
+        "id": segment.id,
+        "source_message_ids": segment.source_message_ids or [],
+        "start_time": segment.start_time,
+        "end_time": segment.end_time,
+    }
+
+
+def _snapshot_to_context_dict(snapshot: RelationshipSnapshot | None) -> dict[str, object] | None:
+    if snapshot is None:
+        return None
+    return {
+        "relationship_temperature": snapshot.relationship_temperature,
+        "tension_level": snapshot.tension_level,
+        "openness_level": snapshot.openness_level,
+        "initiative_balance": snapshot.initiative_balance,
+        "defensiveness_level": snapshot.defensiveness_level,
+        "relationship_phase": snapshot.relationship_phase,
+        "active_sensitive_topics": snapshot.unresolved_conflict_flags,
+    }
+
+
+def _persona_to_context_dict(persona: PersonaProfile | None) -> dict[str, object] | None:
+    if persona is None:
+        return None
+    return {
+        "global_persona_summary": persona.global_persona_summary,
+        "style_traits": persona.style_traits,
+        "conflict_traits": persona.conflict_traits,
+        "relationship_specific_patterns": persona.relationship_specific_patterns,
+        "confidence": persona.confidence,
+    }
