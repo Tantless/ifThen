@@ -1,21 +1,39 @@
-# If Then MVP
+# 代号：如果那时
 
-基于 QQ 私聊导出文本的反事实聊天推演 MVP。
+> **如果那时，说了不同的话，结果是否不一样？**
 
-当前版本先提供本地 API 和后台 worker，用来验证这条主链是否成立：
+大多数人在一段关系结束后的回望里，都曾被同一个问题击中过：  
+**如果那一天，在那个关键节点，我说了另一句话，我们两个人的故事，会不会走向不同的结局？**
+
+这个项目想做的，正是把这种迟来的反问，变成一次可以被认真推演的实验。它让用户回到某个**真实发生过的聊天时间点**，只改动自己说过的一句话，并在**绝不泄漏未来信息**的前提下，结合该节点之前已经发生的关系历史、话题脉络与互动状态，推演对方可能会如何回应，以及这段对话后续可能会如何分支发展。
+
+它不是普通的聊天分析器，也不是单纯的“聊天对象复刻器”。  
+它更接近一种**反事实对话模拟**：不是去宣称唯一正确的未来，而是尽可能还原“当时的那个人、当时的那段关系、当时的那个瞬间”，再去回答一个足够残酷、也足够动人的问题：
+
+> **如果那时，真的换了一种说法，一切会不会不同？**
+
+项目当前聚焦于这 3 件事：
+
+- 尽量还原某个时间点下，对方当时的真实状态
+- 在不泄漏未来信息的前提下，让用户修改一句自己当时说过的话
+- 模拟这句改动是否可能引出不同的回复与后续对话走向
+
+## 当前状态
+
+- 仅支持 `Windows` 本地运行
+- 仅支持 `QQ` 私聊文本导入
+- 暂无前端页面
+- 检索为 `cutoff-safe` 规则检索，不含 embedding
+- 短链推演为自动模式，不是交互式续聊
+
+## 核心能力
 
 - 导入 `QQChatExporter V5` 私聊文本
-- 异步完成解析、切段、摘要、主题、画像、关系快照
-- 查询消息与分析产物
-- 选择一条历史消息进行改写，并自动推演后续对话分支
-
-## 当前范围
-
-- 仅支持 Windows 本地运行
-- 仅支持 QQ 私聊文本导入
-- 暂无前端页面
-- 检索为 cutoff-safe 规则检索，不含 embedding
-- 短链推演为自动模式，不是交互式续聊
+- 解析消息、切段、生成 `normal / isolated / merged_isolated`
+- 生成段摘要、多个 topic、人格画像、关系快照
+- 按时间截断组装上下文
+- 调用真实 LLM 生成首轮回复和自动短链推演
+- 提供本地 API、worker 和 CLI 演示脚本
 
 ## 环境要求
 
@@ -26,8 +44,8 @@
 
 - worker 在分析阶段会调用大模型
 - API 在 `/simulations` 阶段也会调用大模型
-- 两个进程都从项目根目录的 [local_llm_config.py](D:/newProj/local_llm_config.py) 读取模型配置
-- 你可以为 API 和 worker 分别配置不同的模型
+- API 和 worker 都从项目根目录的 `local_llm_config.py` 读取配置
+- 你可以为 API 和 worker 分别配置不同模型
 
 ## 安装
 
@@ -46,15 +64,15 @@ pip install -e .[dev]
 $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 ```
 
-## 本地启动
+## 配置模型
 
-先基于示例文件创建本地模型配置文件：
+先复制示例配置文件：
 
 ```powershell
 Copy-Item local_llm_config.example.py local_llm_config.py
 ```
 
-然后编辑 [local_llm_config.py](D:/newProj/local_llm_config.py)：
+然后编辑 `local_llm_config.py`：
 
 ```python
 API_LLM_CONFIG = {
@@ -70,23 +88,27 @@ WORKER_LLM_CONFIG = {
 }
 ```
 
-再开 API：
+## 启动
+
+启动 API：
 
 ```powershell
+cd D:\newProj
 .venv\Scripts\Activate.ps1
 $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 python scripts\run_api.py
 ```
 
-再开 worker：
+启动 worker：
 
 ```powershell
+cd D:\newProj
 .venv\Scripts\Activate.ps1
 $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 python scripts\run_worker.py
 ```
 
-启动后可先检查健康状态：
+健康检查：
 
 ```powershell
 Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/health"
@@ -98,13 +120,11 @@ Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/health"
 {"status":"ok"}
 ```
 
-## 一次完整演示
-
-下面这组命令适合直接在 PowerShell 里跑通一条最小闭环。
+## 快速演示
 
 ### 1. 导入聊天记录
 
-把 `self_display_name` 改成聊天记录里“你自己”的昵称。
+把 `self_display_name` 改成聊天记录里你自己的昵称。
 
 ```powershell
 curl.exe -X POST "http://127.0.0.1:8000/imports/qq-text" `
@@ -112,16 +132,14 @@ curl.exe -X POST "http://127.0.0.1:8000/imports/qq-text" `
   -F "file=@C:\Users\Tantless\Desktop\聊天记录.txt;type=text/plain"
 ```
 
-返回结果会包含：
+返回里会包含：
 
 - `conversation.id`
 - `job.id`
 
-你后面会一直用到这两个值。
+### 2. 轮询分析任务
 
-### 2. 轮询分析任务状态
-
-假设刚才拿到的任务 ID 是 `1`：
+假设任务 ID 是 `1`：
 
 ```powershell
 Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/jobs/1"
@@ -132,72 +150,30 @@ Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/jobs/1"
 - `status = completed`
 - `current_stage = completed`
 
-说明分析已经跑完，可以进入查询和推演。
+说明分析已经完成。
 
-### 3. 查看会话列表
+### 3. 列出可改写消息
 
-```powershell
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/conversations"
-```
-
-### 4. 浏览消息，找到要改写的 `message_id`
-
-假设会话 ID 是 `1`：
-
-```powershell
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/conversations/1/messages?limit=20"
-```
-
-你会看到每条消息的：
-
-- `id`
-- `sequence_no`
-- `speaker_role`
-- `timestamp`
-- `content_text`
-
-建议挑一条 `speaker_role = self` 的消息作为改写目标。
-
-如果消息很多，也可以先按关键词过滤：
-
-```powershell
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/conversations/1/messages?keyword=晚安"
-```
-
-现在也可以直接用脚本列候选消息：
+直接用 CLI 列出我方文本消息：
 
 ```powershell
 python scripts\sim_cli.py list-self-text --conversation-id 1 --limit 20
 ```
 
-如果你只想看包含某个关键词的我方文本消息：
+按关键字过滤：
 
 ```powershell
 python scripts\sim_cli.py list-self-text --conversation-id 1 --keywords "你好" --limit 20
 ```
 
-### 5. 看一下切段和画像
-
-```powershell
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/conversations/1/segments"
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/conversations/1/topics"
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/conversations/1/profile"
-```
-
-如果你想看某个时间点之前的关系状态：
-
-```powershell
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/conversations/1/timeline-state?at=2025-03-02 20:30:00"
-```
-
-### 6. 发起一次改写推演
+### 4. 发起推演
 
 假设：
 
 - `conversation_id = 1`
 - `target_message_id = 12`
 
-下面例子会自动推演 4 轮：
+自动推演 4 轮：
 
 ```powershell
 python scripts\sim_cli.py simulate `
@@ -208,16 +184,22 @@ python scripts\sim_cli.py simulate `
   --turn-count 4
 ```
 
-返回结果里最值得先看的字段是：
+重点看输出里的：
 
 - `first_reply_text`
 - `impact_summary`
 - `simulated_turns`
 
-如果你只想看第一条回复，可以把 `mode` 改成 `single_reply`。
+如果只想看第一条回复，可以用：
 
-注意：`/simulations` 现在会真实调用 LLM，不再使用占位回复。  
-如果 [local_llm_config.py](D:/newProj/local_llm_config.py) 缺失或字段不完整，API 或 worker 启动时会直接报错。
+```powershell
+python scripts\sim_cli.py simulate `
+  --conversation-id 1 `
+  --target-message-id 12 `
+  --replacement "如果你现在不想说也没关系，等你愿意的时候我们再慢慢聊。" `
+  --mode single_reply `
+  --turn-count 1
+```
 
 ## 常用接口
 
@@ -236,41 +218,57 @@ python scripts\sim_cli.py simulate `
 - `PUT /settings`
 - `POST /simulations`
 
-## 数据存放位置
+## 数据目录
 
-程序会把数据放在 `IF_THEN_DATA_DIR` 对应目录下，默认是项目根目录 `.data`。
+程序会把数据写到 `IF_THEN_DATA_DIR` 对应目录下，默认是项目根目录 `.data`。
 
-通常会看到这些内容：
+通常会看到：
 
 - `db/`
   - SQLite 数据库
 - `uploads/`
   - 导入的原始聊天文本
 
-如果你显式设置了：
+如果显式设置了：
 
 ```powershell
 $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 ```
 
-那数据就会写到 `D:\newProj\.data`。
+那么数据会写到 `D:\newProj\.data`。
+
+## 项目结构
+
+- `src/if_then_mvp/api.py`
+  API 主入口
+- `src/if_then_mvp/worker.py`
+  后台分析主流程
+- `src/if_then_mvp/analysis.py`
+  分析阶段 prompt 与 payload
+- `src/if_then_mvp/simulation.py`
+  推演阶段 prompt 与 payload
+- `src/if_then_mvp/retrieval.py`
+  cutoff-safe 上下文检索
+- `src/if_then_mvp/runtime_llm.py`
+  本地 LLM 配置加载
+- `scripts/run_api.py`
+  API 启动入口
+- `scripts/run_worker.py`
+  worker 启动入口
+- `scripts/sim_cli.py`
+  演示 CLI 入口
 
 ## 已知限制
 
-- 现在没有桌面壳和前端页面
-- API 和 worker 当前都通过 [local_llm_config.py](D:/newProj/local_llm_config.py) 读取本地模型配置
+- 当前没有桌面壳和前端页面
 - 当前只做规则检索，不做 embedding
 - 推演模式只有：
   - `single_reply`
   - `short_thread`
-- FastAPI 目前仍使用 `on_event("startup")`，启动测试时会看到弃用 warning，但不影响功能
+- FastAPI 目前仍使用 `on_event("startup")`，测试时会看到弃用 warning，但不影响功能
 
-## 代码入口
+## 相关文档
 
-- API 启动入口：[scripts/run_api.py](D:/newProj/scripts/run_api.py)
-- Worker 启动入口：[scripts/run_worker.py](D:/newProj/scripts/run_worker.py)
-- 推演 CLI：[scripts/sim_cli.py](D:/newProj/scripts/sim_cli.py)
-- API 主体：[src/if_then_mvp/api.py](D:/newProj/src/if_then_mvp/api.py)
-- Worker 主体：[src/if_then_mvp/worker.py](D:/newProj/src/if_then_mvp/worker.py)
-- CLI 主体：[src/if_then_mvp/sim_cli.py](D:/newProj/src/if_then_mvp/sim_cli.py)
-- 数据目录配置：[src/if_then_mvp/config.py](D:/newProj/src/if_then_mvp/config.py)
+- `docs/superpowers/specs/2026-04-05-counterfactual-conversation-mvp-design.md`
+- `docs/superpowers/specs/2026-04-06-simulation-llm-alignment-design.md`
+- `docs/2026-04-06-agent-handoff.md`
