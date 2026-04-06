@@ -8,7 +8,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
+
 from if_then_mvp.llm import LLMClient
+from if_then_mvp.models import AppSetting
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,15 @@ def build_runtime_llm_client(
         api_key=config.api_key,
         chat_model=config.chat_model,
     )
+
+
+def load_runtime_settings_map(session) -> dict[str, str]:
+    rows = session.execute(
+        select(AppSetting).where(
+            AppSetting.setting_key.in_(("llm.base_url", "llm.api_key", "llm.chat_model"))
+        )
+    ).scalars().all()
+    return {row.setting_key: row.setting_value for row in rows}
 
 
 def _load_runtime_config(*, module: Any, attribute_name: str) -> RuntimeLLMConfig:

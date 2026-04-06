@@ -25,7 +25,7 @@ from if_then_mvp.models import (
 )
 from if_then_mvp.parser import parse_qq_export
 from if_then_mvp.retrieval import build_context_pack
-from if_then_mvp.runtime_llm import build_runtime_llm_client
+from if_then_mvp.runtime_llm import build_runtime_llm_client, load_runtime_settings_map
 from if_then_mvp.schemas import (
     ConversationRead,
     ImportResponse,
@@ -533,17 +533,8 @@ def _job_to_read(job: AnalysisJob) -> JobRead:
     )
 
 
-def _load_settings_map(session) -> dict[str, str]:
-    rows = session.execute(
-        select(AppSetting).where(
-            AppSetting.setting_key.in_(("llm.base_url", "llm.api_key", "llm.chat_model"))
-        )
-    ).scalars().all()
-    return {row.setting_key: row.setting_value for row in rows}
-
-
 def _build_runtime_llm_client(session) -> ChatJSONClient:
-    settings_map = _load_settings_map(session)
+    settings_map = load_runtime_settings_map(session)
     try:
         return build_runtime_llm_client(role="api", settings_map=settings_map)
     except RuntimeError as exc:

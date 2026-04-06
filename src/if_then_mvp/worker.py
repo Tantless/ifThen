@@ -20,7 +20,6 @@ from if_then_mvp.config import get_settings
 from if_then_mvp.db import get_sessionmaker
 from if_then_mvp.models import (
     AnalysisJob,
-    AppSetting,
     Conversation,
     ImportBatch,
     Message,
@@ -32,7 +31,7 @@ from if_then_mvp.models import (
     TopicLink,
 )
 from if_then_mvp.parser import ParsedMessage, parse_qq_export
-from if_then_mvp.runtime_llm import build_runtime_llm_client
+from if_then_mvp.runtime_llm import build_runtime_llm_client, load_runtime_settings_map
 from if_then_mvp.segmentation import ParsedTimelineMessage, SegmentDraft, merge_isolated_segments, split_into_segments
 
 _PARSING_BATCH_SIZE = 500
@@ -192,16 +191,25 @@ def _update_conversation_status(conversation_id: int, status: str) -> None:
         session.close()
 
 
-def _load_settings_map(session) -> dict[str, str]:
-    rows = session.execute(
-        select(AppSetting).where(
-            AppSetting.setting_key.in_(("llm.base_url", "llm.api_key", "llm.chat_model"))
+def _build_worker_runtime_llm_client():
+    session = get_sessionmaker()()
+    try:
+        return build_runtime_llm_client(
+            role="worker",
+            settings_map=load_runtime_settings_map(session),
         )
-    ).scalars().all()
-    return {row.setting_key: row.setting_value for row in rows}
+    finally:
+        session.close()
 
 
 def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter | None = None) -> bool:
+    effective_llm = llm_client
+    if effective_llm is None:
+        try:
+            effective_llm = _build_worker_runtime_llm_client()
+        except RuntimeError:
+            return False
+
     claim = _claim_next_job()
     if claim is None:
         return False
@@ -246,10 +254,6 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         overall_total_units = _calculate_overall_total_units(
             message_count=message_count,
             segment_count=segment_count,
-        )
-        effective_llm = llm_client or build_runtime_llm_client(
-            role="worker",
-            settings_map=_load_settings_map(session),
         )
 
         _delete_existing_analysis_artifacts(session, conversation_id=conversation.id)

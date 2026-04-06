@@ -552,6 +552,31 @@ def test_run_next_job_builds_worker_client_from_saved_settings(tmp_path, monkeyp
     assert built_roles[0][1]["llm.chat_model"] == "db-model"
 
 
+def test_run_next_job_leaves_queued_job_untouched_when_worker_config_is_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    fixture_path = Path("tests/fixtures/qq_export_sample.txt")
+    init_db()
+    _seed_job(fixture_path=fixture_path)
+
+    def raise_missing_config(*, role, settings_map=None):
+        raise RuntimeError("worker LLM is not configured")
+
+    monkeypatch.setattr("if_then_mvp.worker.build_runtime_llm_client", raise_missing_config)
+
+    processed = run_next_job()
+
+    assert processed is False
+
+    with session_scope() as session:
+        job = session.query(AnalysisJob).one()
+        assert job.status == "queued"
+        assert job.current_stage == "created"
+        assert job.progress_percent == 0
+        assert job.error_message is None
+        conversation = session.query(Conversation).one()
+        assert conversation.status == "queued"
+
+
 def test_claim_next_job_is_single_use_and_marks_conversation_analyzing(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     fixture_path = Path("tests/fixtures/qq_export_sample.txt")
