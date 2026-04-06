@@ -16,6 +16,12 @@ class JobRead(BaseModel):
     status: str
     current_stage: str
     progress_percent: int
+    current_stage_percent: int = 0
+    current_stage_total_units: int = 0
+    current_stage_completed_units: int = 0
+    overall_total_units: int = 0
+    overall_completed_units: int = 0
+    status_message: str | None = None
 
 
 class MessageRead(BaseModel):

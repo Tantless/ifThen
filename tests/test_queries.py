@@ -134,7 +134,16 @@ def test_query_endpoints_return_conversation_artifacts(tmp_path, monkeypatch):
                 current_stage="completed",
                 progress_percent=100,
                 retry_count=0,
-                payload_json={"import_id": batch.id},
+                payload_json={
+                    "import_id": batch.id,
+                    "progress": {
+                        "overall_total_units": 11,
+                        "overall_completed_units": 11,
+                        "current_stage_total_units": 11,
+                        "current_stage_completed_units": 11,
+                        "status_message": "completed 11/11 units",
+                    },
+                },
             )
         )
         session.add(AppSetting(setting_key="llm.chat_model", setting_value="gpt-4.1-mini", is_secret=False))
@@ -165,6 +174,12 @@ def test_query_endpoints_return_conversation_artifacts(tmp_path, monkeypatch):
             "status": "completed",
             "current_stage": "completed",
             "progress_percent": 100,
+            "current_stage_percent": 100,
+            "current_stage_total_units": 11,
+            "current_stage_completed_units": 11,
+            "overall_total_units": 11,
+            "overall_completed_units": 11,
+            "status_message": "completed 11/11 units",
         }
 
         messages_response = client.get("/conversations/1/messages")

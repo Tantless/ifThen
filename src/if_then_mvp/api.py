@@ -1,4 +1,5 @@
 from hashlib import sha256
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -7,6 +8,7 @@ from sqlalchemy import select
 
 from if_then_mvp.config import get_settings
 from if_then_mvp.db import init_db, session_scope
+from if_then_mvp.llm import ChatJSONClient, LLMClient, LLMClientError
 from if_then_mvp.models import (
     AnalysisJob,
     AppSetting,
@@ -45,7 +47,7 @@ INVALID_TEXT_DETAIL = "Uploaded file must be valid UTF-8 text"
 INVALID_EXPORT_DETAIL = "Uploaded file must be a valid QQ private chat export"
 
 
-def create_app() -> FastAPI:
+def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
     app = FastAPI(title="If Then MVP API")
 
     @app.on_event("startup")
@@ -76,7 +78,7 @@ def create_app() -> FastAPI:
             row = session.get(AnalysisJob, job_id)
             if row is None:
                 raise HTTPException(status_code=404, detail="Job not found")
-            return JobRead.model_validate(row, from_attributes=True)
+            return _job_to_read(row)
 
     @app.get("/conversations/{conversation_id}/messages", response_model=list[MessageRead])
     def list_messages(
@@ -261,13 +263,27 @@ def create_app() -> FastAPI:
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-            assessment = assess_branch(context_pack)
-            first_reply_text, _style_notes = generate_first_reply(context_pack, assessment)
-            turns = (
-                simulate_short_thread(context_pack, assessment, payload.turn_count)
-                if payload.mode == "short_thread"
-                else []
-            )
+            simulation_llm = llm_client or _build_runtime_llm_client(session)
+            try:
+                assessment = assess_branch(llm_client=simulation_llm, context_pack=context_pack)
+                first_reply = generate_first_reply(
+                    llm_client=simulation_llm,
+                    context_pack=context_pack,
+                    assessment=assessment,
+                )
+                turns = (
+                    simulate_short_thread(
+                        llm_client=simulation_llm,
+                        context_pack=context_pack,
+                        assessment=assessment,
+                        first_reply=first_reply,
+                        turn_count=payload.turn_count,
+                    )
+                    if payload.mode == "short_thread"
+                    else []
+                )
+            except LLMClientError as exc:
+                raise HTTPException(status_code=502, detail="Simulation LLM request failed") from exc
 
             simulation = Simulation(
                 conversation_id=payload.conversation_id,
@@ -276,7 +292,7 @@ def create_app() -> FastAPI:
                 replacement_content=payload.replacement_content,
                 context_pack_snapshot=context_pack,
                 branch_assessment=assessment,
-                first_reply_text=first_reply_text,
+                first_reply_text=first_reply.first_reply_text,
                 impact_summary=assessment["state_shift_summary"],
                 status="completed",
             )
@@ -362,7 +378,7 @@ def create_app() -> FastAPI:
 
                 response = ImportResponse(
                     conversation=ConversationRead.model_validate(conversation, from_attributes=True),
-                    job=JobRead.model_validate(job, from_attributes=True),
+                    job=_job_to_read(job),
                 )
         except Exception:
             _remove_file_if_present(destination)
@@ -494,3 +510,54 @@ def _load_related_topic_digests(
         }
         for topic_id, digest in digest_map.items()
     ]
+
+
+def _job_to_read(job: AnalysisJob) -> JobRead:
+    progress = (job.payload_json or {}).get("progress", {})
+    current_stage_total_units = int(progress.get("current_stage_total_units", 0) or 0)
+    current_stage_completed_units = int(progress.get("current_stage_completed_units", 0) or 0)
+    overall_total_units = int(progress.get("overall_total_units", 0) or 0)
+    overall_completed_units = int(progress.get("overall_completed_units", 0) or 0)
+
+    return JobRead(
+        id=job.id,
+        status=job.status,
+        current_stage=job.current_stage,
+        progress_percent=job.progress_percent,
+        current_stage_percent=_calculate_percent(current_stage_completed_units, current_stage_total_units),
+        current_stage_total_units=current_stage_total_units,
+        current_stage_completed_units=current_stage_completed_units,
+        overall_total_units=overall_total_units,
+        overall_completed_units=overall_completed_units,
+        status_message=progress.get("status_message"),
+    )
+
+
+def _build_runtime_llm_client(session) -> ChatJSONClient:
+    rows = session.execute(
+        select(AppSetting).where(
+            AppSetting.setting_key.in_(("llm.base_url", "llm.api_key", "llm.chat_model"))
+        )
+    ).scalars().all()
+    settings_map = {row.setting_key: row.setting_value for row in rows}
+    base_url = settings_map.get("llm.base_url") or os.environ.get("IF_THEN_LLM_BASE_URL")
+    api_key = settings_map.get("llm.api_key") or os.environ.get("IF_THEN_LLM_API_KEY")
+    chat_model = settings_map.get("llm.chat_model") or os.environ.get("IF_THEN_LLM_CHAT_MODEL")
+
+    if not base_url or not api_key or not chat_model:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Simulation LLM is not configured. "
+                "Set llm.base_url, llm.api_key, and llm.chat_model via /settings "
+                "or IF_THEN_LLM_BASE_URL / IF_THEN_LLM_API_KEY / IF_THEN_LLM_CHAT_MODEL."
+            ),
+        )
+
+    return LLMClient(base_url=base_url, api_key=api_key, chat_model=chat_model)
+
+
+def _calculate_percent(completed_units: int, total_units: int) -> int:
+    if total_units <= 0:
+        return 0
+    return min(100, int((completed_units * 100) / total_units))

@@ -123,3 +123,21 @@ def test_core_models_persist_and_are_mapped_with_sqlalchemy(tmp_path, monkeypatc
 
     with first_verify_session() as verify_session:
         assert verify_session.query(Conversation).count() == 1
+
+
+def test_sqlite_engine_enables_wal_and_busy_timeout(tmp_path, monkeypatch):
+    data_dir = tmp_path / "app_data"
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(data_dir))
+
+    from if_then_mvp.db import get_engine
+
+    engine = get_engine()
+
+    with engine.connect() as connection:
+        journal_mode = connection.exec_driver_sql("PRAGMA journal_mode").scalar_one()
+        busy_timeout = connection.exec_driver_sql("PRAGMA busy_timeout").scalar_one()
+        foreign_keys = connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
+
+    assert str(journal_mode).lower() == "wal"
+    assert int(busy_timeout) >= 5000
+    assert int(foreign_keys) == 1
