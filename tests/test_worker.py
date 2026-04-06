@@ -3,6 +3,7 @@ from pathlib import Path
 from if_then_mvp.db import init_db, session_scope
 from if_then_mvp.models import (
     AnalysisJob,
+    AppSetting,
     Conversation,
     ImportBatch,
     Message,
@@ -328,6 +329,10 @@ class MergeReviewLLM:
         return response_model(**{key: value for key, value in payload_map.items() if key in response_model.model_fields})
 
 
+class SpyLLM(FakeLLM):
+    pass
+
+
 def _seed_job(*, fixture_path: Path):
     with session_scope() as session:
         conversation = Conversation(
@@ -516,6 +521,35 @@ def test_run_next_job_marks_job_failed_when_stage_raises(tmp_path, monkeypatch):
         assert session.query(RelationshipSnapshot).count() == 0
         conversation = session.query(Conversation).one()
         assert conversation.status == "failed"
+
+
+def test_run_next_job_builds_worker_client_from_saved_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    fixture_path = Path("tests/fixtures/qq_export_sample.txt")
+    init_db()
+    _seed_job(fixture_path=fixture_path)
+
+    with session_scope() as session:
+        session.add_all(
+            [
+                AppSetting(setting_key="llm.base_url", setting_value="https://db.example/v1", is_secret=False),
+                AppSetting(setting_key="llm.api_key", setting_value="db-key", is_secret=True),
+                AppSetting(setting_key="llm.chat_model", setting_value="db-model", is_secret=False),
+            ]
+        )
+
+    built_roles: list[tuple[str, dict[str, str]]] = []
+    monkeypatch.setattr(
+        "if_then_mvp.worker.build_runtime_llm_client",
+        lambda role, settings_map=None: built_roles.append((role, dict(settings_map or {}))) or SpyLLM(),
+    )
+
+    processed = run_next_job()
+
+    assert processed is True
+    assert built_roles
+    assert built_roles[0][0] == "worker"
+    assert built_roles[0][1]["llm.chat_model"] == "db-model"
 
 
 def test_claim_next_job_is_single_use_and_marks_conversation_analyzing(tmp_path, monkeypatch):

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import importlib
 import importlib.util
+import os
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +66,56 @@ def build_runtime_llm_clients(module_name: str = "local_llm_config") -> RuntimeL
             api_key=config.worker.api_key,
             chat_model=config.worker.chat_model,
         ),
+    )
+
+
+def load_effective_llm_config(
+    *,
+    role: str,
+    settings_map: Mapping[str, str] | None = None,
+    env: Mapping[str, str] | None = None,
+    search_root: Path | None = None,
+) -> RuntimeLLMConfig:
+    settings_map = dict(settings_map or {})
+    env = env or os.environ
+
+    base_url = settings_map.get("llm.base_url") or env.get("IF_THEN_LLM_BASE_URL")
+    api_key = settings_map.get("llm.api_key") or env.get("IF_THEN_LLM_API_KEY")
+    chat_model = settings_map.get("llm.chat_model") or env.get("IF_THEN_LLM_CHAT_MODEL")
+
+    if base_url and api_key and chat_model:
+        return RuntimeLLMConfig(
+            base_url=base_url,
+            api_key=api_key,
+            chat_model=chat_model,
+        )
+
+    fallback = load_local_llm_config(search_root=search_root)
+    selected = fallback.api if role == "api" else fallback.worker
+    return RuntimeLLMConfig(
+        base_url=selected.base_url,
+        api_key=selected.api_key,
+        chat_model=selected.chat_model,
+    )
+
+
+def build_runtime_llm_client(
+    *,
+    role: str,
+    settings_map: Mapping[str, str] | None = None,
+    env: Mapping[str, str] | None = None,
+    search_root: Path | None = None,
+) -> LLMClient:
+    config = load_effective_llm_config(
+        role=role,
+        settings_map=settings_map,
+        env=env,
+        search_root=search_root,
+    )
+    return LLMClient(
+        base_url=config.base_url,
+        api_key=config.api_key,
+        chat_model=config.chat_model,
     )
 
 

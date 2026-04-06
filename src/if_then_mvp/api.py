@@ -1,5 +1,4 @@
 from hashlib import sha256
-import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -26,6 +25,7 @@ from if_then_mvp.models import (
 )
 from if_then_mvp.parser import parse_qq_export
 from if_then_mvp.retrieval import build_context_pack
+from if_then_mvp.runtime_llm import build_runtime_llm_client
 from if_then_mvp.schemas import (
     ConversationRead,
     ImportResponse,
@@ -533,18 +533,20 @@ def _job_to_read(job: AnalysisJob) -> JobRead:
     )
 
 
-def _build_runtime_llm_client(session) -> ChatJSONClient:
+def _load_settings_map(session) -> dict[str, str]:
     rows = session.execute(
         select(AppSetting).where(
             AppSetting.setting_key.in_(("llm.base_url", "llm.api_key", "llm.chat_model"))
         )
     ).scalars().all()
-    settings_map = {row.setting_key: row.setting_value for row in rows}
-    base_url = settings_map.get("llm.base_url") or os.environ.get("IF_THEN_LLM_BASE_URL")
-    api_key = settings_map.get("llm.api_key") or os.environ.get("IF_THEN_LLM_API_KEY")
-    chat_model = settings_map.get("llm.chat_model") or os.environ.get("IF_THEN_LLM_CHAT_MODEL")
+    return {row.setting_key: row.setting_value for row in rows}
 
-    if not base_url or not api_key or not chat_model:
+
+def _build_runtime_llm_client(session) -> ChatJSONClient:
+    settings_map = _load_settings_map(session)
+    try:
+        return build_runtime_llm_client(role="api", settings_map=settings_map)
+    except RuntimeError as exc:
         raise HTTPException(
             status_code=503,
             detail=(
@@ -552,9 +554,7 @@ def _build_runtime_llm_client(session) -> ChatJSONClient:
                 "Set llm.base_url, llm.api_key, and llm.chat_model via /settings "
                 "or IF_THEN_LLM_BASE_URL / IF_THEN_LLM_API_KEY / IF_THEN_LLM_CHAT_MODEL."
             ),
-        )
-
-    return LLMClient(base_url=base_url, api_key=api_key, chat_model=chat_model)
+        ) from exc
 
 
 def _calculate_percent(completed_units: int, total_units: int) -> int:

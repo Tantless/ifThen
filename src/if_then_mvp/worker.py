@@ -20,6 +20,7 @@ from if_then_mvp.config import get_settings
 from if_then_mvp.db import get_sessionmaker
 from if_then_mvp.models import (
     AnalysisJob,
+    AppSetting,
     Conversation,
     ImportBatch,
     Message,
@@ -31,6 +32,7 @@ from if_then_mvp.models import (
     TopicLink,
 )
 from if_then_mvp.parser import ParsedMessage, parse_qq_export
+from if_then_mvp.runtime_llm import build_runtime_llm_client
 from if_then_mvp.segmentation import ParsedTimelineMessage, SegmentDraft, merge_isolated_segments, split_into_segments
 
 _PARSING_BATCH_SIZE = 500
@@ -190,7 +192,16 @@ def _update_conversation_status(conversation_id: int, status: str) -> None:
         session.close()
 
 
-def run_next_job(*, llm_client, progress_reporter: ConsoleProgressReporter | None = None) -> bool:
+def _load_settings_map(session) -> dict[str, str]:
+    rows = session.execute(
+        select(AppSetting).where(
+            AppSetting.setting_key.in_(("llm.base_url", "llm.api_key", "llm.chat_model"))
+        )
+    ).scalars().all()
+    return {row.setting_key: row.setting_value for row in rows}
+
+
+def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter | None = None) -> bool:
     claim = _claim_next_job()
     if claim is None:
         return False
@@ -235,6 +246,10 @@ def run_next_job(*, llm_client, progress_reporter: ConsoleProgressReporter | Non
         overall_total_units = _calculate_overall_total_units(
             message_count=message_count,
             segment_count=segment_count,
+        )
+        effective_llm = llm_client or build_runtime_llm_client(
+            role="worker",
+            settings_map=_load_settings_map(session),
         )
 
         _delete_existing_analysis_artifacts(session, conversation_id=conversation.id)
@@ -364,7 +379,7 @@ def run_next_job(*, llm_client, progress_reporter: ConsoleProgressReporter | Non
                 ).scalars()
             ]
             summary = build_segment_summary(
-                llm_client=llm_client,
+                llm_client=effective_llm,
                 segment_messages=segment_messages,
                 previous_snapshot_summary=previous_snapshot_summary,
             )
@@ -411,7 +426,7 @@ def run_next_job(*, llm_client, progress_reporter: ConsoleProgressReporter | Non
         for index, (summary, segment) in enumerate(summary_pairs, start=1):
             current_segment_summary = _segment_summary_payload(summary)
             assignment = assign_segment_topics(
-                llm_client=llm_client,
+                llm_client=effective_llm,
                 current_segment_summary=current_segment_summary,
                 existing_topics=[_topic_prompt_payload(topic) for topic in topics_by_id.values()],
             )
@@ -436,7 +451,7 @@ def run_next_job(*, llm_client, progress_reporter: ConsoleProgressReporter | Non
 
             if assignment.should_create_new_topic or not linked_topic_ids:
                 creation = build_topic_creation_payload(
-                    llm_client=llm_client,
+                    llm_client=effective_llm,
                     current_segment_summary=current_segment_summary,
                 )
                 topic = Topic(
@@ -477,7 +492,7 @@ def run_next_job(*, llm_client, progress_reporter: ConsoleProgressReporter | Non
             progress_reporter.maybe_emit(latest_snapshot)
 
         merge_review = review_topic_merges(
-            llm_client=llm_client,
+            llm_client=effective_llm,
             topics=[_topic_prompt_payload(topic) for topic in topics_by_id.values()],
         )
         topics_by_id = _apply_topic_merges(
@@ -504,7 +519,7 @@ def run_next_job(*, llm_client, progress_reporter: ConsoleProgressReporter | Non
 
         for role in ("self", "other"):
             payload = build_persona_payload(
-                llm_client=llm_client,
+                llm_client=effective_llm,
                 subject_role=role,
                 segment_summaries=segment_summaries,
             )
@@ -540,7 +555,7 @@ def run_next_job(*, llm_client, progress_reporter: ConsoleProgressReporter | Non
         prior_snapshot_summary = None
         for index, (summary, segment) in enumerate(summary_pairs, start=1):
             snapshot = build_snapshot_payload(
-                llm_client=llm_client,
+                llm_client=effective_llm,
                 segment_summary={"summary_text": summary.summary_text},
                 prior_snapshot=prior_snapshot_summary,
             )
