@@ -1,1 +1,29 @@
 .worktrees/
+
+# Python cache / tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environments
+.venv/
+venv/
+.python-version
+
+# Local runtime data
+.data/
+*.sqlite3
+*.db
+
+# Local/private config
+local_llm_config.py
+
+# Local temp / reference directories
+_tmp_qce_review/
+.omx/
+
+# Local backup files
+*.bak
+*.tmp
