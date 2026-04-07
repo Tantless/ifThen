@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
+import { buildPythonLaunchSpec } from '../electron/backend/paths'
 import { toManagedServiceState } from '../electron/backend/processManager'
+
+describe('buildPythonLaunchSpec', () => {
+  it('points to scripts/run_api.py from the repo root', () => {
+    const spec = buildPythonLaunchSpec('api', 'D:/newProj')
+    expect(spec.args.at(-1)).toBe('scripts/run_api.py')
+  })
+})
 
 describe('toManagedServiceState', () => {
   it('marks both processes healthy as ready', () => {

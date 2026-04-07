@@ -22,7 +22,7 @@
 
 - 仅支持 `Windows` 本地运行
 - 仅支持 `QQ` 私聊文本导入
-- 暂无前端页面
+- 已有最小 `Electron` 桌面壳，可自动拉起本地 API / worker
 - 检索为 `cutoff-safe` 规则检索，不含 embedding
 - 短链推演为自动模式，不是交互式续聊
 
@@ -122,6 +122,45 @@ Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/health"
 
 ```json
 {"status":"ok"}
+```
+
+## Electron 桌面工作区
+
+桌面壳代码位于 `desktop/`，当前阶段负责：
+
+- 创建最小 Electron 窗口
+- 由主进程自动拉起 `scripts/run_api.py` 与 `scripts/run_worker.py`
+- 通过 `/health` 轮询 API 就绪状态
+- 与 Python 端共享项目根目录 `.data`（或你自定义的 `IF_THEN_DATA_DIR`）
+
+首次安装：
+
+```powershell
+cd D:\newProj\desktop
+npm install
+```
+
+开发 renderer：
+
+```powershell
+cd D:\newProj\desktop
+npm run dev
+```
+
+如果要手动启动 Electron 壳，请先保持 Vite dev server 运行，再在另一个终端执行：
+
+```powershell
+cd D:\newProj\desktop
+$env:IF_THEN_DESKTOP_RENDERER_URL = "http://127.0.0.1:5173"
+npx electron .
+```
+
+构建后可直接加载 `desktop/dist/index.html`：
+
+```powershell
+cd D:\newProj\desktop
+npm run build
+npx electron .
 ```
 
 ## 快速演示
@@ -270,7 +309,7 @@ $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 
 ## 已知限制
 
-- 当前没有桌面壳和前端页面
+- 桌面 renderer 目前仍是最小 boot / shell placeholder，不是最终产品界面
 - 当前只做规则检索，不做 embedding
 - 推演模式只有：
   - `single_reply`
