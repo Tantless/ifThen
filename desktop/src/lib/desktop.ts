@@ -8,8 +8,20 @@ export type DesktopStatePayload = {
   detail?: string
 }
 
+export type DesktopFileSelectionPayload = {
+  canceled: boolean
+  filePaths: string[]
+}
+
+export type DesktopAppInfo = {
+  name: string
+  version: string
+}
+
 type DesktopBridge = {
   getServiceState: () => Promise<DesktopStatePayload>
+  pickImportFile: () => Promise<DesktopFileSelectionPayload>
+  getAppInfo: () => Promise<DesktopAppInfo>
 }
 
 export function getBootLabel(state: BootState): string {
@@ -32,8 +44,24 @@ export function normalizeDesktopState(input: DesktopStatePayload): BootState {
   return { phase: input.phase, detail: input.detail }
 }
 
+export function normalizeDesktopFileSelection(input: DesktopFileSelectionPayload): string | null {
+  if (input.canceled) {
+    return null
+  }
+
+  return input.filePaths[0] ?? null
+}
+
+export function shouldUseDesktopBridge(capability: string): boolean {
+  return capability === 'pick-import-file'
+}
+
+function getDesktopBridge(): DesktopBridge | undefined {
+  return (globalThis as typeof globalThis & { desktop?: DesktopBridge }).desktop
+}
+
 export async function readDesktopServiceState(): Promise<BootState> {
-  const desktopBridge = (globalThis as typeof globalThis & { desktop?: DesktopBridge }).desktop
+  const desktopBridge = getDesktopBridge()
 
   if (!desktopBridge) {
     return { phase: 'booting', detail: 'desktop bridge unavailable' }
@@ -41,4 +69,15 @@ export async function readDesktopServiceState(): Promise<BootState> {
 
   const state = await desktopBridge.getServiceState()
   return normalizeDesktopState(state)
+}
+
+export async function openImportFileDialog(): Promise<string | null> {
+  const desktopBridge = getDesktopBridge()
+
+  if (!desktopBridge || !shouldUseDesktopBridge('pick-import-file')) {
+    return null
+  }
+
+  const selection = await desktopBridge.pickImportFile()
+  return normalizeDesktopFileSelection(selection)
 }

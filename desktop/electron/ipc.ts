@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { app, dialog, ipcMain } from 'electron'
 
 import type { DesktopServiceState, ManagedServiceState } from './backend/contracts'
 import { BackendProcessManager } from './backend/processManager'
@@ -11,4 +11,21 @@ export function registerDesktopIpc(processManager: BackendProcessManager) {
       detail: state.detail,
     }
   })
+
+  ipcMain.handle('desktop:pick-import-file', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'QQ chat export', extensions: ['txt'] }],
+    })
+
+    return {
+      canceled: result.canceled,
+      filePaths: result.filePaths,
+    }
+  })
+
+  ipcMain.handle('desktop:get-app-info', () => ({
+    name: app.getName(),
+    version: app.getVersion(),
+  }))
 }
