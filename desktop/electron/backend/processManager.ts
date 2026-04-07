@@ -6,20 +6,27 @@ export function toManagedServiceState(input: {
   worker: ServiceState
 }): ManagedServiceState {
   if ((!input.api.running && input.api.detail) || (!input.worker.running && input.worker.detail)) {
+    const detail =
+      (!input.api.running ? input.api.detail : undefined) ??
+      (!input.worker.running ? input.worker.detail : undefined) ??
+      input.worker.detail ??
+      input.api.detail
+
     return {
       phase: 'error',
       api: input.api,
       worker: input.worker,
-      detail: input.api.detail ?? input.worker.detail,
+      detail,
     }
   }
 
-  if (input.api.running && input.api.healthy && input.worker.running && input.worker.healthy) {
+  // Worker 目前没有独立 health endpoint；进入 ready 表示 API 已健康且 worker 进程已成功拉起。
+  if (input.api.running && input.api.healthy && input.worker.running) {
     return {
       phase: 'ready',
       api: input.api,
       worker: input.worker,
-      detail: input.worker.detail ?? input.api.detail,
+      detail: input.worker.healthy ? (input.worker.detail ?? input.api.detail) : (input.api.detail ?? input.worker.detail),
     }
   }
 
@@ -32,7 +39,7 @@ export function toManagedServiceState(input: {
     }
   }
 
-  if (input.api.running && input.api.healthy && (!input.worker.running || !input.worker.healthy)) {
+  if (input.api.running && input.api.healthy && !input.worker.running) {
     return {
       phase: 'starting-worker',
       api: input.api,
@@ -120,7 +127,7 @@ export class BackendProcessManager {
       running: true,
       healthy: false,
       pid: this.workerProcess.pid,
-      detail: 'starting python worker',
+      detail: 'worker process running',
     }
     this.attachLifecycleListeners(
       this.workerProcess,
@@ -139,15 +146,6 @@ export class BackendProcessManager {
     this.apiState = {
       ...this.apiState,
       running: this.apiProcess !== null,
-      healthy,
-      detail,
-    }
-  }
-
-  markWorkerHealthy(healthy: boolean, detail?: string) {
-    this.workerState = {
-      ...this.workerState,
-      running: this.workerProcess !== null,
       healthy,
       detail,
     }

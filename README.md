@@ -147,7 +147,14 @@ cd D:\newProj\desktop
 npm run dev
 ```
 
-如果要手动启动 Electron 壳，请先保持 Vite dev server 运行，再在另一个终端执行：
+如果要手动启动 Electron 壳，请先保持 Vite dev server 运行；首次进入开发态，或修改了 `desktop/electron/` 下的主进程 / preload 代码后，还需要先生成 Electron 产物：
+
+```powershell
+cd D:\newProj\desktop
+npm run build:electron
+```
+
+然后在另一个终端执行：
 
 ```powershell
 cd D:\newProj\desktop
@@ -162,6 +169,17 @@ cd D:\newProj\desktop
 npm run build
 npx electron .
 ```
+
+其中 `npm run build` 会同时产出：
+
+- `desktop/dist/`：renderer 静态资源
+- `desktop/dist-electron/electron/main.js`：Electron 主进程入口
+
+开发态最小流程：
+
+1. `cd D:\newProj\desktop && npm run dev`
+2. `cd D:\newProj\desktop && npm run build:electron`
+3. `cd D:\newProj\desktop && $env:IF_THEN_DESKTOP_RENDERER_URL = "http://127.0.0.1:5173"; npx electron .`
 
 ## 快速演示
 

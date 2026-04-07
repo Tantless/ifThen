@@ -12,6 +12,8 @@ __pycache__/
 venv/
 .python-version
 node_modules/
+desktop/dist/
+desktop/dist-electron/
 
 # Local runtime data
 .data/

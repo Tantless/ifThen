@@ -1,13 +1,12 @@
 import { app, BrowserWindow } from 'electron'
-import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { waitForHealth } from './backend/health'
-import { buildPythonLaunchSpec, getDesktopBackendPaths } from './backend/paths'
+import { buildPythonLaunchSpec, getDesktopBackendPaths, resolveDesktopRepoRoot } from './backend/paths'
 import { BackendProcessManager } from './backend/processManager'
 import { registerDesktopIpc } from './ipc'
 
 const processManager = new BackendProcessManager()
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const repoRoot = resolveDesktopRepoRoot(fileURLToPath(import.meta.url))
 const backendPaths = getDesktopBackendPaths(repoRoot)
 
 async function bootstrapBackend() {
@@ -24,7 +23,6 @@ async function bootstrapBackend() {
   }
 
   processManager.startWorker(buildPythonLaunchSpec('worker', repoRoot))
-  processManager.markWorkerHealthy(true, 'worker process running')
 }
 
 async function createWindow() {

@@ -5,6 +5,13 @@ import type { BackendLaunchSpec } from './contracts'
 
 const DEFAULT_HEALTH_URL = 'http://127.0.0.1:8000/health'
 
+export function resolveDesktopRepoRoot(entryFile: string): string {
+  const entryDir = path.dirname(entryFile)
+  const levelsToRepoRoot = path.basename(path.dirname(entryDir)) === 'dist-electron' ? 3 : 2
+
+  return path.resolve(entryDir, ...Array.from({ length: levelsToRepoRoot }, () => '..'))
+}
+
 function resolvePythonCommand(repoRoot: string): string {
   const venvPython =
     process.platform === 'win32'
