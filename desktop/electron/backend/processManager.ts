@@ -18,7 +18,7 @@ export function toManagedServiceState(input: {
     }
   }
 
-  if (input.api.running && input.api.healthy && !input.worker.running) {
+  if (input.api.running && input.api.healthy && (!input.worker.running || !input.worker.healthy)) {
     return { phase: 'starting-worker', api: input.api, worker: input.worker }
   }
 
