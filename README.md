@@ -44,8 +44,12 @@
 
 - worker 在分析阶段会调用大模型
 - API 在 `/simulations` 阶段也会调用大模型
-- API 和 worker 都从项目根目录的 `local_llm_config.py` 读取配置
-- 你可以为 API 和 worker 分别配置不同模型
+- API 和 worker 共享同一套运行时配置解析逻辑
+- 运行时模型配置优先级为：
+  1. `/settings` 中保存的 `llm.base_url` / `llm.api_key` / `llm.chat_model`
+  2. 环境变量 `IF_THEN_LLM_BASE_URL` / `IF_THEN_LLM_API_KEY` / `IF_THEN_LLM_CHAT_MODEL`
+  3. 项目根目录的 `local_llm_config.py`
+- 当数据库或环境变量没有完整配置时，仍可继续使用 `local_llm_config.py` 作为本地开发兜底
 
 ## 安装
 
@@ -208,14 +212,18 @@ python scripts\sim_cli.py simulate `
 - `GET /conversations`
 - `GET /conversations/{conversation_id}`
 - `GET /jobs/{job_id}`
+- `GET /conversations/{conversation_id}/jobs`
 - `GET /conversations/{conversation_id}/messages`
 - `GET /messages/{message_id}`
+- `GET /messages/{message_id}/context?radius=20`
 - `GET /conversations/{conversation_id}/segments`
 - `GET /conversations/{conversation_id}/topics`
 - `GET /conversations/{conversation_id}/profile`
 - `GET /conversations/{conversation_id}/timeline-state?at=...`
 - `GET /settings`
 - `PUT /settings`
+- `DELETE /conversations/{conversation_id}`
+- `POST /conversations/{conversation_id}/rerun-analysis`
 - `POST /simulations`
 
 ## 数据目录
@@ -250,7 +258,9 @@ $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 - `src/if_then_mvp/retrieval.py`
   cutoff-safe 上下文检索
 - `src/if_then_mvp/runtime_llm.py`
-  本地 LLM 配置加载
+  运行时 LLM 配置解析与客户端构建
+- `src/if_then_mvp/conversation_lifecycle.py`
+  会话删除 / 重跑分析等生命周期操作
 - `scripts/run_api.py`
   API 启动入口
 - `scripts/run_worker.py`

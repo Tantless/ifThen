@@ -235,3 +235,202 @@ def test_delete_conversation_returns_404_for_missing_conversation(tmp_path, monk
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Conversation not found"}
+
+
+def test_rerun_analysis_queues_new_job_and_clears_stale_simulations(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        message = Message(
+            conversation_id=conversation.id,
+            import_id=batch.id,
+            sequence_no=1,
+            speaker_name="Tantless",
+            speaker_role="self",
+            timestamp="2025-03-02T20:18:04",
+            content_text="你好",
+            message_type="text",
+        )
+        session.add(message)
+        session.flush()
+
+        session.add(
+            AnalysisJob(
+                conversation_id=conversation.id,
+                job_type="full_analysis",
+                status="completed",
+                current_stage="completed",
+                progress_percent=100,
+                retry_count=0,
+                payload_json={"import_id": batch.id},
+            )
+        )
+        simulation = Simulation(
+            conversation_id=conversation.id,
+            target_message_id=message.id,
+            mode="single_reply",
+            replacement_content="换个说法",
+            context_pack_snapshot={},
+            branch_assessment={},
+            first_reply_text="好的",
+            impact_summary="更柔和",
+            status="completed",
+        )
+        session.add(simulation)
+        session.flush()
+        session.add(
+            SimulationTurn(
+                simulation_id=simulation.id,
+                turn_index=1,
+                speaker_role="other",
+                message_text="好的",
+                strategy_used="light_follow_up",
+                state_after_turn={"openness_level": "medium"},
+                generation_notes="seed",
+            )
+        )
+
+    with TestClient(create_app()) as client:
+        response = client.post("/conversations/1/rerun-analysis")
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "queued"
+    assert response.json()["current_stage"] == "created"
+
+    with session_scope() as session:
+        assert session.query(AnalysisJob).count() == 2
+        assert session.get(Conversation, 1).status == "queued"
+        assert session.query(Simulation).count() == 0
+        assert session.query(SimulationTurn).count() == 0
+
+
+def test_rerun_analysis_returns_409_when_job_is_already_active(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="analyzing",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        session.add(
+            AnalysisJob(
+                conversation_id=conversation.id,
+                job_type="full_analysis",
+                status="running",
+                current_stage="parsing",
+                progress_percent=5,
+                retry_count=0,
+                payload_json={"import_id": batch.id},
+            )
+        )
+
+    with TestClient(create_app()) as client:
+        response = client.post("/conversations/1/rerun-analysis")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Analysis already queued or running"}
+
+
+def test_rerun_analysis_uses_latest_import_batch(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        first_batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="old.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "old.txt"),
+            source_file_hash="old-hash",
+            message_count_hint=1,
+        )
+        second_batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="new.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "new.txt"),
+            source_file_hash="new-hash",
+            message_count_hint=1,
+        )
+        session.add_all([first_batch, second_batch])
+
+    with TestClient(create_app()) as client:
+        response = client.post("/conversations/1/rerun-analysis")
+
+    assert response.status_code == 202
+
+    with session_scope() as session:
+        latest_job = session.query(AnalysisJob).order_by(AnalysisJob.id.desc()).first()
+        assert latest_job is not None
+        assert latest_job.payload_json["import_id"] == 2
+
+
+def test_rerun_analysis_returns_400_when_no_import_batch_exists(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+
+    with TestClient(create_app()) as client:
+        response = client.post("/conversations/1/rerun-analysis")
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Conversation has no import batch"}

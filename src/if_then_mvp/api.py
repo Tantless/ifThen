@@ -6,7 +6,10 @@ from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadF
 from sqlalchemy import select
 
 from if_then_mvp.config import get_settings
-from if_then_mvp.conversation_lifecycle import delete_conversation_tree
+from if_then_mvp.conversation_lifecycle import (
+    delete_conversation_tree,
+    queue_rerun_analysis,
+)
 from if_then_mvp.db import init_db, session_scope
 from if_then_mvp.llm import ChatJSONClient, LLMClient, LLMClientError
 from if_then_mvp.models import (
@@ -93,6 +96,18 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             if row is None:
                 raise HTTPException(status_code=404, detail="Job not found")
             return _job_to_read(row)
+
+    @app.post("/conversations/{conversation_id}/rerun-analysis", response_model=JobRead, status_code=202)
+    def rerun_analysis(conversation_id: int) -> JobRead:
+        with session_scope() as session:
+            _require_conversation(session, conversation_id)
+            try:
+                job = queue_rerun_analysis(session, conversation_id=conversation_id)
+            except ValueError as exc:
+                detail = str(exc)
+                status_code = 409 if detail == "Analysis already queued or running" else 400
+                raise HTTPException(status_code=status_code, detail=detail) from exc
+            return _job_to_read(job)
 
     @app.get("/conversations/{conversation_id}/jobs", response_model=list[JobRead])
     def list_conversation_jobs(
