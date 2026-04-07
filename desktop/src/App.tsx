@@ -1,15 +1,36 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BootScreen } from './components/BootScreen'
 import { DesktopShellPlaceholder } from './components/DesktopShellPlaceholder'
-import { getBootLabel, type BootState } from './lib/desktop'
-
-const initialState: BootState = { phase: 'booting' }
+import { getBootLabel, readDesktopServiceState, type BootState } from './lib/desktop'
 
 export default function App() {
-  const label = useMemo(() => getBootLabel(initialState), [])
+  const [state, setState] = useState<BootState>({ phase: 'booting' })
 
-  if (initialState.phase !== 'ready') {
-    return <BootScreen label={label} detail="等待 Electron 主进程接入…" />
+  useEffect(() => {
+    let cancelled = false
+
+    const tick = async () => {
+      const next = await readDesktopServiceState()
+      if (!cancelled) {
+        setState(next)
+      }
+    }
+
+    void tick()
+    const intervalId = window.setInterval(() => {
+      void tick()
+    }, 1000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  const label = useMemo(() => getBootLabel(state), [state])
+
+  if (state.phase !== 'ready') {
+    return <BootScreen label={label} detail={state.detail} />
   }
 
   return <DesktopShellPlaceholder />

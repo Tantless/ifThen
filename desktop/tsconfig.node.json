@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "Bundler",
@@ -12,5 +12,5 @@
     "strict": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["vite.config.ts", "src/lib/desktop.ts", "desktop/tests/health.test.ts", "tests/**/*.ts"]
+  "include": ["vite.config.ts", "electron/**/*.ts", "tests/**/*.ts", "src/types/**/*.d.ts"]
 }

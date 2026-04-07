@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { BackendProcessManager } from './backend/processManager'
+import { registerDesktopIpc } from './ipc'
 
 const processManager = new BackendProcessManager()
 
@@ -22,7 +23,10 @@ async function createWindow() {
   win.show()
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(async () => {
+  registerDesktopIpc(processManager)
+  await createWindow()
+})
 
 app.on('before-quit', () => {
   processManager.stopAll()

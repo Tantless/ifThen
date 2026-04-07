@@ -3,6 +3,11 @@ export type BootState = {
   detail?: string
 }
 
+export type DesktopStatePayload = {
+  phase: BootState['phase']
+  detail?: string
+}
+
 export function getBootLabel(state: BootState): string {
   switch (state.phase) {
     case 'waiting-api':
@@ -17,4 +22,17 @@ export function getBootLabel(state: BootState): string {
     default:
       return '桌面应用正在初始化…'
   }
+}
+
+export function normalizeDesktopState(input: DesktopStatePayload): BootState {
+  return { phase: input.phase, detail: input.detail }
+}
+
+export async function readDesktopServiceState(): Promise<BootState> {
+  if (!window.desktop) {
+    return { phase: 'booting', detail: 'desktop bridge unavailable' }
+  }
+
+  const state = await window.desktop.getServiceState()
+  return normalizeDesktopState(state)
 }

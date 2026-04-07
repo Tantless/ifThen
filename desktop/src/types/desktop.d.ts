@@ -1,7 +1,9 @@
 import type { BootState } from '../lib/desktop'
 
 export type DesktopBridge = {
-  getBootState?: () => Promise<BootState> | BootState
+  getServiceState: () => Promise<BootState>
+  getAppInfo: () => Promise<{ name: string; version: string }>
+  restartBackend: () => Promise<BootState>
 }
 
 declare global {
