@@ -2,10 +2,11 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from sqlalchemy import select
 
 from if_then_mvp.config import get_settings
+from if_then_mvp.conversation_lifecycle import delete_conversation_tree
 from if_then_mvp.db import init_db, session_scope
 from if_then_mvp.llm import ChatJSONClient, LLMClient, LLMClientError
 from if_then_mvp.models import (
@@ -72,6 +73,18 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             if row is None:
                 raise HTTPException(status_code=404, detail="Conversation not found")
             return ConversationRead.model_validate(row, from_attributes=True)
+
+    @app.delete("/conversations/{conversation_id}", status_code=204)
+    def delete_conversation(conversation_id: int) -> Response:
+        with session_scope() as session:
+            _require_conversation(session, conversation_id)
+            upload_paths = delete_conversation_tree(session, conversation_id=conversation_id)
+
+        uploads_root = get_settings().data_dir / "uploads"
+        for path in upload_paths:
+            _remove_managed_file_if_present(path, managed_root=uploads_root)
+
+        return Response(status_code=204)
 
     @app.get("/jobs/{job_id}", response_model=JobRead)
     def get_job(job_id: int) -> JobRead:
@@ -460,6 +473,17 @@ def _remove_file_if_present(path: Path) -> None:
         path.unlink(missing_ok=True)
     except OSError:
         pass
+
+
+def _remove_managed_file_if_present(path: Path, *, managed_root: Path) -> None:
+    try:
+        resolved_root = managed_root.resolve()
+        resolved_path = path.resolve()
+        resolved_path.relative_to(resolved_root)
+    except (OSError, ValueError):
+        return
+
+    _remove_file_if_present(resolved_path)
 
 
 def _require_conversation(session, conversation_id: int) -> Conversation:
