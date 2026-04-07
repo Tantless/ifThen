@@ -493,6 +493,51 @@ def test_conversation_jobs_endpoint_returns_404_for_missing_conversation(tmp_pat
     assert response.json() == {"detail": "Conversation not found"}
 
 
+def test_conversation_jobs_endpoint_validates_limit_bounds(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+
+    with TestClient(create_app()) as client:
+        response = client.get("/conversations/1/jobs?limit=0")
+        assert response.status_code == 422
+
+        response = client.get("/conversations/1/jobs?limit=51")
+        assert response.status_code == 422
+
+
+def test_conversation_jobs_endpoint_returns_empty_list_for_conversation_without_jobs(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+
+    with TestClient(create_app()) as client:
+        response = client.get("/conversations/1/jobs")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_timeline_state_prefers_latest_same_second_snapshot(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()
