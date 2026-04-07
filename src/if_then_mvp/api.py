@@ -80,6 +80,25 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
                 raise HTTPException(status_code=404, detail="Job not found")
             return _job_to_read(row)
 
+    @app.get("/conversations/{conversation_id}/jobs", response_model=list[JobRead])
+    def list_conversation_jobs(
+        conversation_id: int,
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> list[JobRead]:
+        with session_scope() as session:
+            _require_conversation(session, conversation_id)
+            rows = (
+                session.execute(
+                    select(AnalysisJob)
+                    .where(AnalysisJob.conversation_id == conversation_id)
+                    .order_by(AnalysisJob.id.desc())
+                    .limit(limit)
+                )
+                .scalars()
+                .all()
+            )
+            return [_job_to_read(item) for item in rows]
+
     @app.get("/conversations/{conversation_id}/messages", response_model=list[MessageRead])
     def list_messages(
         conversation_id: int,

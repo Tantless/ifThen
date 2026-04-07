@@ -378,6 +378,121 @@ def test_message_queries_validate_pagination_and_missing_conversation(tmp_path, 
             assert response.json() == {"detail": "Conversation not found"}
 
 
+def test_conversation_jobs_endpoint_returns_latest_jobs_first(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        session.add_all(
+            [
+                AnalysisJob(
+                    conversation_id=conversation.id,
+                    job_type="full_analysis",
+                    status="completed",
+                    current_stage="completed",
+                    progress_percent=100,
+                    retry_count=0,
+                    payload_json={
+                        "progress": {
+                            "overall_total_units": 4,
+                            "overall_completed_units": 4,
+                            "current_stage_total_units": 4,
+                            "current_stage_completed_units": 4,
+                            "status_message": "job 1 done",
+                        }
+                    },
+                ),
+                AnalysisJob(
+                    conversation_id=conversation.id,
+                    job_type="full_analysis",
+                    status="running",
+                    current_stage="topics",
+                    progress_percent=60,
+                    retry_count=0,
+                    payload_json={
+                        "progress": {
+                            "overall_total_units": 10,
+                            "overall_completed_units": 6,
+                            "current_stage_total_units": 5,
+                            "current_stage_completed_units": 3,
+                            "status_message": "job 2 running",
+                        }
+                    },
+                ),
+                AnalysisJob(
+                    conversation_id=conversation.id,
+                    job_type="full_analysis",
+                    status="queued",
+                    current_stage="queued",
+                    progress_percent=0,
+                    retry_count=0,
+                    payload_json={
+                        "progress": {
+                            "overall_total_units": 10,
+                            "overall_completed_units": 0,
+                            "current_stage_total_units": 1,
+                            "current_stage_completed_units": 0,
+                            "status_message": "job 3 queued",
+                        }
+                    },
+                ),
+            ]
+        )
+
+    with TestClient(create_app()) as client:
+        response = client.get("/conversations/1/jobs?limit=2")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": 3,
+            "status": "queued",
+            "current_stage": "queued",
+            "progress_percent": 0,
+            "current_stage_percent": 0,
+            "current_stage_total_units": 1,
+            "current_stage_completed_units": 0,
+            "overall_total_units": 10,
+            "overall_completed_units": 0,
+            "status_message": "job 3 queued",
+        },
+        {
+            "id": 2,
+            "status": "running",
+            "current_stage": "topics",
+            "progress_percent": 60,
+            "current_stage_percent": 60,
+            "current_stage_total_units": 5,
+            "current_stage_completed_units": 3,
+            "overall_total_units": 10,
+            "overall_completed_units": 6,
+            "status_message": "job 2 running",
+        },
+    ]
+
+
+def test_conversation_jobs_endpoint_returns_404_for_missing_conversation(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with TestClient(create_app()) as client:
+        response = client.get("/conversations/999/jobs")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Conversation not found"}
+
+
 def test_timeline_state_prefers_latest_same_second_snapshot(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()
