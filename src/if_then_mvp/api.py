@@ -30,6 +30,7 @@ from if_then_mvp.schemas import (
     ConversationRead,
     ImportResponse,
     JobRead,
+    MessageContextRead,
     MessageRead,
     PersonaProfileRead,
     SegmentRead,
@@ -106,6 +107,7 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
         before: int | None = Query(default=None, ge=1),
         after: int | None = Query(default=None, ge=1),
         keyword: str | None = None,
+        order: str = Query(default="asc", pattern="^(asc|desc)$"),
     ) -> list[MessageRead]:
         with session_scope() as session:
             _require_conversation(session, conversation_id)
@@ -116,13 +118,8 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
                 query = query.where(Message.sequence_no > after)
             if keyword:
                 query = query.where(Message.content_text.contains(keyword))
-            rows = (
-                session.execute(
-                    query.order_by(Message.sequence_no.asc()).limit(limit)
-                )
-                .scalars()
-                .all()
-            )
+            order_clause = Message.sequence_no.asc() if order == "asc" else Message.sequence_no.desc()
+            rows = session.execute(query.order_by(order_clause).limit(limit)).scalars().all()
             return [MessageRead.model_validate(item, from_attributes=True) for item in rows]
 
     @app.get("/messages/{message_id}", response_model=MessageRead)
@@ -132,6 +129,52 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             if row is None:
                 raise HTTPException(status_code=404, detail="Message not found")
             return MessageRead.model_validate(row, from_attributes=True)
+
+    @app.get("/messages/{message_id}/context", response_model=MessageContextRead)
+    def get_message_context(
+        message_id: int,
+        radius: int = Query(default=20, ge=1, le=100),
+    ) -> MessageContextRead:
+        with session_scope() as session:
+            target = session.get(Message, message_id)
+            if target is None:
+                raise HTTPException(status_code=404, detail="Message not found")
+
+            before_rows = (
+                session.execute(
+                    select(Message)
+                    .where(
+                        Message.conversation_id == target.conversation_id,
+                        Message.sequence_no < target.sequence_no,
+                    )
+                    .order_by(Message.sequence_no.desc())
+                    .limit(radius)
+                )
+                .scalars()
+                .all()
+            )
+            after_rows = (
+                session.execute(
+                    select(Message)
+                    .where(
+                        Message.conversation_id == target.conversation_id,
+                        Message.sequence_no > target.sequence_no,
+                    )
+                    .order_by(Message.sequence_no.asc())
+                    .limit(radius)
+                )
+                .scalars()
+                .all()
+            )
+
+            return MessageContextRead(
+                target=MessageRead.model_validate(target, from_attributes=True),
+                before=[
+                    MessageRead.model_validate(item, from_attributes=True)
+                    for item in reversed(before_rows)
+                ],
+                after=[MessageRead.model_validate(item, from_attributes=True) for item in after_rows],
+            )
 
     @app.get("/conversations/{conversation_id}/segments", response_model=list[SegmentRead])
     def list_segments(conversation_id: int) -> list[SegmentRead]:

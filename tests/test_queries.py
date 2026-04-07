@@ -538,6 +538,89 @@ def test_conversation_jobs_endpoint_returns_empty_list_for_conversation_without_
     assert response.json() == []
 
 
+def test_message_queries_support_descending_order_and_context_lookup(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=4,
+        )
+        session.add(batch)
+        session.flush()
+
+        session.add_all(
+            [
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=1,
+                    speaker_name="梣ゥ",
+                    speaker_role="other",
+                    timestamp="2025-03-02T20:18:01",
+                    content_text="第一句",
+                    message_type="text",
+                ),
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=2,
+                    speaker_name="Tantless",
+                    speaker_role="self",
+                    timestamp="2025-03-02T20:18:02",
+                    content_text="第二句",
+                    message_type="text",
+                ),
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=3,
+                    speaker_name="梣ゥ",
+                    speaker_role="other",
+                    timestamp="2025-03-02T20:18:03",
+                    content_text="第三句",
+                    message_type="text",
+                ),
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=4,
+                    speaker_name="Tantless",
+                    speaker_role="self",
+                    timestamp="2025-03-02T20:18:04",
+                    content_text="第四句",
+                    message_type="text",
+                ),
+            ]
+        )
+
+    with TestClient(create_app()) as client:
+        response = client.get("/conversations/1/messages?limit=2&order=desc")
+        assert response.status_code == 200
+        assert [item["sequence_no"] for item in response.json()] == [4, 3]
+
+        context_response = client.get("/messages/3/context?radius=1")
+        assert context_response.status_code == 200
+        assert context_response.json()["target"]["sequence_no"] == 3
+        assert [item["sequence_no"] for item in context_response.json()["before"]] == [2]
+        assert [item["sequence_no"] for item in context_response.json()["after"]] == [4]
+
+
 def test_timeline_state_prefers_latest_same_second_snapshot(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()

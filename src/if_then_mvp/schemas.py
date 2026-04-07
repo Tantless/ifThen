@@ -35,6 +35,12 @@ class MessageRead(BaseModel):
     resource_items: list[dict] | None = None
 
 
+class MessageContextRead(BaseModel):
+    target: MessageRead
+    before: list[MessageRead] = Field(default_factory=list)
+    after: list[MessageRead] = Field(default_factory=list)
+
+
 class SegmentRead(BaseModel):
     id: int
     start_message_id: int
