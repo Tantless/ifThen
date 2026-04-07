@@ -138,7 +138,7 @@ body {
   color: #f8fafc;
 }
 
-.conversation-list-placeholder {
+.conversation-list-pane {
   display: flex;
   height: 100%;
   flex-direction: column;
@@ -146,23 +146,96 @@ body {
   color: #0f172a;
 }
 
-.conversation-list-placeholder__header h2 {
+.conversation-list-pane__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.conversation-list-pane__eyebrow {
+  margin: 0;
+  color: #2563eb;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.conversation-list-pane__header h2 {
   margin: 0;
   font-size: 1.4rem;
 }
 
-.conversation-list-placeholder__header p,
-.conversation-list-placeholder__body p {
-  margin: 8px 0 0;
-  color: #475569;
+.conversation-list-pane__actions {
+  display: flex;
+  gap: 12px;
 }
 
-.conversation-list-placeholder__body {
-  margin-top: 28px;
+.conversation-list-pane__search {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+  color: #334155;
+  font-size: 0.92rem;
+}
+
+.conversation-list-pane__search input {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.92);
+  font: inherit;
+}
+
+.conversation-list-pane__body {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.conversation-list-pane__empty {
+  margin: 0;
   border: 1px dashed rgba(71, 85, 105, 0.22);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.64);
   padding: 18px 16px;
+  color: #475569;
+}
+
+.conversation-list-item {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 18px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #0f172a;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.conversation-list-item--active {
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.12);
+}
+
+.conversation-list-item__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.conversation-list-item__status,
+.conversation-list-item__meta {
+  color: #475569;
+  font-size: 0.9rem;
 }
 
 .conversation-empty-state {
@@ -200,4 +273,101 @@ body {
 .conversation-empty-state__card p {
   margin: 12px 0 0;
   color: #475569;
+}
+
+.chat-pane {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 28px 32px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(248, 250, 252, 0.88);
+  color: #0f172a;
+}
+
+.chat-header__eyebrow {
+  margin: 0;
+  color: #2563eb;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chat-header h2 {
+  margin: 8px 0 0;
+}
+
+.chat-header__subtitle {
+  margin: 8px 0 0;
+  color: #475569;
+}
+
+.chat-pane__empty {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  padding: 32px;
+  color: #475569;
+}
+
+.message-timeline {
+  display: grid;
+  gap: 16px;
+  padding: 24px 32px 32px;
+  overflow-y: auto;
+}
+
+.message-bubble {
+  display: flex;
+}
+
+.message-bubble--left {
+  justify-content: flex-start;
+}
+
+.message-bubble--right {
+  justify-content: flex-end;
+}
+
+.message-bubble__card {
+  display: grid;
+  gap: 10px;
+  width: min(720px, 100%);
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #0f172a;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+}
+
+.message-bubble--right .message-bubble__card {
+  background: rgba(219, 234, 254, 0.92);
+}
+
+.message-bubble__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #475569;
+  font-size: 0.86rem;
+}
+
+.message-bubble__card p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.message-bubble__rewrite-hint {
+  color: #2563eb;
+  font-size: 0.82rem;
+  font-weight: 600;
 }

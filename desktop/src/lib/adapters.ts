@@ -1,4 +1,4 @@
-import type { ConversationRead, JobRead, SettingRead } from '../types/api'
+import type { ConversationRead, JobRead, MessageRead, SettingRead } from '../types/api'
 
 export type SettingsFormState = {
   baseUrl: string
@@ -11,6 +11,16 @@ export type ConversationListItem = {
   title: string
   statusLabel: string
   secondaryText: string
+}
+
+export type MessageBubbleModel = {
+  id: number
+  sequenceNo: number
+  align: 'left' | 'right'
+  speakerName: string
+  timestamp: string
+  text: string
+  canRewrite: boolean
 }
 
 function trimSettingValue(value: string | undefined): string {
@@ -62,5 +72,19 @@ export function buildConversationListItem(input: {
     statusLabel: resolveJobStatusLabel(latestJob),
     secondaryText:
       participants.length > 0 ? `${participants.join(' / ')} · ${sourceLabel}` : `来源：${sourceLabel}`,
+  }
+}
+
+export function buildMessageBubbleModel(message: MessageRead): MessageBubbleModel {
+  const isSelf = message.speaker_role === 'self'
+
+  return {
+    id: message.id,
+    sequenceNo: message.sequence_no,
+    align: isSelf ? 'right' : 'left',
+    speakerName: message.speaker_name,
+    timestamp: message.timestamp,
+    text: message.content_text,
+    canRewrite: isSelf && message.message_type === 'text',
   }
 }

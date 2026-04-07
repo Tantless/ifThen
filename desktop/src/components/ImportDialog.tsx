@@ -91,9 +91,7 @@ export function ImportDialog({
                 type="button"
                 onClick={async () => {
                   const nextPath = await openImportFileDialog()
-                  if (nextPath) {
-                    setSelectedPath(nextPath)
-                  }
+                  setSelectedPath(nextPath ?? '')
                 }}
               >
                 选择文件

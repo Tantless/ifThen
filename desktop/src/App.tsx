@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
-import { ConversationEmptyState } from './components/ConversationEmptyState'
 import { SidebarNav } from './components/SidebarNav'
 import { WelcomeModal } from './components/WelcomeModal'
 import { SettingsDrawer } from './components/SettingsDrawer'
 import { ImportDialog } from './components/ImportDialog'
-import { AnalysisStatusBadge } from './components/AnalysisStatusBadge'
+import { ConversationListPane } from './components/ConversationListPane'
+import { ChatPane } from './components/ChatPane'
 import { decideAppShellState, resolveShellHydrationStatus } from './lib/bootstrap'
 import {
   createImportFileBlob,
@@ -15,11 +15,16 @@ import {
   readImportFile,
   type BootState,
 } from './lib/desktop'
-import { buildConversationListItem, buildSettingsFormState, type SettingsFormState } from './lib/adapters'
-import { importConversation, listConversations } from './lib/services/conversationService'
+import {
+  buildConversationListItem,
+  buildMessageBubbleModel,
+  buildSettingsFormState,
+  type SettingsFormState,
+} from './lib/adapters'
+import { importConversation, listConversations, listMessages } from './lib/services/conversationService'
 import { listConversationJobs, readJob } from './lib/services/jobService'
 import { readSettings, writeSetting } from './lib/services/settingsService'
-import type { ConversationRead, JobRead, SettingRead } from './types/api'
+import type { ConversationRead, JobRead, MessageRead, SettingRead } from './types/api'
 
 function isPollingJob(job: JobRead | null | undefined): job is JobRead {
   return job?.status === 'running' || job?.status === 'queued'
@@ -38,7 +43,10 @@ export default function App() {
   const [importPending, setImportPending] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null)
+  const [conversationSearch, setConversationSearch] = useState('')
   const [latestJobsByConversation, setLatestJobsByConversation] = useState<Record<number, JobRead | null>>({})
+  const [messagesByConversation, setMessagesByConversation] = useState<Record<number, MessageRead[] | null | undefined>>({})
+  const [messageLoadErrorByConversation, setMessageLoadErrorByConversation] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -76,6 +84,8 @@ export default function App() {
       setSettings(null)
       setConversations(null)
       setShellLoadError(false)
+      setMessagesByConversation({})
+      setMessageLoadErrorByConversation({})
       return
     }
 
@@ -149,9 +159,32 @@ export default function App() {
         latestJob: selectedJob,
       })
     : null
+  const selectedConversationMessagesState =
+    selectedConversationId === null ? undefined : messagesByConversation[selectedConversationId]
   const settingsFormState = useMemo(
     () => buildSettingsFormState(settings ?? []),
     [settings],
+  )
+  const filteredConversationItems = useMemo(() => {
+    const normalizedSearch = conversationSearch.trim().toLowerCase()
+    const items = (conversations ?? []).map((conversation) =>
+      buildConversationListItem({
+        conversation,
+        latestJob: latestJobsByConversation[conversation.id] ?? null,
+      }),
+    )
+
+    if (!normalizedSearch) {
+      return items
+    }
+
+    return items.filter((item) =>
+      [item.title, item.secondaryText, item.statusLabel].some((value) => value.toLowerCase().includes(normalizedSearch)),
+    )
+  }, [conversationSearch, conversations, latestJobsByConversation])
+  const selectedMessageModels = useMemo(
+    () => (selectedConversationMessagesState ?? []).map((message) => buildMessageBubbleModel(message)),
+    [selectedConversationMessagesState],
   )
 
   useEffect(() => {
@@ -194,6 +227,55 @@ export default function App() {
       cancelled = true
     }
   }, [selectedConversationId, selectedConversationJobState, state.phase])
+
+  useEffect(() => {
+    if (state.phase !== 'ready' || selectedConversationId === null) {
+      return
+    }
+
+    if (selectedConversationMessagesState !== undefined) {
+      return
+    }
+
+    let cancelled = false
+
+    const loadMessages = async () => {
+      try {
+        const messages = await listMessages(selectedConversationId, { order: 'asc' })
+        if (cancelled) {
+          return
+        }
+
+        setMessagesByConversation((current) => ({
+          ...current,
+          [selectedConversationId]: messages,
+        }))
+        setMessageLoadErrorByConversation((current) => ({
+          ...current,
+          [selectedConversationId]: false,
+        }))
+      } catch {
+        if (cancelled) {
+          return
+        }
+
+        setMessagesByConversation((current) => ({
+          ...current,
+          [selectedConversationId]: null,
+        }))
+        setMessageLoadErrorByConversation((current) => ({
+          ...current,
+          [selectedConversationId]: true,
+        }))
+      }
+    }
+
+    void loadMessages()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedConversationId, selectedConversationMessagesState, state.phase])
 
   useEffect(() => {
     if (state.phase !== 'ready' || selectedConversationId === null || !isPollingJob(selectedJob)) {
@@ -306,6 +388,10 @@ export default function App() {
         ...current,
         [response.conversation.id]: response.job,
       }))
+      setMessagesByConversation((current) => ({
+        ...current,
+        [response.conversation.id]: undefined,
+      }))
       setShowImportDialog(false)
       setShowWelcome(false)
     } catch (error) {
@@ -315,61 +401,14 @@ export default function App() {
     }
   }
 
-  const listPane = (
-    <section className="conversation-list-placeholder">
-      <header className="conversation-list-placeholder__header">
-        <h2>会话</h2>
-        <p>Task 3 保留最小承接：欢迎流、设置与导入入口就位，真实列表交互留到后续任务。</p>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => setShowSettings(true)}>
-            打开设置
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setImportError(null)
-              setShowImportDialog(true)
-            }}
-          >
-            导入会话
-          </button>
-        </div>
-      </header>
-      <div className="conversation-list-placeholder__body">
-        {hydrationStatus === 'loading' ? (
-          <p>正在读取会话…</p>
-        ) : hydrationStatus === 'error' ? (
-          <p>会话或设置数据读取失败，当前保留最小壳层。</p>
-        ) : (conversations?.length ?? 0) === 0 ? (
-          <div>
-            <p>已发现 0 个会话。</p>
-            {selectedJob ? <AnalysisStatusBadge status={selectedJob.status} progressPercent={selectedJob.progress_percent} /> : null}
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gap: '12px' }}>
-            <p>已发现 {conversations?.length ?? 0} 个会话，真实列表与详情逻辑将在后续任务接入。</p>
-            {selectedConversationListItem ? (
-              <article
-                style={{
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '12px',
-                  padding: '12px',
-                  display: 'grid',
-                  gap: '8px',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
-                  <strong>{selectedConversationListItem.title}</strong>
-                  <AnalysisStatusBadge status={selectedJob?.status} progressPercent={selectedJob?.progress_percent} />
-                </div>
-                <span>{selectedConversationListItem.secondaryText}</span>
-              </article>
-            ) : null}
-          </div>
-        )}
-      </div>
-    </section>
-  )
+  const listEmptyMessage =
+    hydrationStatus === 'loading'
+      ? '正在读取会话…'
+      : hydrationStatus === 'error'
+        ? '会话或设置数据读取失败，当前仅保留桌面壳层。'
+        : filteredConversationItems.length === 0 && (conversations?.length ?? 0) > 0
+          ? '没有匹配的会话。'
+          : '还没有已导入会话，请先导入聊天记录。'
 
   if (state.phase !== 'ready') {
     return <BootScreen label={label} detail={state.detail} />
@@ -379,18 +418,31 @@ export default function App() {
     <>
       <AppShell
         sidebar={<SidebarNav />}
-        listPane={listPane}
+        listPane={
+          <ConversationListPane
+            items={hydrationStatus === 'ready' ? filteredConversationItems : []}
+            selectedConversationId={selectedConversationId}
+            searchValue={conversationSearch}
+            emptyMessage={listEmptyMessage}
+            onSearchChange={setConversationSearch}
+            onImportConversation={() => {
+              setImportError(null)
+              setShowImportDialog(true)
+            }}
+            onOpenSettings={() => setShowSettings(true)}
+            onSelectConversation={setSelectedConversationId}
+          />
+        }
         chatPane={
-          <ConversationEmptyState
-            variant={
-              hydrationStatus === 'loading'
-                ? 'loading'
-                : hydrationStatus === 'error'
-                  ? 'error'
-                  : shellState?.showWelcome
-                    ? 'welcome'
-                    : 'empty'
-            }
+          <ChatPane
+            title={hydrationStatus === 'ready' ? selectedConversationListItem?.title : undefined}
+            subtitle={selectedConversationListItem?.secondaryText}
+            status={selectedJob?.status}
+            progressPercent={selectedJob?.progress_percent}
+            messages={selectedMessageModels}
+            loading={hydrationStatus === 'loading' || (selectedConversationId !== null && selectedConversationMessagesState === undefined)}
+            error={hydrationStatus === 'error' || (selectedConversationId !== null && messageLoadErrorByConversation[selectedConversationId] === true)}
+            emptyVariant={shellState?.showWelcome ? 'welcome' : 'empty'}
           />
         }
       />

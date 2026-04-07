@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildConversationListItem, buildSettingsFormState } from '../src/lib/adapters'
+import { buildConversationListItem, buildMessageBubbleModel, buildSettingsFormState } from '../src/lib/adapters'
 
 describe('buildSettingsFormState', () => {
   it('maps persisted llm settings into the form state', () => {
@@ -48,6 +48,27 @@ describe('buildConversationListItem', () => {
       id: 7,
       title: '和小李的聊天',
       statusLabel: '分析中 42%',
+    })
+  })
+})
+
+describe('buildMessageBubbleModel', () => {
+  it('marks self text messages as rewrite candidates', () => {
+    expect(
+      buildMessageBubbleModel({
+        id: 12,
+        sequence_no: 5,
+        speaker_role: 'self',
+        speaker_name: '我',
+        timestamp: '2026-04-07T10:00:00',
+        content_text: '那我们先这样吧',
+        message_type: 'text',
+        resource_items: null,
+      }),
+    ).toMatchObject({
+      id: 12,
+      align: 'right',
+      canRewrite: true,
     })
   })
 })
