@@ -1,11 +1,20 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   decideAppShellState,
   hasModelSettings,
   resolveShellHydrationStatus,
 } from '../src/lib/bootstrap'
-import { normalizeDesktopFileSelection, shouldUseDesktopBridge } from '../src/lib/desktop'
+import {
+  createImportFileBlob,
+  normalizeDesktopFileSelection,
+  readImportFile,
+  shouldUseDesktopBridge,
+} from '../src/lib/desktop'
+
+afterEach(() => {
+  delete (globalThis as typeof globalThis & { desktop?: unknown }).desktop
+})
 
 describe('normalizeDesktopFileSelection', () => {
   it('turns a canceled selection into null', () => {
@@ -16,7 +25,41 @@ describe('normalizeDesktopFileSelection', () => {
 describe('shouldUseDesktopBridge', () => {
   it('requires the bridge for file picking only', () => {
     expect(shouldUseDesktopBridge('pick-import-file')).toBe(true)
+    expect(shouldUseDesktopBridge('read-import-file')).toBe(true)
     expect(shouldUseDesktopBridge('read-conversations')).toBe(false)
+  })
+})
+
+describe('createImportFileBlob', () => {
+  it('builds a utf-8 text blob from imported desktop file content', async () => {
+    const blob = createImportFileBlob({
+      fileName: 'chat.txt',
+      content: '第一行\\n第二行',
+    })
+
+    await expect(blob.text()).resolves.toBe('第一行\\n第二行')
+    expect(blob.type).toBe('text/plain;charset=utf-8')
+  })
+})
+
+describe('readImportFile', () => {
+  it('returns null when the desktop bridge is unavailable', async () => {
+    await expect(readImportFile()).resolves.toBeNull()
+  })
+
+  it('reads the pending import file payload from the desktop bridge', async () => {
+    ;(globalThis as typeof globalThis & {
+      desktop?: {
+        readImportFile: () => Promise<{ fileName: string; content: string }>
+      }
+    }).desktop = {
+      readImportFile: async () => ({ fileName: 'chat.txt', content: '第一行' }),
+    }
+
+    await expect(readImportFile()).resolves.toEqual({
+      fileName: 'chat.txt',
+      content: '第一行',
+    })
   })
 })
 

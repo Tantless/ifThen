@@ -18,10 +18,16 @@ export type DesktopAppInfo = {
   version: string
 }
 
+export type DesktopImportFilePayload = {
+  fileName: string
+  content: string
+}
+
 type DesktopBridge = {
   getServiceState: () => Promise<DesktopStatePayload>
   pickImportFile: () => Promise<DesktopFileSelectionPayload>
   getAppInfo: () => Promise<DesktopAppInfo>
+  readImportFile: () => Promise<DesktopImportFilePayload>
 }
 
 export function getBootLabel(state: BootState): string {
@@ -53,7 +59,7 @@ export function normalizeDesktopFileSelection(input: DesktopFileSelectionPayload
 }
 
 export function shouldUseDesktopBridge(capability: string): boolean {
-  return capability === 'pick-import-file'
+  return capability === 'pick-import-file' || capability === 'read-import-file'
 }
 
 function getDesktopBridge(): DesktopBridge | undefined {
@@ -80,4 +86,18 @@ export async function openImportFileDialog(): Promise<string | null> {
 
   const selection = await desktopBridge.pickImportFile()
   return normalizeDesktopFileSelection(selection)
+}
+
+export function createImportFileBlob(input: DesktopImportFilePayload): Blob {
+  return new Blob([input.content], { type: 'text/plain;charset=utf-8' })
+}
+
+export async function readImportFile(): Promise<DesktopImportFilePayload | null> {
+  const desktopBridge = getDesktopBridge()
+
+  if (!desktopBridge || !shouldUseDesktopBridge('read-import-file')) {
+    return null
+  }
+
+  return desktopBridge.readImportFile()
 }

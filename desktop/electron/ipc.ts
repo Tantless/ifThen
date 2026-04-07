@@ -1,9 +1,13 @@
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import { app, dialog, ipcMain } from 'electron'
 
 import type { DesktopServiceState, ManagedServiceState } from './backend/contracts'
 import { BackendProcessManager } from './backend/processManager'
 
 export function registerDesktopIpc(processManager: BackendProcessManager) {
+  let selectedImportFilePath: string | null = null
+
   ipcMain.handle('desktop:get-service-state', (): DesktopServiceState => {
     const state: ManagedServiceState = processManager.getState()
     return {
@@ -18,6 +22,8 @@ export function registerDesktopIpc(processManager: BackendProcessManager) {
       filters: [{ name: 'QQ chat export', extensions: ['txt'] }],
     })
 
+    selectedImportFilePath = result.canceled ? null : (result.filePaths[0] ?? null)
+
     return {
       canceled: result.canceled,
       filePaths: result.filePaths,
@@ -28,4 +34,20 @@ export function registerDesktopIpc(processManager: BackendProcessManager) {
     name: app.getName(),
     version: app.getVersion(),
   }))
+
+  ipcMain.handle('desktop:read-import-file', async () => {
+    if (!selectedImportFilePath) {
+      throw new Error('No import file has been selected')
+    }
+
+    const filePath = selectedImportFilePath
+    selectedImportFilePath = null
+
+    const content = await readFile(filePath, 'utf8')
+
+    return {
+      fileName: path.basename(filePath),
+      content,
+    }
+  })
 }
