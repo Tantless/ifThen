@@ -20,6 +20,8 @@ export type ManagedServiceState = {
   detail?: string
 }
 
+export type DesktopServiceState = Pick<ManagedServiceState, 'phase' | 'detail'>
+
 export type BackendLaunchSpec = {
   command: string
   args: string[]

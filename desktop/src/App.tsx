@@ -8,22 +8,32 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false
+    let timeoutId: number | null = null
+
+    const isTerminalPhase = (phase: BootState['phase']) => phase === 'ready' || phase === 'error'
 
     const tick = async () => {
       const next = await readDesktopServiceState()
-      if (!cancelled) {
-        setState(next)
+      if (cancelled) {
+        return
+      }
+
+      setState(next)
+
+      if (!isTerminalPhase(next.phase)) {
+        timeoutId = window.setTimeout(() => {
+          void tick()
+        }, 1000)
       }
     }
 
     void tick()
-    const intervalId = window.setInterval(() => {
-      void tick()
-    }, 1000)
 
     return () => {
       cancelled = true
-      window.clearInterval(intervalId)
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
     }
   }, [])
 

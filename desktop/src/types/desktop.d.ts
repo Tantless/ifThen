@@ -1,15 +1,3 @@
-import type { BootState } from '../lib/desktop'
-
 export type DesktopBridge = {
-  getServiceState: () => Promise<BootState>
-  getAppInfo: () => Promise<{ name: string; version: string }>
-  restartBackend: () => Promise<BootState>
+  getServiceState: () => Promise<{ phase: string; detail?: string }>
 }
-
-declare global {
-  interface Window {
-    desktop?: DesktopBridge
-  }
-}
-
-export {}

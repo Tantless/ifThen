@@ -8,6 +8,10 @@ export type DesktopStatePayload = {
   detail?: string
 }
 
+type DesktopBridge = {
+  getServiceState: () => Promise<DesktopStatePayload>
+}
+
 export function getBootLabel(state: BootState): string {
   switch (state.phase) {
     case 'waiting-api':
@@ -29,10 +33,12 @@ export function normalizeDesktopState(input: DesktopStatePayload): BootState {
 }
 
 export async function readDesktopServiceState(): Promise<BootState> {
-  if (!window.desktop) {
+  const desktopBridge = (globalThis as typeof globalThis & { desktop?: DesktopBridge }).desktop
+
+  if (!desktopBridge) {
     return { phase: 'booting', detail: 'desktop bridge unavailable' }
   }
 
-  const state = await window.desktop.getServiceState()
+  const state = await desktopBridge.getServiceState()
   return normalizeDesktopState(state)
 }
