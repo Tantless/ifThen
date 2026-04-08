@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -20,6 +21,29 @@ describe('resolveDesktopRepoRoot', () => {
     expect(resolveDesktopRepoRoot('D:/newProj/desktop/dist-electron/electron/main.js')).toBe(
       path.normalize('D:/newProj'),
     )
+  })
+})
+
+describe('electron esm source imports', () => {
+  it('uses explicit .js suffixes for runtime relative imports', () => {
+    const runtimeImportFiles = [
+      'electron/main.ts',
+      'electron/ipc.ts',
+    ]
+
+    for (const relativePath of runtimeImportFiles) {
+      const source = fs.readFileSync(path.resolve(process.cwd(), relativePath), 'utf8')
+      const runtimeRelativeImports = source
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('import ') && !line.startsWith('import type '))
+        .filter((line) => line.includes(" from './") || line.includes(' from "../'))
+
+      expect(runtimeRelativeImports, relativePath).not.toHaveLength(0)
+      for (const line of runtimeRelativeImports) {
+        expect(line, `${relativePath}: ${line}`).toMatch(/from ['"]\.\.?(?:\/[^'"]+)*\.js['"]$/)
+      }
+    }
   })
 })
 

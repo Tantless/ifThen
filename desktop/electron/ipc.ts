@@ -3,7 +3,7 @@ import path from 'node:path'
 import { app, dialog, ipcMain } from 'electron'
 
 import type { DesktopServiceState, ManagedServiceState } from './backend/contracts'
-import { BackendProcessManager } from './backend/processManager'
+import { BackendProcessManager } from './backend/processManager.js'
 
 export function registerDesktopIpc(processManager: BackendProcessManager) {
   let selectedImportFilePath: string | null = null

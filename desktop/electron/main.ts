@@ -1,9 +1,9 @@
 import { app, BrowserWindow } from 'electron'
 import { fileURLToPath } from 'node:url'
-import { waitForHealth } from './backend/health'
-import { buildPythonLaunchSpec, getDesktopBackendPaths, resolveDesktopRepoRoot } from './backend/paths'
-import { BackendProcessManager } from './backend/processManager'
-import { registerDesktopIpc } from './ipc'
+import { waitForHealth } from './backend/health.js'
+import { buildPythonLaunchSpec, getDesktopBackendPaths, resolveDesktopRepoRoot } from './backend/paths.js'
+import { BackendProcessManager } from './backend/processManager.js'
+import { registerDesktopIpc } from './ipc.js'
 
 const processManager = new BackendProcessManager()
 const repoRoot = resolveDesktopRepoRoot(fileURLToPath(import.meta.url))
