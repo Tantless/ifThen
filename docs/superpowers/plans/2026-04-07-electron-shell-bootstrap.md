@@ -10,6 +10,13 @@
 
 ---
 
+## 执行状态（2026-04-08 同步）
+
+- 状态：**已完成并已并入 `main`**
+- 结果：`desktop/` 工作区、Electron 主进程、preload bridge、API/worker 启动与健康检查链路都已落地。
+- 当前验证参考：`cd desktop && npm test` 为 `9 files / 46 tests passed`，`npm run typecheck` / `npm run build` 通过。
+- 说明：下方 `- [ ]` 复选框保留为原始执行脚本，不再表示当前待办；当前总体进度以 `docs/2026-04-08-milestone-progress-summary.md` 为准。
+
 **Scope Note:** 本计划只覆盖桌面宿主层（M2）。`D:\frontUI\src` 当前仅作为视觉/布局参考来源，本计划不会完成完整前端产品接线；那部分将在后续单独计划中处理。
 
 ## File Map

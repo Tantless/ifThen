@@ -10,6 +10,13 @@
 
 ---
 
+## 执行状态（2026-04-08 同步）
+
+- 状态：**已完成并已并入 `main`**
+- 结果：`/simulations` 已切换为真实 LLM 分支判断、首轮回复生成与短链续写流程，相关测试已纳入主分支回归。
+- 当前验证参考：`python -m pytest -q` 在 `main` 上为 `71 passed`。
+- 说明：下方 `- [ ]` 复选框保留为原始执行脚本，不再表示当前待办；当前总体进度以 `docs/2026-04-08-milestone-progress-summary.md` 为准。
+
 ## File Structure
 
 - `src/if_then_mvp/api.py`
@@ -49,4 +56,3 @@
 - [ ] Add a short README note describing required simulation LLM config.
 - [ ] Run focused simulation tests.
 - [ ] Run full pytest suite.
-

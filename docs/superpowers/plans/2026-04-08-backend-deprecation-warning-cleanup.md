@@ -10,6 +10,13 @@
 
 ---
 
+## 执行状态（2026-04-08 同步）
+
+- 状态：**已完成并已并入 `main`**
+- 结果：FastAPI startup 初始化已从 `@app.on_event("startup")` 迁移到 lifespan，目标 deprecated warning 已完成清理并补上回归测试。
+- 当前验证参考：`python -m pytest -q` 在 `main` 上为 `71 passed`。
+- 说明：下方 `- [ ]` 复选框保留为原始执行脚本，不再表示当前待办；当前总体进度以 `docs/2026-04-08-milestone-progress-summary.md` 为准。
+
 ## File Map
 
 ### Existing files to modify

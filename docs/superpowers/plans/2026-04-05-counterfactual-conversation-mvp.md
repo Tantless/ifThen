@@ -10,6 +10,13 @@
 
 ---
 
+## 执行状态（2026-04-08 同步）
+
+- 状态：**已完成并已并入 `main`**
+- 结果：后端 MVP 主链路（导入 / 解析 / 分析 / 检索 / 推演）已经落地，并成为当前主分支能力基础。
+- 当前验证参考：`python -m pytest -q` 在 `main` 上为 `71 passed`。
+- 说明：下方 `- [ ]` 复选框保留为原始执行脚本，不再表示当前待办；当前总体进度以 `docs/2026-04-08-milestone-progress-summary.md` 为准。
+
 ## File Structure
 
 - `pyproject.toml`
