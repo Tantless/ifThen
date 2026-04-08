@@ -12,32 +12,53 @@
 
 > **如果那时，真的换了一种说法，一切会不会不同？**
 
-项目当前聚焦于这 3 件事：
-
-- 尽量还原某个时间点下，对方当时的真实状态
-- 在不泄漏未来信息的前提下，让用户修改一句自己当时说过的话
-- 模拟这句改动是否可能引出不同的回复与后续对话走向
+---
 
 ## 当前状态
 
-- 仅支持 `Windows` 本地运行
-- 仅支持 `QQ` 私聊文本导入
-- 已有最小 `Electron` 桌面壳，可自动拉起本地 API / worker
-- 检索为 `cutoff-safe` 规则检索，不含 embedding
-- 短链推演为自动模式，不是交互式续聊
+当前 `main` 分支已经具备：
+
+- Python 后端主链路（导入 / 解析 / 分析 / 检索 / 推演）
+- Electron 桌面宿主层
+- React + TypeScript 桌面前端主流程
+- 一轮桌面前端 visual polish
+
+当前验证基线：
+
+- `python -m pytest -q` → `71 passed`
+- `cd desktop && npm test` → `9 files / 46 tests passed`
+- `cd desktop && npm run typecheck` → 通过
+- `cd desktop && npm run build` → 通过
+
+---
 
 ## 核心能力
+
+### 后端能力
 
 - 导入 `QQChatExporter V5` 私聊文本
 - 解析消息、切段、生成 `normal / isolated / merged_isolated`
 - 生成段摘要、多个 topic、人格画像、关系快照
-- 按时间截断组装上下文
+- 按时间截断组装 cutoff-safe 上下文
 - 调用真实 LLM 生成首轮回复和自动短链推演
 - 提供本地 API、worker 和 CLI 演示脚本
+- 支持会话删除、重跑分析、job 恢复查询、消息上下文查询
+
+### 桌面端能力
+
+- Electron 单窗口桌面应用壳
+- 自动拉起本地 Python API / worker
+- 欢迎引导、设置抽屉、导入弹窗
+- 会话列表、历史聊天浏览、分析状态展示
+- 改写并推演、分支视图、analysis inspector
+
+---
 
 ## 环境要求
 
+- Windows
 - Python `3.11+`
+- Node.js `20+`（建议）
 - 一个可访问的 OpenAI 兼容聊天接口
 
 说明：
@@ -49,13 +70,17 @@
   1. `/settings` 中保存的 `llm.base_url` / `llm.api_key` / `llm.chat_model`
   2. 环境变量 `IF_THEN_LLM_BASE_URL` / `IF_THEN_LLM_API_KEY` / `IF_THEN_LLM_CHAT_MODEL`
   3. 项目根目录的 `local_llm_config.py`
-- 当数据库或环境变量没有完整配置时，仍可继续使用 `local_llm_config.py` 作为本地开发兜底
 
-## 安装
+---
+
+## 开发环境 Quickstart
+
+### 1. 准备 Python 环境
 
 在项目根目录执行：
 
 ```powershell
+cd D:\newProj
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -68,7 +93,7 @@ pip install -e .[dev]
 $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 ```
 
-## 配置模型
+### 2. 配置模型
 
 先复制示例配置文件：
 
@@ -92,9 +117,22 @@ WORKER_LLM_CONFIG = {
 }
 ```
 
-## 启动
+### 3. 准备桌面前端依赖
 
-启动 API：
+```powershell
+cd D:\newProj\desktop
+npm install
+```
+
+---
+
+## 如何唤起后端
+
+### 方式 A：手动单独启动 API 和 worker
+
+适合后端调试、接口联调、CLI 演示。
+
+#### 启动 API
 
 ```powershell
 cd D:\newProj
@@ -103,7 +141,9 @@ $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 python scripts\run_api.py
 ```
 
-启动 worker：
+#### 启动 worker
+
+另开一个终端：
 
 ```powershell
 cd D:\newProj
@@ -112,7 +152,7 @@ $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 python scripts\run_worker.py
 ```
 
-健康检查：
+#### 健康检查
 
 ```powershell
 Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/health"
@@ -124,37 +164,42 @@ Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/health"
 {"status":"ok"}
 ```
 
-## Electron 桌面工作区
+### 方式 B：通过 Electron 自动拉起后端
 
-桌面壳代码位于 `desktop/`，当前阶段负责：
+适合桌面端联调。
 
-- 创建最小 Electron 窗口
-- 由主进程自动拉起 `scripts/run_api.py` 与 `scripts/run_worker.py`
-- 通过 `/health` 轮询 API 就绪状态
-- 与 Python 端共享项目根目录 `.data`（或你自定义的 `IF_THEN_DATA_DIR`）
+Electron 主进程会按以下顺序启动：
 
-首次安装：
+1. 解析仓库根目录与 `.venv` Python（若存在）
+2. 启动 `python scripts/run_api.py`
+3. 轮询 `/health`
+4. API 健康后启动 `python scripts/run_worker.py`
 
-```powershell
-cd D:\newProj\desktop
-npm install
-```
+也就是说，**桌面应用正常启动时，不需要你再手动单独开 API / worker**。
 
-开发 renderer：
+---
+
+## 如何唤起前端 / 桌面端
+
+### 开发模式
+
+#### 终端 A：启动 renderer dev server
 
 ```powershell
 cd D:\newProj\desktop
 npm run dev
 ```
 
-如果要手动启动 Electron 壳，请先保持 Vite dev server 运行；首次进入开发态，或修改了 `desktop/electron/` 下的主进程 / preload 代码后，还需要先生成 Electron 产物：
+#### 终端 B：生成 Electron 主进程与 preload 产物
+
+首次进入开发态，或修改了 `desktop/electron/*.ts` / `desktop/electron/**/*.ts` 之后执行：
 
 ```powershell
 cd D:\newProj\desktop
 npm run build:electron
 ```
 
-然后在另一个终端执行：
+#### 终端 B：启动 Electron
 
 ```powershell
 cd D:\newProj\desktop
@@ -162,7 +207,13 @@ $env:IF_THEN_DESKTOP_RENDERER_URL = "http://127.0.0.1:5173"
 npx electron .
 ```
 
-构建后可直接加载 `desktop/dist/index.html`：
+开发态最小流程总结：
+
+1. `cd D:\newProj\desktop && npm run dev`
+2. `cd D:\newProj\desktop && npm run build:electron`
+3. `cd D:\newProj\desktop && $env:IF_THEN_DESKTOP_RENDERER_URL = "http://127.0.0.1:5173"; npx electron .`
+
+### 本地构建后运行
 
 ```powershell
 cd D:\newProj\desktop
@@ -170,18 +221,15 @@ npm run build
 npx electron .
 ```
 
-其中 `npm run build` 会同时产出：
+`npm run build` 会同时生成：
 
 - `desktop/dist/`：renderer 静态资源
-- `desktop/dist-electron/electron/main.js`：Electron 主进程入口
+- `desktop/dist-electron/electron/main.js`
+- `desktop/dist-electron/electron/preload.js`
 
-开发态最小流程：
+---
 
-1. `cd D:\newProj\desktop && npm run dev`
-2. `cd D:\newProj\desktop && npm run build:electron`
-3. `cd D:\newProj\desktop && $env:IF_THEN_DESKTOP_RENDERER_URL = "http://127.0.0.1:5173"; npx electron .`
-
-## 快速演示
+## 快速演示（后端 / CLI）
 
 ### 1. 导入聊天记录
 
@@ -215,8 +263,6 @@ Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/jobs/1"
 
 ### 3. 列出可改写消息
 
-直接用 CLI 列出我方文本消息：
-
 ```powershell
 python scripts\sim_cli.py list-self-text --conversation-id 1 --limit 20
 ```
@@ -245,12 +291,6 @@ python scripts\sim_cli.py simulate `
   --turn-count 4
 ```
 
-重点看输出里的：
-
-- `first_reply_text`
-- `impact_summary`
-- `simulated_turns`
-
 如果只想看第一条回复，可以用：
 
 ```powershell
@@ -261,6 +301,8 @@ python scripts\sim_cli.py simulate `
   --mode single_reply `
   --turn-count 1
 ```
+
+---
 
 ## 常用接口
 
@@ -283,6 +325,8 @@ python scripts\sim_cli.py simulate `
 - `POST /conversations/{conversation_id}/rerun-analysis`
 - `POST /simulations`
 
+---
+
 ## 数据目录
 
 程序会把数据写到 `IF_THEN_DATA_DIR` 对应目录下，默认是项目根目录 `.data`。
@@ -302,40 +346,86 @@ $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 
 那么数据会写到 `D:\newProj\.data`。
 
+---
+
 ## 项目结构
 
 - `src/if_then_mvp/api.py`
-  API 主入口
+  - API 主入口
 - `src/if_then_mvp/worker.py`
-  后台分析主流程
+  - 后台分析主流程
 - `src/if_then_mvp/analysis.py`
-  分析阶段 prompt 与 payload
+  - 分析阶段 prompt 与 payload
 - `src/if_then_mvp/simulation.py`
-  推演阶段 prompt 与 payload
+  - 推演阶段 prompt 与 payload
 - `src/if_then_mvp/retrieval.py`
-  cutoff-safe 上下文检索
+  - cutoff-safe 上下文检索
 - `src/if_then_mvp/runtime_llm.py`
-  运行时 LLM 配置解析与客户端构建
+  - 运行时 LLM 配置解析与客户端构建
 - `src/if_then_mvp/conversation_lifecycle.py`
-  会话删除 / 重跑分析等生命周期操作
+  - 会话删除 / 重跑分析等生命周期操作
 - `scripts/run_api.py`
-  API 启动入口
+  - API 启动入口
 - `scripts/run_worker.py`
-  worker 启动入口
+  - worker 启动入口
 - `scripts/sim_cli.py`
-  演示 CLI 入口
+  - 演示 CLI 入口
+- `desktop/`
+  - Electron + React + TypeScript 桌面工作区
 
-## 已知限制
+---
 
-- 桌面 renderer 目前仍是最小 boot / shell placeholder，不是最终产品界面
+## 已完成成果
+
+### 后端阶段
+
+- 后端 MVP 主链路完成
+- Simulation LLM 对齐完成
+- 桌面前置的后端产品化补口完成：
+  - 模型配置统一生效
+  - job 恢复查询
+  - 消息上下文浏览
+  - 删除会话
+  - 重跑分析
+
+### 桌面应用阶段
+
+- Electron 桌面宿主层完成
+- 桌面前端主流程完成：
+  - 欢迎引导
+  - 设置抽屉
+  - 导入弹窗
+  - 会话列表
+  - 聊天浏览
+  - 改写并推演
+  - 分支视图
+  - 分析侧栏
+- 桌面前端 visual polish 完成
+
+### 质量收口
+
+- FastAPI `on_event("startup")` deprecated warning 已迁移到 lifespan
+- 主分支成果已全部回归到 `main`
+- 历史 worktree 已清理完成
+
+---
+
+## 当前已知限制
+
+- 当前只支持 `QQ` 私聊文本导入
 - 当前只做规则检索，不做 embedding
 - 推演模式只有：
   - `single_reply`
   - `short_thread`
-- FastAPI 目前仍使用 `on_event("startup")`，测试时会看到弃用 warning，但不影响功能
+- 当前仍处于开发态桌面应用，不含正式 Windows release / 安装器 / 自动更新链路
+
+---
 
 ## 相关文档
 
+- `docs/2026-04-08-milestone-progress-summary.md`
 - `docs/superpowers/specs/2026-04-05-counterfactual-conversation-mvp-design.md`
 - `docs/superpowers/specs/2026-04-06-simulation-llm-alignment-design.md`
-- `docs/2026-04-06-agent-handoff.md`
+- `docs/superpowers/specs/2026-04-06-desktop-app-design.md`
+- `docs/superpowers/specs/2026-04-07-desktop-frontend-product-shell-design.md`
+- `docs/superpowers/specs/2026-04-08-desktop-frontend-visual-polish-design.md`
