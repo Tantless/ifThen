@@ -8,10 +8,10 @@ type AppShellProps = {
 
 export function AppShell({ sidebar, listPane, chatPane }: AppShellProps) {
   return (
-    <main className="desktop-shell">
-      <aside className="desktop-shell__nav">{sidebar}</aside>
-      <section className="desktop-shell__list">{listPane}</section>
-      <section className="desktop-shell__chat">{chatPane}</section>
+    <main className="desktop-window">
+      <aside className="desktop-window__sidebar">{sidebar}</aside>
+      <section className="desktop-window__list">{listPane}</section>
+      <section className="desktop-window__chat">{chatPane}</section>
     </main>
   )
 }

@@ -1,7 +1,6 @@
 const NAV_ITEMS = [
   { label: '会话', active: true },
   { label: '分析', active: false },
-  { label: '设置', active: false },
 ]
 
 export function SidebarNav() {
@@ -21,6 +20,11 @@ export function SidebarNav() {
             {item.label}
           </button>
         ))}
+      </div>
+      <div className="sidebar-nav__footer">
+        <button type="button" className="sidebar-nav__item sidebar-nav__item--footer">
+          设置
+        </button>
       </div>
     </nav>
   )

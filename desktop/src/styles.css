@@ -1,9 +1,20 @@
 :root {
-  color: #f5f7fb;
-  background: #0f172a;
+  color: #1f2329;
+  background: #d5d3d1;
   font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   line-height: 1.5;
   font-weight: 400;
+  color-scheme: light;
+  --desktop-app-bg: linear-gradient(180deg, #dbd9d7 0%, #cfcac4 100%);
+  --desktop-window-bg: #f3f1ee;
+  --desktop-sidebar-bg: linear-gradient(180deg, #2f3338 0%, #25292e 100%);
+  --desktop-list-bg: #e6e1db;
+  --desktop-chat-bg: #f7f4ef;
+  --desktop-divider: rgba(94, 84, 72, 0.12);
+  --desktop-window-radius: 24px;
+  --desktop-window-shadow:
+    0 24px 60px rgba(73, 61, 49, 0.18),
+    0 4px 14px rgba(73, 61, 49, 0.08);
 }
 
 * {
@@ -14,13 +25,12 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.24), transparent 42%),
-    linear-gradient(180deg, #0f172a 0%, #111827 100%);
+  background: var(--desktop-app-bg);
 }
 
 #root {
   min-height: 100vh;
+  padding: 18px;
 }
 
 .boot-screen {
@@ -64,42 +74,45 @@ body {
   background: rgba(15, 23, 42, 0.92);
 }
 
-.desktop-shell {
+.desktop-window {
   display: grid;
   grid-template-columns: 84px 320px minmax(0, 1fr);
-  min-height: 100vh;
-  background: #d7dce5;
+  min-height: calc(100vh - 36px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--desktop-window-radius);
+  background: var(--desktop-window-bg);
+  box-shadow: var(--desktop-window-shadow);
 }
 
-.desktop-shell__nav {
-  background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
-  border-right: 1px solid rgba(148, 163, 184, 0.16);
+.desktop-window__sidebar {
+  background: var(--desktop-sidebar-bg);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.desktop-shell__list {
-  border-right: 1px solid rgba(148, 163, 184, 0.24);
-  background: #e8ecf3;
+.desktop-window__list {
+  border-right: 1px solid var(--desktop-divider);
+  background: var(--desktop-list-bg);
 }
 
-.desktop-shell__chat {
+.desktop-window__chat {
   min-width: 0;
-  background:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.08), transparent 36%),
-    #f8fafc;
+  background: var(--desktop-chat-bg);
 }
 
 .sidebar-nav {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: 18px;
   min-height: 100%;
-  padding: 20px 12px;
+  padding: 22px 12px 18px;
 }
 
 .sidebar-nav__brand {
-  display: grid;
-  place-items: center;
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 
 .sidebar-nav__brand-mark {
@@ -108,10 +121,11 @@ body {
   height: 44px;
   place-items: center;
   border-radius: 14px;
-  background: rgba(59, 130, 246, 0.22);
-  color: #eff6ff;
+  background: rgba(255, 255, 255, 0.16);
+  color: #f6f2eb;
   font-size: 1.1rem;
   font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .sidebar-nav__items {
@@ -126,7 +140,7 @@ body {
   border: 0;
   border-radius: 16px;
   background: transparent;
-  color: #94a3b8;
+  color: #b6bec8;
   padding: 14px 8px;
   font: inherit;
   font-size: 0.95rem;
@@ -134,8 +148,22 @@ body {
 }
 
 .sidebar-nav__item--active {
-  background: rgba(59, 130, 246, 0.18);
-  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.12);
+  color: #f7f3ec;
+}
+
+.sidebar-nav__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+}
+
+.sidebar-nav__item--footer {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f7f3ec;
 }
 
 .conversation-list-pane {
