@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
@@ -53,11 +54,12 @@ INVALID_EXPORT_DETAIL = "Uploaded file must be a valid QQ private chat export"
 
 
 def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
-    app = FastAPI(title="If Then MVP API")
-
-    @app.on_event("startup")
-    def startup() -> None:
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
         init_db()
+        yield
+
+    app = FastAPI(title="If Then MVP API", lifespan=lifespan)
 
     @app.get("/health")
     def health() -> dict[str, str]:
