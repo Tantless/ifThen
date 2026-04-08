@@ -101,6 +101,177 @@ body {
   background: var(--desktop-chat-bg);
 }
 
+.desktop-modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(33, 33, 33, 0.28);
+  backdrop-filter: blur(4px);
+  z-index: 20;
+}
+
+.desktop-modal__panel {
+  display: grid;
+  gap: 20px;
+  width: min(520px, 100%);
+  padding: 24px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+  color: #111111;
+}
+
+.desktop-modal__panel--welcome {
+  width: min(480px, 100%);
+}
+
+.desktop-modal__header {
+  display: grid;
+  gap: 8px;
+}
+
+.desktop-modal__header--split {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.desktop-modal__eyebrow,
+.desktop-drawer__eyebrow {
+  margin: 0;
+  color: #7a7269;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.desktop-modal__title,
+.desktop-drawer__title {
+  margin: 0;
+  color: #171413;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.desktop-modal__body {
+  margin: 0;
+  color: #334155;
+  line-height: 1.6;
+}
+
+.desktop-modal__body--muted {
+  color: #475569;
+  font-size: 0.95rem;
+}
+
+.desktop-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.desktop-modal__form,
+.desktop-drawer__form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.desktop-modal__field,
+.desktop-drawer__field {
+  display: grid;
+  gap: 8px;
+}
+
+.desktop-modal__label,
+.desktop-drawer__label {
+  color: #5a5147;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.desktop-modal__path-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.desktop-modal__code {
+  margin: 0;
+  color: #4b5563;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.desktop-modal__input,
+.desktop-drawer__input {
+  width: 100%;
+  border: 1px solid rgba(94, 84, 72, 0.18);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fbfbfb;
+  color: #171413;
+  font: inherit;
+}
+
+.desktop-modal__button,
+.desktop-drawer__button {
+  border: 1px solid rgba(94, 84, 72, 0.14);
+  border-radius: 10px;
+  padding: 9px 14px;
+  background: #f5f5f5;
+  color: #2f2a25;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.desktop-modal__button--primary,
+.desktop-drawer__button--primary {
+  border-color: rgba(51, 102, 170, 0.18);
+  background: #e9f2ff;
+  color: #1f4b87;
+}
+
+.desktop-modal__button:disabled,
+.desktop-drawer__button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.desktop-modal__error,
+.desktop-drawer__error {
+  margin: 0;
+  color: #b91c1c;
+}
+
+.desktop-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 100%);
+  padding: 24px 22px;
+  background: rgba(255, 255, 255, 0.98);
+  border-left: 1px solid #e5e5e5;
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.08);
+  overflow-y: auto;
+  z-index: 30;
+}
+
+.desktop-drawer__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;

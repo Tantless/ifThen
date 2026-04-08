@@ -11,19 +11,6 @@ type SettingsDrawerProps = {
   onSave: (state: SettingsFormState) => Promise<void> | void
 }
 
-const drawerStyle = {
-  position: 'fixed',
-  top: 0,
-  right: 0,
-  bottom: 0,
-  width: 'min(420px, 100%)',
-  backgroundColor: '#fff',
-  boxShadow: '-12px 0 32px rgba(15, 23, 42, 0.18)',
-  padding: '24px',
-  zIndex: 30,
-  overflowY: 'auto',
-} as const
-
 export function SettingsDrawer({
   open,
   initialState,
@@ -45,27 +32,28 @@ export function SettingsDrawer({
   }
 
   return (
-    <aside aria-label="模型设置" style={drawerStyle}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+    <aside className="desktop-drawer" aria-label="模型设置">
+      <header className="desktop-drawer__header">
         <div>
-          <p style={{ margin: 0, color: '#475569', fontSize: '14px' }}>设置</p>
-          <h2 style={{ margin: '8px 0 0' }}>模型配置</h2>
+          <p className="desktop-drawer__eyebrow">设置</p>
+          <h2 className="desktop-drawer__title">模型配置</h2>
         </div>
-        <button type="button" onClick={onClose}>
+        <button type="button" className="desktop-drawer__button" onClick={onClose}>
           关闭
         </button>
       </header>
 
       <form
-        style={{ display: 'grid', gap: '16px', marginTop: '24px' }}
+        className="desktop-drawer__form"
         onSubmit={async (event) => {
           event.preventDefault()
           await onSave(formState)
         }}
       >
-        <label style={{ display: 'grid', gap: '8px' }}>
-          <span>Base URL</span>
+        <label className="desktop-drawer__field">
+          <span className="desktop-drawer__label">Base URL</span>
           <input
+            className="desktop-drawer__input"
             type="url"
             value={formState.baseUrl}
             placeholder="https://api.openai.com/v1"
@@ -73,9 +61,10 @@ export function SettingsDrawer({
           />
         </label>
 
-        <label style={{ display: 'grid', gap: '8px' }}>
-          <span>API Key</span>
+        <label className="desktop-drawer__field">
+          <span className="desktop-drawer__label">API Key</span>
           <input
+            className="desktop-drawer__input"
             type="password"
             value={formState.apiKey}
             placeholder="sk-..."
@@ -83,9 +72,10 @@ export function SettingsDrawer({
           />
         </label>
 
-        <label style={{ display: 'grid', gap: '8px' }}>
-          <span>Chat Model</span>
+        <label className="desktop-drawer__field">
+          <span className="desktop-drawer__label">Chat Model</span>
           <input
+            className="desktop-drawer__input"
             type="text"
             value={formState.chatModel}
             placeholder="gpt-5.4"
@@ -94,12 +84,12 @@ export function SettingsDrawer({
         </label>
 
         {errorMessage ? (
-          <p role="alert" style={{ margin: 0, color: '#b91c1c' }}>
+          <p role="alert" className="desktop-drawer__error">
             {errorMessage}
           </p>
         ) : null}
 
-        <button type="submit" disabled={pending}>
+        <button type="submit" className="desktop-drawer__button desktop-drawer__button--primary" disabled={pending}>
           {pending ? '保存中…' : '保存'}
         </button>
       </form>
