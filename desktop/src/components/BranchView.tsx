@@ -11,7 +11,7 @@ export function BranchView({ originalMessage, branchState, onBack }: BranchViewP
     <section className="branch-view">
       <div className="branch-view__header">
         <button type="button" onClick={onBack}>
-          返回历史
+          返回原始历史
         </button>
         <p>分支推演 #{branchState.simulation.id}</p>
       </div>

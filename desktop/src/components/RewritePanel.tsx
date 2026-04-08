@@ -1,7 +1,10 @@
+import type { ChangeEvent } from 'react'
+
 type RewriteMode = 'single_reply' | 'short_thread'
 
 type RewritePanelProps = {
   originalMessage: string
+  targetMessageTimestamp: string
   replacementContent: string
   mode: RewriteMode
   turnCount: number
@@ -16,6 +19,7 @@ type RewritePanelProps = {
 
 export function RewritePanel({
   originalMessage,
+  targetMessageTimestamp,
   replacementContent,
   mode,
   turnCount,
@@ -54,6 +58,11 @@ export function RewritePanel({
       <div className="rewrite-panel__section">
         <span className="rewrite-panel__label">原消息</span>
         <p className="rewrite-panel__quote">{originalMessage || '（空消息）'}</p>
+      </div>
+
+      <div className="rewrite-panel__section">
+        <span className="rewrite-panel__label">发送时间</span>
+        <p className="rewrite-panel__quote">{new Date(targetMessageTimestamp).toLocaleString('zh-CN')}</p>
       </div>
 
       <label className="rewrite-panel__section">
@@ -100,4 +109,3 @@ export function RewritePanel({
     </section>
   )
 }
-import type { ChangeEvent } from 'react'

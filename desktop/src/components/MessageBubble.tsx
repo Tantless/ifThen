@@ -15,7 +15,7 @@ export function MessageBubble({ message, onRewrite }: MessageBubbleProps) {
         </div>
         <p>{message.text || '（空消息）'}</p>
         {message.canRewrite && onRewrite ? (
-          <div className="message-bubble__actions">
+          <div className="message-bubble__actions message-bubble__actions--hover">
             <button
               type="button"
               className="message-bubble__rewrite-button"

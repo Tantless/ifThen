@@ -385,6 +385,20 @@ body {
   justify-content: flex-end;
 }
 
+.message-bubble__actions--hover {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.message-bubble__card:hover .message-bubble__actions--hover,
+.message-bubble__card:focus-within .message-bubble__actions--hover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
 .message-bubble__meta {
   display: flex;
   justify-content: space-between;
@@ -589,4 +603,26 @@ body {
 .analysis-inspector__snapshot dd {
   margin: 0;
   font-weight: 600;
+}
+
+.analysis-inspector__tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.analysis-inspector__tab {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #334155;
+  font: inherit;
+  cursor: pointer;
+}
+
+.analysis-inspector__tab--active {
+  border-color: rgba(37, 99, 235, 0.5);
+  background: rgba(219, 234, 254, 0.9);
+  color: #1d4ed8;
+  font-weight: 700;
 }

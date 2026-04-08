@@ -9,7 +9,7 @@ import { ConversationListPane } from './components/ConversationListPane'
 import { ChatPane } from './components/ChatPane'
 import { RewritePanel } from './components/RewritePanel'
 import { BranchView } from './components/BranchView'
-import { AnalysisInspector } from './components/AnalysisInspector'
+import { AnalysisInspector, type AnalysisInspectorTab } from './components/AnalysisInspector'
 import { MessageTimeline } from './components/MessageTimeline'
 import { decideAppShellState, resolveShellHydrationStatus } from './lib/bootstrap'
 import {
@@ -87,7 +87,12 @@ export default function App() {
   const [rewriteDraft, setRewriteDraft] = useState<RewriteDraft | null>(null)
   const [rewritePending, setRewritePending] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
-  const [inspectorLoading, setInspectorLoading] = useState(false)
+  const [inspectorTab, setInspectorTab] = useState<AnalysisInspectorTab>('topics')
+  const [inspectorLoadingByTab, setInspectorLoadingByTab] = useState<Record<AnalysisInspectorTab, boolean>>({
+    topics: false,
+    profile: false,
+    snapshot: false,
+  })
   const [inspectorError, setInspectorError] = useState<string | null>(null)
   const [inspectorTopics, setInspectorTopics] = useState<TopicRead[]>([])
   const [inspectorProfile, setInspectorProfile] = useState<PersonaProfileRead[]>([])
@@ -150,7 +155,8 @@ export default function App() {
       setChatViewState({ mode: 'history' })
       setRewriteDraft(null)
       setInspectorOpen(false)
-      setInspectorLoading(false)
+      setInspectorTab('topics')
+      setInspectorLoadingByTab({ topics: false, profile: false, snapshot: false })
       setInspectorError(null)
       setInspectorTopics([])
       setInspectorProfile([])
@@ -254,6 +260,7 @@ export default function App() {
     () => (selectedConversationMessagesState ?? []).map((message) => buildMessageBubbleModel(message)),
     [selectedConversationMessagesState],
   )
+  const analysisCompleted = selectedJob?.status === 'completed'
   const snapshotAt = useMemo(
     () =>
       resolveInspectorSnapshotAt(
@@ -279,12 +286,20 @@ export default function App() {
     setChatViewState({ mode: 'history' })
     setRewriteDraft(null)
     setInspectorOpen(false)
-    setInspectorLoading(false)
+    setInspectorTab('topics')
+    setInspectorLoadingByTab({ topics: false, profile: false, snapshot: false })
     setInspectorError(null)
     setInspectorTopics([])
     setInspectorProfile([])
     setInspectorSnapshot(null)
   }, [selectedConversationId])
+
+  useEffect(() => {
+    if (!analysisCompleted) {
+      setInspectorOpen(false)
+      setRewriteDraft(null)
+    }
+  }, [analysisCompleted])
 
   useEffect(() => {
     if (state.phase !== 'ready' || selectedConversationId === null) {
@@ -421,39 +436,64 @@ export default function App() {
   }, [selectedConversationId, selectedJob?.id, selectedJob?.status, state.phase])
 
   useEffect(() => {
-    if (!inspectorOpen || state.phase !== 'ready' || selectedConversationId === null) {
+    if (!inspectorOpen || !analysisCompleted || state.phase !== 'ready' || selectedConversationId === null) {
       return
     }
 
     let cancelled = false
 
     const loadInspector = async () => {
-      setInspectorLoading(true)
+      setInspectorLoadingByTab((current) => ({
+        ...current,
+        [inspectorTab]: true,
+      }))
       setInspectorError(null)
 
-      const [topicsResult, profileResult, snapshotResult] = await Promise.allSettled([
-        listTopics(selectedConversationId),
-        readProfile(selectedConversationId),
-        snapshotAt ? readSnapshot(selectedConversationId, snapshotAt) : Promise.resolve(null),
-      ])
+      if (inspectorTab === 'topics') {
+        const result = await listTopics(selectedConversationId)
+          .then((value) => ({ status: 'fulfilled' as const, value }))
+          .catch(() => ({ status: 'rejected' as const }))
 
-      if (cancelled) {
-        return
+        if (cancelled) {
+          return
+        }
+
+        setInspectorTopics(result.status === 'fulfilled' ? result.value : [])
+        if (result.status === 'rejected') {
+          setInspectorError('分析侧栏数据读取失败')
+        }
+      } else if (inspectorTab === 'profile') {
+        const result = await readProfile(selectedConversationId)
+          .then((value) => ({ status: 'fulfilled' as const, value }))
+          .catch(() => ({ status: 'rejected' as const }))
+
+        if (cancelled) {
+          return
+        }
+
+        setInspectorProfile(result.status === 'fulfilled' ? result.value : [])
+        if (result.status === 'rejected') {
+          setInspectorError('分析侧栏数据读取失败')
+        }
+      } else {
+        const result = await (snapshotAt ? readSnapshot(selectedConversationId, snapshotAt) : Promise.resolve(null))
+          .then((value) => ({ status: 'fulfilled' as const, value }))
+          .catch(() => ({ status: 'rejected' as const }))
+
+        if (cancelled) {
+          return
+        }
+
+        setInspectorSnapshot(result.status === 'fulfilled' ? result.value : null)
+        if (result.status === 'rejected') {
+          setInspectorError('分析侧栏数据读取失败')
+        }
       }
 
-      setInspectorTopics(topicsResult.status === 'fulfilled' ? topicsResult.value : [])
-      setInspectorProfile(profileResult.status === 'fulfilled' ? profileResult.value : [])
-      setInspectorSnapshot(snapshotResult.status === 'fulfilled' ? snapshotResult.value : null)
-
-      if (
-        topicsResult.status === 'rejected' ||
-        profileResult.status === 'rejected' ||
-        snapshotResult.status === 'rejected'
-      ) {
-        setInspectorError('分析侧栏数据读取失败')
-      }
-
-      setInspectorLoading(false)
+      setInspectorLoadingByTab((current) => ({
+        ...current,
+        [inspectorTab]: false,
+      }))
     }
 
     void loadInspector()
@@ -461,7 +501,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [inspectorOpen, selectedConversationId, snapshotAt, state.phase])
+  }, [analysisCompleted, inspectorOpen, inspectorTab, selectedConversationId, snapshotAt, state.phase])
 
   const upsertSettings = (entries: SettingRead[], updates: SettingRead[]) => {
     const next = new Map(entries.map((entry) => [entry.setting_key, entry]))
@@ -544,6 +584,10 @@ export default function App() {
   }
 
   const handleOpenRewrite = (message: MessageBubbleModel) => {
+    if (!analysisCompleted) {
+      return
+    }
+
     setChatViewState({ mode: 'history' })
     setRewriteDraft({
       targetMessageId: message.id,
@@ -619,6 +663,7 @@ export default function App() {
       <div className="chat-pane__stack">
         <RewritePanel
           originalMessage={rewriteDraft.originalMessage}
+          targetMessageTimestamp={rewriteDraft.targetMessageTimestamp}
           replacementContent={rewriteDraft.replacementContent}
           mode={rewriteDraft.mode}
           turnCount={rewriteDraft.turnCount}
@@ -692,7 +737,7 @@ export default function App() {
             error={hydrationStatus === 'error' || (selectedConversationId !== null && messageLoadErrorByConversation[selectedConversationId] === true)}
             emptyVariant={shellState?.showWelcome ? 'welcome' : 'empty'}
             headerActions={
-              selectedConversationId !== null ? (
+              selectedConversationId !== null && analysisCompleted ? (
                 <button type="button" onClick={() => setInspectorOpen((current) => !current)}>
                   {inspectorOpen ? '隐藏分析' : '分析侧栏'}
                 </button>
@@ -701,15 +746,17 @@ export default function App() {
             detailPanel={
               <AnalysisInspector
                 open={inspectorOpen}
-                loading={inspectorLoading}
+                currentTab={inspectorTab}
+                loadingByTab={inspectorLoadingByTab}
                 errorMessage={inspectorError}
                 topics={inspectorTopics}
                 profile={inspectorProfile}
                 snapshot={inspectorSnapshot}
+                onTabChange={setInspectorTab}
                 onClose={() => setInspectorOpen(false)}
               />
             }
-            onRewriteMessage={handleOpenRewrite}
+            onRewriteMessage={analysisCompleted ? handleOpenRewrite : undefined}
           >
             {chatChildren}
           </ChatPane>

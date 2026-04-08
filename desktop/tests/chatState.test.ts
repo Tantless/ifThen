@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { AnalysisInspector } from '../src/components/AnalysisInspector'
 import { BranchView } from '../src/components/BranchView'
+import { MessageBubble } from '../src/components/MessageBubble'
 import { RewritePanel } from '../src/components/RewritePanel'
 import {
   enterBranchView,
@@ -107,6 +108,7 @@ describe('Task 5 desktop components', () => {
     const html = renderToStaticMarkup(
       React.createElement(RewritePanel, {
         originalMessage: '今天先到这里吧',
+        targetMessageTimestamp: '2026-04-07T12:00:00Z',
         replacementContent: '我想先整理一下，晚点继续聊可以吗？',
         mode: 'short_thread',
         turnCount: 3,
@@ -121,6 +123,8 @@ describe('Task 5 desktop components', () => {
 
     expect(html).toContain('改写并推演')
     expect(html).toContain('今天先到这里吧')
+    expect(html).toContain('发送时间')
+    expect(html).toContain('2026')
     expect(html).toContain('晚点继续聊可以吗')
     expect(html).toContain('短链推演')
   })
@@ -140,7 +144,7 @@ describe('Task 5 desktop components', () => {
       }),
     )
 
-    expect(html).toContain('返回历史')
+    expect(html).toContain('返回原始历史')
     expect(html).toContain('改写内容')
     expect(html).toContain('那我们再试一次吧')
     expect(html).toContain('谢谢你愿意继续聊')
@@ -177,18 +181,62 @@ describe('Task 5 desktop components', () => {
     const html = renderToStaticMarkup(
       React.createElement(AnalysisInspector, {
         open: true,
-        loading: false,
+        currentTab: 'profile',
+        loadingByTab: {
+          topics: false,
+          profile: false,
+          snapshot: false,
+        },
         errorMessage: null,
         topics,
         profile,
         snapshot,
+        onTabChange: () => undefined,
         onClose: () => undefined,
       }),
     )
 
     expect(html).toContain('分析侧栏')
-    expect(html).toContain('工作安排')
+    expect(html).toContain('Topics')
+    expect(html).toContain('Persona')
+    expect(html).toContain('Snapshot')
     expect(html).toContain('沟通直接但会主动修复关系')
-    expect(html).toContain('双方处于修复沟通阶段')
+    expect(html).not.toContain('工作安排')
+    expect(html).not.toContain('双方处于修复沟通阶段')
+  })
+
+  it('renders rewrite action with hover-reveal hook only when enabled', () => {
+    const enabledHtml = renderToStaticMarkup(
+      React.createElement(MessageBubble, {
+        message: {
+          id: 1,
+          sequenceNo: 1,
+          align: 'right',
+          speakerName: '我',
+          timestamp: '2026-04-07T12:00:00Z',
+          text: '先这样',
+          canRewrite: true,
+        },
+        onRewrite: () => undefined,
+      }),
+    )
+
+    const disabledHtml = renderToStaticMarkup(
+      React.createElement(MessageBubble, {
+        message: {
+          id: 2,
+          sequenceNo: 2,
+          align: 'right',
+          speakerName: '我',
+          timestamp: '2026-04-07T12:00:00Z',
+          text: '先这样',
+          canRewrite: true,
+        },
+      }),
+    )
+
+    expect(enabledHtml).toContain('message-bubble__actions--hover')
+    expect(enabledHtml).toContain('改写并推演')
+    expect(disabledHtml).not.toContain('改写并推演')
   })
 })
