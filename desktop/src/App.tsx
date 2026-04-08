@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { BootScreen } from './components/BootScreen'
 import { AppShell } from './components/AppShell'
 import { SidebarNav } from './components/SidebarNav'
@@ -40,8 +40,12 @@ import { createSimulation } from './lib/services/simulationService'
 import {
   enterBranchView,
   exitBranchView,
+  isRewriteRequestCurrent,
   resolveInspectorSnapshotAt,
+  shouldStartLatestJobLoad,
   type ChatViewState,
+  type LatestJobLoadState,
+  type RewriteRequestSnapshot,
 } from './lib/chatState'
 import type {
   ConversationRead,
@@ -111,8 +115,21 @@ export default function App() {
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null)
   const [conversationSearch, setConversationSearch] = useState('')
   const [latestJobsByConversation, setLatestJobsByConversation] = useState<Record<number, JobRead | null>>({})
+  const [latestJobLoadStateByConversation, setLatestJobLoadStateByConversation] = useState<Record<number, LatestJobLoadState>>({})
   const [messagesByConversation, setMessagesByConversation] = useState<Record<number, MessageRead[] | null | undefined>>({})
   const [messageLoadErrorByConversation, setMessageLoadErrorByConversation] = useState<Record<number, boolean>>({})
+  const rewriteRequestCounterRef = useRef(0)
+  const activeRewriteRequestRef = useRef<RewriteRequestSnapshot | null>(null)
+  const selectedConversationIdRef = useRef<number | null>(null)
+  const rewriteDraftRef = useRef<RewriteDraft | null>(null)
+
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId
+  }, [selectedConversationId])
+
+  useEffect(() => {
+    rewriteDraftRef.current = rewriteDraft
+  }, [rewriteDraft])
 
   useEffect(() => {
     let cancelled = false
@@ -150,6 +167,7 @@ export default function App() {
       setSettings(null)
       setConversations(null)
       setShellLoadError(false)
+      setLatestJobLoadStateByConversation({})
       setMessagesByConversation({})
       setMessageLoadErrorByConversation({})
       setChatViewState({ mode: 'history' })
@@ -161,6 +179,8 @@ export default function App() {
       setInspectorTopics([])
       setInspectorProfile([])
       setInspectorSnapshot(null)
+      activeRewriteRequestRef.current = null
+      setRewritePending(false)
       return
     }
 
@@ -228,8 +248,7 @@ export default function App() {
   const selectedConversation =
     conversations?.find((conversation) => conversation.id === selectedConversationId) ?? conversations?.[0] ?? null
   const selectedJob = selectedConversation ? latestJobsByConversation[selectedConversation.id] ?? null : null
-  const selectedConversationJobState =
-    selectedConversationId === null ? undefined : latestJobsByConversation[selectedConversationId]
+  const selectedConversationJobState = selectedConversationId === null ? undefined : latestJobLoadStateByConversation[selectedConversationId]
   const selectedConversationListItem = selectedConversation
     ? buildConversationListItem({
         conversation: selectedConversation,
@@ -285,6 +304,7 @@ export default function App() {
   useEffect(() => {
     setChatViewState({ mode: 'history' })
     setRewriteDraft(null)
+    setRewritePending(false)
     setInspectorOpen(false)
     setInspectorTab('topics')
     setInspectorLoadingByTab({ topics: false, profile: false, snapshot: false })
@@ -292,12 +312,15 @@ export default function App() {
     setInspectorTopics([])
     setInspectorProfile([])
     setInspectorSnapshot(null)
+    activeRewriteRequestRef.current = null
   }, [selectedConversationId])
 
   useEffect(() => {
     if (!analysisCompleted) {
       setInspectorOpen(false)
       setRewriteDraft(null)
+      setRewritePending(false)
+      activeRewriteRequestRef.current = null
     }
   }, [analysisCompleted])
 
@@ -306,31 +329,67 @@ export default function App() {
       return
     }
 
-    if (latestJobsByConversation[selectedConversationId] !== undefined) {
+    let cancelled = false
+    const conversationId = selectedConversationId
+    const currentLoadState = selectedConversationJobState
+    const now = Date.now()
+
+    if (!shouldStartLatestJobLoad(currentLoadState, now)) {
+      if (currentLoadState?.status === 'retry_wait') {
+        const delay = Math.max(0, currentLoadState.retryAt - now)
+        const timeoutId = window.setTimeout(() => {
+          setLatestJobLoadStateByConversation((current) => {
+            if (current[conversationId]?.status !== 'retry_wait') {
+              return current
+            }
+
+            return {
+              ...current,
+              [conversationId]: { status: 'idle' },
+            }
+          })
+        }, delay)
+
+        return () => {
+          cancelled = true
+          window.clearTimeout(timeoutId)
+        }
+      }
+
       return
     }
 
-    let cancelled = false
-
     const loadLatestJob = async () => {
+      setLatestJobLoadStateByConversation((current) => ({
+        ...current,
+        [conversationId]: { status: 'loading' },
+      }))
+
       try {
-        const jobs = await listConversationJobs(selectedConversationId, 1)
+        const jobs = await listConversationJobs(conversationId, 1)
         if (cancelled) {
           return
         }
 
         setLatestJobsByConversation((current) => ({
           ...current,
-          [selectedConversationId]: jobs[0] ?? null,
+          [conversationId]: jobs[0] ?? null,
+        }))
+        setLatestJobLoadStateByConversation((current) => ({
+          ...current,
+          [conversationId]: { status: 'loaded' },
         }))
       } catch {
         if (cancelled) {
           return
         }
 
-        setLatestJobsByConversation((current) => ({
+        setLatestJobLoadStateByConversation((current) => ({
           ...current,
-          [selectedConversationId]: null,
+          [conversationId]: {
+            status: 'retry_wait',
+            retryAt: Date.now() + 1500,
+          },
         }))
       }
     }
@@ -570,6 +629,10 @@ export default function App() {
         ...current,
         [response.conversation.id]: response.job,
       }))
+      setLatestJobLoadStateByConversation((current) => ({
+        ...current,
+        [response.conversation.id]: { status: 'loaded' },
+      }))
       setMessagesByConversation((current) => ({
         ...current,
         [response.conversation.id]: undefined,
@@ -589,6 +652,8 @@ export default function App() {
     }
 
     setChatViewState({ mode: 'history' })
+    activeRewriteRequestRef.current = null
+    setRewritePending(false)
     setRewriteDraft({
       targetMessageId: message.id,
       originalMessage: message.text,
@@ -605,6 +670,15 @@ export default function App() {
       return
     }
 
+    const requestId = rewriteRequestCounterRef.current + 1
+    rewriteRequestCounterRef.current = requestId
+    activeRewriteRequestRef.current = {
+      requestId,
+      conversationId: selectedConversationId,
+      targetMessageId: rewriteDraft.targetMessageId,
+      targetMessageTimestamp: rewriteDraft.targetMessageTimestamp,
+    }
+
     setRewritePending(true)
     setRewriteDraft((current) => (current ? { ...current, errorMessage: null } : current))
 
@@ -616,6 +690,22 @@ export default function App() {
         mode: rewriteDraft.mode,
         turn_count: rewriteDraft.turnCount,
       })
+
+      if (
+        !isRewriteRequestCurrent({
+          activeRequest: activeRewriteRequestRef.current,
+          requestId,
+          conversationId: selectedConversationIdRef.current,
+          draft: rewriteDraftRef.current
+            ? {
+                targetMessageId: rewriteDraftRef.current.targetMessageId,
+                targetMessageTimestamp: rewriteDraftRef.current.targetMessageTimestamp,
+              }
+            : null,
+        })
+      ) {
+        return
+      }
 
       setChatViewState(
         enterBranchView(
@@ -629,7 +719,24 @@ export default function App() {
         ),
       )
       setRewriteDraft(null)
+      activeRewriteRequestRef.current = null
     } catch (error) {
+      if (
+        !isRewriteRequestCurrent({
+          activeRequest: activeRewriteRequestRef.current,
+          requestId,
+          conversationId: selectedConversationIdRef.current,
+          draft: rewriteDraftRef.current
+            ? {
+                targetMessageId: rewriteDraftRef.current.targetMessageId,
+                targetMessageTimestamp: rewriteDraftRef.current.targetMessageTimestamp,
+              }
+            : null,
+        })
+      ) {
+        return
+      }
+
       setRewriteDraft((current) =>
         current
           ? {
@@ -639,7 +746,10 @@ export default function App() {
           : current,
       )
     } finally {
-      setRewritePending(false)
+      if (activeRewriteRequestRef.current?.requestId === requestId) {
+        activeRewriteRequestRef.current = null
+        setRewritePending(false)
+      }
     }
   }
 

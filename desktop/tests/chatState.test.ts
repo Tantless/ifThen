@@ -9,7 +9,9 @@ import { RewritePanel } from '../src/components/RewritePanel'
 import {
   enterBranchView,
   exitBranchView,
+  isRewriteRequestCurrent,
   resolveInspectorSnapshotAt,
+  shouldStartLatestJobLoad,
   type ChatViewState,
 } from '../src/lib/chatState'
 import type { PersonaProfileRead, SimulationRead, SnapshotRead, TopicRead } from '../src/types/api'
@@ -100,6 +102,31 @@ describe('chatState', () => {
         ],
       ),
     ).toBe('2026-04-07T09:00:00Z')
+  })
+
+  it('invalidates stale rewrite requests when the active draft changes', () => {
+    expect(
+      isRewriteRequestCurrent({
+        activeRequest: {
+          requestId: 3,
+          conversationId: 21,
+          targetMessageId: 9,
+          targetMessageTimestamp: '2026-04-07T12:00:00Z',
+        },
+        requestId: 3,
+        conversationId: 21,
+        draft: {
+          targetMessageId: 9,
+          targetMessageTimestamp: '2026-04-07T12:01:00Z',
+        },
+      }),
+    ).toBe(false)
+  })
+
+  it('retries latest-job loading after the retry window elapses', () => {
+    expect(shouldStartLatestJobLoad({ status: 'retry_wait', retryAt: 2000 }, 1500)).toBe(false)
+    expect(shouldStartLatestJobLoad({ status: 'retry_wait', retryAt: 2000 }, 2000)).toBe(true)
+    expect(shouldStartLatestJobLoad({ status: 'loaded' }, 3000)).toBe(false)
   })
 })
 

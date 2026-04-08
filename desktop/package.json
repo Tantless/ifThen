@@ -8,7 +8,7 @@
     "dev": "vite",
     "build:electron": "tsc -p tsconfig.node.json --outDir dist-electron --rootDir . --noEmit false",
     "build": "vite build && npm run build:electron",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest --root .. run"
   },
   "dependencies": {

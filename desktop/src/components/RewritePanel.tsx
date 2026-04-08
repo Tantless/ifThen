@@ -50,7 +50,7 @@ export function RewritePanel({
           <p className="rewrite-panel__eyebrow">改写并推演</p>
           <h3>重写当前消息并生成分支</h3>
         </div>
-        <button type="button" onClick={onCancel}>
+        <button type="button" disabled={pending} onClick={onCancel}>
           取消
         </button>
       </div>
@@ -69,6 +69,7 @@ export function RewritePanel({
         <span className="rewrite-panel__label">改写内容</span>
         <textarea
           rows={4}
+          disabled={pending}
           value={replacementContent}
           onChange={handleReplacementChange}
         />
@@ -77,7 +78,7 @@ export function RewritePanel({
       <div className="rewrite-panel__controls">
         <label>
           <span className="rewrite-panel__label">推演模式</span>
-          <select value={mode} onChange={handleModeChange}>
+          <select disabled={pending} value={mode} onChange={handleModeChange}>
             <option value="single_reply">单轮回复</option>
             <option value="short_thread">短链推演</option>
           </select>
@@ -89,6 +90,7 @@ export function RewritePanel({
             type="number"
             min={1}
             max={6}
+            disabled={pending}
             value={turnCount}
             onChange={handleTurnCountChange}
           />
