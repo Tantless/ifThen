@@ -1,8 +1,10 @@
 import React from 'react'
+import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { AppShell } from '../src/components/AppShell'
+import { BootScreen } from '../src/components/BootScreen'
 import { SidebarNav } from '../src/components/SidebarNav'
 
 describe('desktop shell chrome', () => {
@@ -22,5 +24,15 @@ describe('desktop shell chrome', () => {
 
     expect(html).toContain('sidebar-nav__brand')
     expect(html).toContain('sidebar-nav__footer')
+  })
+
+  it('keeps boot chrome safe from desktop-window global side effects', () => {
+    const html = renderToStaticMarkup(<BootScreen label="加载中" detail="准备启动" />)
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+
+    expect(html).toContain('boot-screen')
+    expect(html).toContain('boot-card')
+    expect(styles).not.toMatch(/#root\s*\{[^}]*padding\s*:/s)
+    expect(styles).toMatch(/\.boot-card(?:\s+h1)?\s*\{[^}]*color\s*:/s)
   })
 })

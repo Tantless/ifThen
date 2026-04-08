@@ -30,7 +30,6 @@ body {
 
 #root {
   min-height: 100vh;
-  padding: 18px;
 }
 
 .boot-screen {
@@ -47,6 +46,7 @@ body {
   border-radius: 20px;
   background: rgba(15, 23, 42, 0.88);
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.42);
+  color: #f8fafc;
 }
 
 .boot-card h1 {
@@ -78,6 +78,7 @@ body {
   display: grid;
   grid-template-columns: 84px 320px minmax(0, 1fr);
   min-height: calc(100vh - 36px);
+  margin: 18px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: var(--desktop-window-radius);
