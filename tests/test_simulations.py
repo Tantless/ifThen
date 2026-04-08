@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
@@ -778,17 +780,21 @@ def test_simulations_endpoint_returns_503_when_llm_is_not_configured(tmp_path, m
             )
         )
 
-    with TestClient(create_app()) as client:
-        response = client.post(
-            "/simulations",
-            json={
-                "conversation_id": 1,
-                "target_message_id": 2,
-                "replacement_content": "如果你不忙，我们慢慢说也可以",
-                "mode": "single_reply",
-                "turn_count": 1,
-            },
-        )
+    with patch(
+        "if_then_mvp.runtime_llm.load_local_llm_config",
+        side_effect=RuntimeError("local config unavailable"),
+    ):
+        with TestClient(create_app()) as client:
+            response = client.post(
+                "/simulations",
+                json={
+                    "conversation_id": 1,
+                    "target_message_id": 2,
+                    "replacement_content": "如果你不忙，我们慢慢说也可以",
+                    "mode": "single_reply",
+                    "turn_count": 1,
+                },
+            )
 
     assert response.status_code == 503
     assert "Simulation LLM is not configured" in response.json()["detail"]
