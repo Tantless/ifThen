@@ -43,6 +43,10 @@ export function RewritePanel({
     onTurnCountChange(Number((event.currentTarget as HTMLInputElement).value))
   }
 
+  const formattedTimestamp = Number.isNaN(Date.parse(targetMessageTimestamp))
+    ? targetMessageTimestamp || '—'
+    : new Date(targetMessageTimestamp).toLocaleString('zh-CN')
+
   return (
     <section className="rewrite-panel">
       <div className="rewrite-panel__header">
@@ -55,14 +59,15 @@ export function RewritePanel({
         </button>
       </div>
 
-      <div className="rewrite-panel__section">
-        <span className="rewrite-panel__label">原消息</span>
-        <p className="rewrite-panel__quote">{originalMessage || '（空消息）'}</p>
-      </div>
-
-      <div className="rewrite-panel__section">
-        <span className="rewrite-panel__label">发送时间</span>
-        <p className="rewrite-panel__quote">{new Date(targetMessageTimestamp).toLocaleString('zh-CN')}</p>
+      <div className="rewrite-panel__context">
+        <div className="rewrite-panel__section rewrite-panel__context-card">
+          <span className="rewrite-panel__label">原消息</span>
+          <p className="rewrite-panel__quote">{originalMessage || '（空消息）'}</p>
+        </div>
+        <div className="rewrite-panel__section rewrite-panel__context-card">
+          <span className="rewrite-panel__label">发送时间</span>
+          <p className="rewrite-panel__timestamp">{formattedTimestamp}</p>
+        </div>
       </div>
 
       <label className="rewrite-panel__section">

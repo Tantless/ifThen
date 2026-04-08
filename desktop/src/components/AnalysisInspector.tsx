@@ -73,79 +73,81 @@ export function AnalysisInspector({
         </button>
       </div>
 
-      {isLoading ? <p className="analysis-inspector__state">正在加载分析视角…</p> : null}
-      {errorMessage ? (
-        <p className="analysis-inspector__state analysis-inspector__state--error" role="alert">
-          {errorMessage}
-        </p>
-      ) : null}
+      <section className="analysis-inspector__panel">
+        {isLoading ? <p className="analysis-inspector__state">正在加载分析视角…</p> : null}
+        {errorMessage ? (
+          <p className="analysis-inspector__state analysis-inspector__state--error" role="alert">
+            {errorMessage}
+          </p>
+        ) : null}
 
-      {!isLoading && !errorMessage ? (
-        <>
-          {currentTab === 'topics' ? (
-            <section className="analysis-inspector__section" role="tabpanel">
-              <h4>Topics</h4>
-              {topics.length === 0 ? (
-                <p className="analysis-inspector__empty">暂无 topics 数据。</p>
-              ) : (
-                <ul>
-                  {topics.map((topic) => (
-                    <li key={topic.id}>
-                      <strong>{topic.topic_name}</strong>
-                      <p>{topic.topic_summary}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ) : null}
+        {!isLoading && !errorMessage ? (
+          <>
+            {currentTab === 'topics' ? (
+              <section className="analysis-inspector__section" role="tabpanel">
+                <h4>Topics</h4>
+                {topics.length === 0 ? (
+                  <p className="analysis-inspector__empty">暂无 topics 数据。</p>
+                ) : (
+                  <ul>
+                    {topics.map((topic) => (
+                      <li key={topic.id}>
+                        <strong>{topic.topic_name}</strong>
+                        <p>{topic.topic_summary}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            ) : null}
 
-          {currentTab === 'profile' ? (
-            <section className="analysis-inspector__section" role="tabpanel">
-              <h4>Persona</h4>
-              {profile.length === 0 ? (
-                <p className="analysis-inspector__empty">暂无 persona 数据。</p>
-              ) : (
-                <ul>
-                  {profile.map((item) => (
-                    <li key={item.subject_role}>
-                      <strong>{item.subject_role}</strong>
-                      <p>{item.global_persona_summary}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ) : null}
+            {currentTab === 'profile' ? (
+              <section className="analysis-inspector__section" role="tabpanel">
+                <h4>Persona</h4>
+                {profile.length === 0 ? (
+                  <p className="analysis-inspector__empty">暂无 persona 数据。</p>
+                ) : (
+                  <ul>
+                    {profile.map((item) => (
+                      <li key={item.subject_role}>
+                        <strong>{item.subject_role}</strong>
+                        <p>{item.global_persona_summary}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            ) : null}
 
-          {currentTab === 'snapshot' ? (
-            <section className="analysis-inspector__section" role="tabpanel">
-              <h4>Snapshot</h4>
-              {snapshot ? (
-                <div className="analysis-inspector__snapshot">
-                  <p>{snapshot.snapshot_summary}</p>
-                  <dl>
-                    <div>
-                      <dt>关系温度</dt>
-                      <dd>{snapshot.relationship_temperature}</dd>
-                    </div>
-                    <div>
-                      <dt>关系阶段</dt>
-                      <dd>{snapshot.relationship_phase}</dd>
-                    </div>
-                    <div>
-                      <dt>紧张程度</dt>
-                      <dd>{snapshot.tension_level}</dd>
-                    </div>
-                  </dl>
-                </div>
-              ) : (
-                <p className="analysis-inspector__empty">暂无 snapshot 数据。</p>
-              )}
-            </section>
-          ) : null}
-        </>
-      ) : null}
+            {currentTab === 'snapshot' ? (
+              <section className="analysis-inspector__section" role="tabpanel">
+                <h4>Snapshot</h4>
+                {snapshot ? (
+                  <div className="analysis-inspector__snapshot">
+                    <p>{snapshot.snapshot_summary}</p>
+                    <dl>
+                      <div>
+                        <dt>关系温度</dt>
+                        <dd>{snapshot.relationship_temperature}</dd>
+                      </div>
+                      <div>
+                        <dt>关系阶段</dt>
+                        <dd>{snapshot.relationship_phase}</dd>
+                      </div>
+                      <div>
+                        <dt>紧张程度</dt>
+                        <dd>{snapshot.tension_level}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                ) : (
+                  <p className="analysis-inspector__empty">暂无 snapshot 数据。</p>
+                )}
+              </section>
+            ) : null}
+          </>
+        ) : null}
+      </section>
     </aside>
   )
 }

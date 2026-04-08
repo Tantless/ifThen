@@ -10,13 +10,17 @@ export function BranchView({ originalMessage, branchState, onBack }: BranchViewP
   return (
     <section className="branch-view">
       <div className="branch-view__header">
+        <div>
+          <p className="branch-view__eyebrow">分支分析</p>
+          <h3>消息改写影响</h3>
+          <p className="branch-view__subtitle">分支推演 #{branchState.simulation.id}</p>
+        </div>
         <button type="button" onClick={onBack}>
           返回原始历史
         </button>
-        <p>分支推演 #{branchState.simulation.id}</p>
       </div>
 
-      <div className="branch-view__grid">
+      <div className="branch-view__summary-grid">
         <article className="branch-view__card">
           <span className="branch-view__label">原消息</span>
           <p>{originalMessage || '（空消息）'}</p>
@@ -35,8 +39,8 @@ export function BranchView({ originalMessage, branchState, onBack }: BranchViewP
         </article>
       </div>
 
-      <section className="branch-view__turns">
-        <h3>短链 simulated turns</h3>
+      <section className="branch-view__turns branch-view__turns--secondary">
+        <h3>短链推演回合</h3>
         {branchState.simulation.simulated_turns.length === 0 ? (
           <p className="branch-view__empty">当前没有可展示的推演回合。</p>
         ) : (

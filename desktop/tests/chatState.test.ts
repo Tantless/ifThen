@@ -149,6 +149,7 @@ describe('Task 5 desktop components', () => {
     )
 
     expect(html).toContain('改写并推演')
+    expect(html).toContain('rewrite-panel__context')
     expect(html).toContain('今天先到这里吧')
     expect(html).toContain('发送时间')
     expect(html).toContain('2026')
@@ -172,6 +173,8 @@ describe('Task 5 desktop components', () => {
     )
 
     expect(html).toContain('返回原始历史')
+    expect(html).toContain('branch-view__summary-grid')
+    expect(html).toContain('branch-view__turns--secondary')
     expect(html).toContain('改写内容')
     expect(html).toContain('那我们再试一次吧')
     expect(html).toContain('谢谢你愿意继续聊')
@@ -224,6 +227,9 @@ describe('Task 5 desktop components', () => {
     )
 
     expect(html).toContain('分析侧栏')
+    expect(html).toContain('analysis-inspector__tabs')
+    expect(html).toContain('analysis-inspector__tab')
+    expect(html).toContain('analysis-inspector__panel')
     expect(html).toContain('Topics')
     expect(html).toContain('Persona')
     expect(html).toContain('Snapshot')
