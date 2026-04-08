@@ -24,12 +24,12 @@ export function ConversationListPane({
 }: ConversationListPaneProps) {
   return (
     <section className="conversation-list-pane">
-      <header className="conversation-list-pane__header">
-        <div>
+      <header className="conversation-list-pane__toolbar">
+        <div className="conversation-list-pane__title-group">
           <p className="conversation-list-pane__eyebrow">会话</p>
           <h2>历史聊天</h2>
         </div>
-        <div className="conversation-list-pane__actions">
+        <div className="conversation-list-pane__toolbar-actions">
           <button type="button" onClick={onOpenSettings}>
             设置
           </button>
@@ -39,11 +39,14 @@ export function ConversationListPane({
         </div>
       </header>
 
-      <label className="conversation-list-pane__search">
-        <span>搜索会话</span>
+      <label className="conversation-list-pane__search-shell">
+        <span className="conversation-list-pane__search-icon" aria-hidden="true">
+          ⌕
+        </span>
         <input
           type="search"
           value={searchValue}
+          aria-label="搜索会话"
           placeholder="按标题或联系人筛选"
           onChange={(event) => onSearchChange(event.target.value)}
         />

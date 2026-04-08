@@ -8,10 +8,12 @@ type MessageTimelineProps = {
 
 export function MessageTimeline({ messages, onRewriteMessage }: MessageTimelineProps) {
   return (
-    <div className="message-timeline">
-      {messages.map((message) => (
-        <MessageBubble key={message.id} message={message} onRewrite={onRewriteMessage} />
-      ))}
-    </div>
+    <section className="message-timeline" aria-label="消息时间线">
+      <div className="message-timeline__items">
+        {messages.map((message) => (
+          <MessageBubble key={message.id} message={message} onRewrite={onRewriteMessage} />
+        ))}
+      </div>
+    </section>
   )
 }

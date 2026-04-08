@@ -47,26 +47,28 @@ export function ChatPane({
 
   return (
     <section className="chat-pane">
-      <ChatHeader
-        title={title}
-        subtitle={subtitle ?? ''}
-        status={status}
-        progressPercent={progressPercent}
-        actions={headerActions}
-      />
-      <div className={`chat-pane__body${detailPanel ? ' chat-pane__body--split' : ''}`}>
-        <div className="chat-pane__main">
-          {children ?? (
-            messages.length === 0 ? (
-              <div className="chat-pane__empty">
-                <p>当前会话还没有可显示的历史消息。</p>
-              </div>
-            ) : (
-              <MessageTimeline messages={messages} onRewriteMessage={onRewriteMessage} />
-            )
-          )}
+      <div className="chat-pane__surface">
+        <ChatHeader
+          title={title}
+          subtitle={subtitle ?? ''}
+          status={status}
+          progressPercent={progressPercent}
+          actions={headerActions}
+        />
+        <div className={`chat-pane__body${detailPanel ? ' chat-pane__body--split' : ''}`}>
+          <div className="chat-pane__main">
+            {children ?? (
+              messages.length === 0 ? (
+                <div className="chat-pane__empty">
+                  <p>当前会话还没有可显示的历史消息。</p>
+                </div>
+              ) : (
+                <MessageTimeline messages={messages} onRewriteMessage={onRewriteMessage} />
+              )
+            )}
+          </div>
+          {detailPanel}
         </div>
-        {detailPanel}
       </div>
     </section>
   )

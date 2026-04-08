@@ -12,13 +12,15 @@ type ChatHeaderProps = {
 export function ChatHeader({ title, subtitle, status, progressPercent, actions }: ChatHeaderProps) {
   return (
     <header className="chat-header">
-      <div>
+      <div className="chat-header__title-group">
         <p className="chat-header__eyebrow">当前会话</p>
-        <h2>{title}</h2>
+        <div className="chat-header__identity">
+          <h2>{title}</h2>
+        </div>
         <p className="chat-header__subtitle">{subtitle}</p>
       </div>
       <div className="chat-header__meta">
-        {actions}
+        {actions ? <div className="chat-header__actions">{actions}</div> : null}
         <AnalysisStatusBadge status={status} progressPercent={progressPercent} />
       </div>
     </header>

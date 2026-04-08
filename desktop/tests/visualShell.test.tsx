@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 
 import { AppShell } from '../src/components/AppShell'
 import { BootScreen } from '../src/components/BootScreen'
+import { ChatPane } from '../src/components/ChatPane'
+import { ConversationListPane } from '../src/components/ConversationListPane'
 import { SidebarNav } from '../src/components/SidebarNav'
 
 describe('desktop shell chrome', () => {
@@ -24,6 +26,40 @@ describe('desktop shell chrome', () => {
 
     expect(html).toContain('sidebar-nav__brand')
     expect(html).toContain('sidebar-nav__footer')
+  })
+
+  it('renders a desktop-style conversation toolbar and search shell', () => {
+    const html = renderToStaticMarkup(
+      <ConversationListPane
+        items={[]}
+        selectedConversationId={null}
+        searchValue=""
+        emptyMessage="empty"
+        onSearchChange={() => undefined}
+        onImportConversation={() => undefined}
+        onOpenSettings={() => undefined}
+        onSelectConversation={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('conversation-list-pane__toolbar')
+    expect(html).toContain('conversation-list-pane__search-shell')
+  })
+
+  it('renders a split chat surface wrapper when detail panel is present', () => {
+    const html = renderToStaticMarkup(
+      <ChatPane
+        title="小李"
+        subtitle="来源：qq_text"
+        status="completed"
+        progressPercent={100}
+        messages={[]}
+        detailPanel={<aside>inspector</aside>}
+      />,
+    )
+
+    expect(html).toContain('chat-pane__surface')
+    expect(html).toContain('chat-pane__body--split')
   })
 
   it('keeps boot chrome safe from desktop-window global side effects', () => {

@@ -262,6 +262,8 @@ describe('Task 5 desktop components', () => {
       }),
     )
 
+    expect(enabledHtml).toContain('message-bubble__avatar-slot')
+    expect(enabledHtml).toContain('message-bubble__stack')
     expect(enabledHtml).toContain('message-bubble__actions--hover')
     expect(enabledHtml).toContain('改写并推演')
     expect(disabledHtml).not.toContain('改写并推演')
