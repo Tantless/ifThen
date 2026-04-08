@@ -3,13 +3,14 @@ import { MessageBubble } from './MessageBubble'
 
 type MessageTimelineProps = {
   messages: MessageBubbleModel[]
+  onRewriteMessage?: (message: MessageBubbleModel) => void
 }
 
-export function MessageTimeline({ messages }: MessageTimelineProps) {
+export function MessageTimeline({ messages, onRewriteMessage }: MessageTimelineProps) {
   return (
     <div className="message-timeline">
       {messages.map((message) => (
-        <MessageBubble key={message.id} message={message} />
+        <MessageBubble key={message.id} message={message} onRewrite={onRewriteMessage} />
       ))}
     </div>
   )

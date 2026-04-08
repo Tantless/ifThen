@@ -292,6 +292,12 @@ body {
   color: #0f172a;
 }
 
+.chat-header__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .chat-header__eyebrow {
   margin: 0;
   color: #2563eb;
@@ -308,6 +314,27 @@ body {
 .chat-header__subtitle {
   margin: 8px 0 0;
   color: #475569;
+}
+
+.chat-pane__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-pane__body--split {
+  align-items: stretch;
+}
+
+.chat-pane__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-pane__stack {
+  display: grid;
+  min-height: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .chat-pane__empty {
@@ -353,6 +380,11 @@ body {
   background: rgba(219, 234, 254, 0.92);
 }
 
+.message-bubble__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .message-bubble__meta {
   display: flex;
   justify-content: space-between;
@@ -366,8 +398,195 @@ body {
   white-space: pre-wrap;
 }
 
-.message-bubble__rewrite-hint {
+.message-bubble__rewrite-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rewrite-panel,
+.branch-view,
+.analysis-inspector {
+  color: #0f172a;
+}
+
+.rewrite-panel {
+  display: grid;
+  gap: 16px;
+  padding: 24px 32px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.rewrite-panel__header,
+.branch-view__header,
+.analysis-inspector__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.rewrite-panel__eyebrow,
+.analysis-inspector__eyebrow {
+  margin: 0 0 6px;
   color: #2563eb;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rewrite-panel h3,
+.analysis-inspector h3,
+.branch-view__turns h3 {
+  margin: 0;
+}
+
+.rewrite-panel__section,
+.analysis-inspector__section {
+  display: grid;
+  gap: 8px;
+}
+
+.rewrite-panel__label,
+.branch-view__label {
+  color: #475569;
   font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rewrite-panel__quote {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.92);
+  color: #1e293b;
+}
+
+.rewrite-panel textarea,
+.rewrite-panel select,
+.rewrite-panel input {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.48);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: white;
+  font: inherit;
+}
+
+.rewrite-panel__controls {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rewrite-panel__controls label {
+  display: grid;
+  gap: 8px;
+}
+
+.rewrite-panel__error,
+.analysis-inspector__state--error {
+  margin: 0;
+  color: #b91c1c;
+}
+
+.rewrite-panel__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.branch-view {
+  display: grid;
+  gap: 20px;
+  height: 100%;
+  padding: 24px 32px 32px;
+  overflow-y: auto;
+}
+
+.branch-view__header p,
+.branch-view__card p,
+.branch-view__turn p,
+.analysis-inspector__section p,
+.analysis-inspector__snapshot p {
+  margin: 0;
+}
+
+.branch-view__grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.branch-view__card,
+.analysis-inspector__section {
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.branch-view__turns ol,
+.analysis-inspector__section ul {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding-left: 20px;
+}
+
+.branch-view__turn {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.branch-view__turn-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.branch-view__empty,
+.analysis-inspector__empty,
+.analysis-inspector__state {
+  color: #475569;
+}
+
+.analysis-inspector {
+  display: grid;
+  gap: 16px;
+  width: 320px;
+  padding: 24px 20px;
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  overflow-y: auto;
+}
+
+.analysis-inspector__snapshot dl {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.analysis-inspector__snapshot dt {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.analysis-inspector__snapshot dd {
+  margin: 0;
   font-weight: 600;
 }

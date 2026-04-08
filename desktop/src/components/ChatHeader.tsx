@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { AnalysisStatusBadge } from './AnalysisStatusBadge'
 
 type ChatHeaderProps = {
@@ -5,9 +6,10 @@ type ChatHeaderProps = {
   subtitle: string
   status?: string | null
   progressPercent?: number | null
+  actions?: ReactNode
 }
 
-export function ChatHeader({ title, subtitle, status, progressPercent }: ChatHeaderProps) {
+export function ChatHeader({ title, subtitle, status, progressPercent, actions }: ChatHeaderProps) {
   return (
     <header className="chat-header">
       <div>
@@ -15,7 +17,10 @@ export function ChatHeader({ title, subtitle, status, progressPercent }: ChatHea
         <h2>{title}</h2>
         <p className="chat-header__subtitle">{subtitle}</p>
       </div>
-      <AnalysisStatusBadge status={status} progressPercent={progressPercent} />
+      <div className="chat-header__meta">
+        {actions}
+        <AnalysisStatusBadge status={status} progressPercent={progressPercent} />
+      </div>
     </header>
   )
 }

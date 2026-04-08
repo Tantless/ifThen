@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { MessageBubbleModel } from '../lib/adapters'
 import { ChatHeader } from './ChatHeader'
 import { ConversationEmptyState } from './ConversationEmptyState'
@@ -12,6 +13,10 @@ type ChatPaneProps = {
   loading?: boolean
   error?: boolean
   emptyVariant?: 'empty' | 'welcome'
+  headerActions?: ReactNode
+  detailPanel?: ReactNode
+  children?: ReactNode
+  onRewriteMessage?: (message: MessageBubbleModel) => void
 }
 
 export function ChatPane({
@@ -23,6 +28,10 @@ export function ChatPane({
   loading = false,
   error = false,
   emptyVariant = 'empty',
+  headerActions,
+  detailPanel,
+  children,
+  onRewriteMessage,
 }: ChatPaneProps) {
   if (loading) {
     return <ConversationEmptyState variant="loading" />
@@ -43,14 +52,22 @@ export function ChatPane({
         subtitle={subtitle ?? ''}
         status={status}
         progressPercent={progressPercent}
+        actions={headerActions}
       />
-      {messages.length === 0 ? (
-        <div className="chat-pane__empty">
-          <p>当前会话还没有可显示的历史消息。</p>
+      <div className={`chat-pane__body${detailPanel ? ' chat-pane__body--split' : ''}`}>
+        <div className="chat-pane__main">
+          {children ?? (
+            messages.length === 0 ? (
+              <div className="chat-pane__empty">
+                <p>当前会话还没有可显示的历史消息。</p>
+              </div>
+            ) : (
+              <MessageTimeline messages={messages} onRewriteMessage={onRewriteMessage} />
+            )
+          )}
         </div>
-      ) : (
-        <MessageTimeline messages={messages} />
-      )}
+        {detailPanel}
+      </div>
     </section>
   )
 }

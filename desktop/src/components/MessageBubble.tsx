@@ -2,9 +2,10 @@ import type { MessageBubbleModel } from '../lib/adapters'
 
 type MessageBubbleProps = {
   message: MessageBubbleModel
+  onRewrite?: (message: MessageBubbleModel) => void
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onRewrite }: MessageBubbleProps) {
   return (
     <article className={`message-bubble message-bubble--${message.align}`}>
       <div className="message-bubble__card">
@@ -13,8 +14,16 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <span>{new Date(message.timestamp).toLocaleString('zh-CN')}</span>
         </div>
         <p>{message.text || '（空消息）'}</p>
-        {message.canRewrite ? (
-          <span className="message-bubble__rewrite-hint">可在后续任务中改写推演</span>
+        {message.canRewrite && onRewrite ? (
+          <div className="message-bubble__actions">
+            <button
+              type="button"
+              className="message-bubble__rewrite-button"
+              onClick={() => onRewrite(message)}
+            >
+              改写并推演
+            </button>
+          </div>
         ) : null}
       </div>
     </article>

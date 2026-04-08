@@ -7,6 +7,10 @@ import { SettingsDrawer } from './components/SettingsDrawer'
 import { ImportDialog } from './components/ImportDialog'
 import { ConversationListPane } from './components/ConversationListPane'
 import { ChatPane } from './components/ChatPane'
+import { RewritePanel } from './components/RewritePanel'
+import { BranchView } from './components/BranchView'
+import { AnalysisInspector } from './components/AnalysisInspector'
+import { MessageTimeline } from './components/MessageTimeline'
 import { decideAppShellState, resolveShellHydrationStatus } from './lib/bootstrap'
 import {
   createImportFileBlob,
@@ -19,18 +23,75 @@ import {
   buildConversationListItem,
   buildMessageBubbleModel,
   buildSettingsFormState,
+  type MessageBubbleModel,
   type SettingsFormState,
 } from './lib/adapters'
-import { importConversation, listConversations, listMessages } from './lib/services/conversationService'
+import {
+  importConversation,
+  listConversations,
+  listMessages,
+  listTopics,
+  readProfile,
+  readSnapshot,
+} from './lib/services/conversationService'
 import { listConversationJobs, readJob } from './lib/services/jobService'
 import { readSettings, writeSetting } from './lib/services/settingsService'
-import type { ConversationRead, JobRead, MessageRead, SettingRead } from './types/api'
+import { createSimulation } from './lib/services/simulationService'
+import {
+  enterBranchView,
+  exitBranchView,
+  resolveInspectorSnapshotAt,
+  type ChatViewState,
+} from './lib/chatState'
+import type {
+  ConversationRead,
+  JobRead,
+  MessageRead,
+  PersonaProfileRead,
+  SettingRead,
+  SnapshotRead,
+  TopicRead,
+} from './types/api'
+
+type RewriteDraft = {
+  targetMessageId: number
+  originalMessage: string
+  targetMessageTimestamp: string
+  replacementContent: string
+  mode: 'single_reply' | 'short_thread'
+  turnCount: number
+  errorMessage: string | null
+}
 
 function isPollingJob(job: JobRead | null | undefined): job is JobRead {
   return job?.status === 'running' || job?.status === 'queued'
 }
 
+function renderHistoryContent(
+  messages: MessageBubbleModel[],
+  onRewriteMessage: (message: MessageBubbleModel) => void,
+) {
+  if (messages.length === 0) {
+    return (
+      <div className="chat-pane__empty">
+        <p>当前会话还没有可显示的历史消息。</p>
+      </div>
+    )
+  }
+
+  return <MessageTimeline messages={messages} onRewriteMessage={onRewriteMessage} />
+}
+
 export default function App() {
+  const [chatViewState, setChatViewState] = useState<ChatViewState>({ mode: 'history' })
+  const [rewriteDraft, setRewriteDraft] = useState<RewriteDraft | null>(null)
+  const [rewritePending, setRewritePending] = useState(false)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [inspectorLoading, setInspectorLoading] = useState(false)
+  const [inspectorError, setInspectorError] = useState<string | null>(null)
+  const [inspectorTopics, setInspectorTopics] = useState<TopicRead[]>([])
+  const [inspectorProfile, setInspectorProfile] = useState<PersonaProfileRead[]>([])
+  const [inspectorSnapshot, setInspectorSnapshot] = useState<SnapshotRead | null>(null)
   const [state, setState] = useState<BootState>({ phase: 'booting' })
   const [settings, setSettings] = useState<SettingRead[] | null>(null)
   const [conversations, setConversations] = useState<ConversationRead[] | null>(null)
@@ -86,6 +147,14 @@ export default function App() {
       setShellLoadError(false)
       setMessagesByConversation({})
       setMessageLoadErrorByConversation({})
+      setChatViewState({ mode: 'history' })
+      setRewriteDraft(null)
+      setInspectorOpen(false)
+      setInspectorLoading(false)
+      setInspectorError(null)
+      setInspectorTopics([])
+      setInspectorProfile([])
+      setInspectorSnapshot(null)
       return
     }
 
@@ -136,6 +205,8 @@ export default function App() {
   useEffect(() => {
     if (!conversations || conversations.length === 0) {
       setSelectedConversationId(null)
+      setChatViewState({ mode: 'history' })
+      setRewriteDraft(null)
       return
     }
 
@@ -161,10 +232,7 @@ export default function App() {
     : null
   const selectedConversationMessagesState =
     selectedConversationId === null ? undefined : messagesByConversation[selectedConversationId]
-  const settingsFormState = useMemo(
-    () => buildSettingsFormState(settings ?? []),
-    [settings],
-  )
+  const settingsFormState = useMemo(() => buildSettingsFormState(settings ?? []), [settings])
   const filteredConversationItems = useMemo(() => {
     const normalizedSearch = conversationSearch.trim().toLowerCase()
     const items = (conversations ?? []).map((conversation) =>
@@ -186,6 +254,37 @@ export default function App() {
     () => (selectedConversationMessagesState ?? []).map((message) => buildMessageBubbleModel(message)),
     [selectedConversationMessagesState],
   )
+  const snapshotAt = useMemo(
+    () =>
+      resolveInspectorSnapshotAt(
+        chatViewState,
+        (selectedConversationMessagesState ?? []).map((message) => ({
+          id: message.id,
+          timestamp: message.timestamp,
+        })),
+      ),
+    [chatViewState, selectedConversationMessagesState],
+  )
+  const branchOriginalMessage = useMemo(() => {
+    if (chatViewState.mode !== 'branch') {
+      return ''
+    }
+
+    return (
+      selectedConversationMessagesState?.find((message) => message.id === chatViewState.targetMessageId)?.content_text ?? ''
+    )
+  }, [chatViewState, selectedConversationMessagesState])
+
+  useEffect(() => {
+    setChatViewState({ mode: 'history' })
+    setRewriteDraft(null)
+    setInspectorOpen(false)
+    setInspectorLoading(false)
+    setInspectorError(null)
+    setInspectorTopics([])
+    setInspectorProfile([])
+    setInspectorSnapshot(null)
+  }, [selectedConversationId])
 
   useEffect(() => {
     if (state.phase !== 'ready' || selectedConversationId === null) {
@@ -321,6 +420,49 @@ export default function App() {
     }
   }, [selectedConversationId, selectedJob?.id, selectedJob?.status, state.phase])
 
+  useEffect(() => {
+    if (!inspectorOpen || state.phase !== 'ready' || selectedConversationId === null) {
+      return
+    }
+
+    let cancelled = false
+
+    const loadInspector = async () => {
+      setInspectorLoading(true)
+      setInspectorError(null)
+
+      const [topicsResult, profileResult, snapshotResult] = await Promise.allSettled([
+        listTopics(selectedConversationId),
+        readProfile(selectedConversationId),
+        snapshotAt ? readSnapshot(selectedConversationId, snapshotAt) : Promise.resolve(null),
+      ])
+
+      if (cancelled) {
+        return
+      }
+
+      setInspectorTopics(topicsResult.status === 'fulfilled' ? topicsResult.value : [])
+      setInspectorProfile(profileResult.status === 'fulfilled' ? profileResult.value : [])
+      setInspectorSnapshot(snapshotResult.status === 'fulfilled' ? snapshotResult.value : null)
+
+      if (
+        topicsResult.status === 'rejected' ||
+        profileResult.status === 'rejected' ||
+        snapshotResult.status === 'rejected'
+      ) {
+        setInspectorError('分析侧栏数据读取失败')
+      }
+
+      setInspectorLoading(false)
+    }
+
+    void loadInspector()
+
+    return () => {
+      cancelled = true
+    }
+  }, [inspectorOpen, selectedConversationId, snapshotAt, state.phase])
+
   const upsertSettings = (entries: SettingRead[], updates: SettingRead[]) => {
     const next = new Map(entries.map((entry) => [entry.setting_key, entry]))
 
@@ -401,6 +543,62 @@ export default function App() {
     }
   }
 
+  const handleOpenRewrite = (message: MessageBubbleModel) => {
+    setChatViewState({ mode: 'history' })
+    setRewriteDraft({
+      targetMessageId: message.id,
+      originalMessage: message.text,
+      targetMessageTimestamp: message.timestamp,
+      replacementContent: message.text,
+      mode: 'single_reply',
+      turnCount: 1,
+      errorMessage: null,
+    })
+  }
+
+  const handleSubmitRewrite = async () => {
+    if (!rewriteDraft || selectedConversationId === null) {
+      return
+    }
+
+    setRewritePending(true)
+    setRewriteDraft((current) => (current ? { ...current, errorMessage: null } : current))
+
+    try {
+      const simulation = await createSimulation({
+        conversation_id: selectedConversationId,
+        target_message_id: rewriteDraft.targetMessageId,
+        replacement_content: rewriteDraft.replacementContent.trim(),
+        mode: rewriteDraft.mode,
+        turn_count: rewriteDraft.turnCount,
+      })
+
+      setChatViewState(
+        enterBranchView(
+          { mode: 'history' },
+          {
+            targetMessageId: rewriteDraft.targetMessageId,
+            replacementContent: rewriteDraft.replacementContent.trim(),
+            simulation,
+            targetMessageTimestamp: rewriteDraft.targetMessageTimestamp,
+          },
+        ),
+      )
+      setRewriteDraft(null)
+    } catch (error) {
+      setRewriteDraft((current) =>
+        current
+          ? {
+              ...current,
+              errorMessage: error instanceof Error ? error.message : '推演失败',
+            }
+          : current,
+      )
+    } finally {
+      setRewritePending(false)
+    }
+  }
+
   const listEmptyMessage =
     hydrationStatus === 'loading'
       ? '正在读取会话…'
@@ -409,6 +607,56 @@ export default function App() {
         : filteredConversationItems.length === 0 && (conversations?.length ?? 0) > 0
           ? '没有匹配的会话。'
           : '还没有已导入会话，请先导入聊天记录。'
+
+  const chatChildren =
+    chatViewState.mode === 'branch' ? (
+      <BranchView
+        originalMessage={branchOriginalMessage}
+        branchState={chatViewState}
+        onBack={() => setChatViewState(exitBranchView(chatViewState))}
+      />
+    ) : rewriteDraft ? (
+      <div className="chat-pane__stack">
+        <RewritePanel
+          originalMessage={rewriteDraft.originalMessage}
+          replacementContent={rewriteDraft.replacementContent}
+          mode={rewriteDraft.mode}
+          turnCount={rewriteDraft.turnCount}
+          pending={rewritePending}
+          errorMessage={rewriteDraft.errorMessage}
+          onReplacementContentChange={(value) =>
+            setRewriteDraft((current) => (current ? { ...current, replacementContent: value } : current))
+          }
+          onModeChange={(value) =>
+            setRewriteDraft((current) =>
+              current
+                ? {
+                    ...current,
+                    mode: value,
+                    turnCount: value === 'single_reply' ? 1 : Math.max(2, current.turnCount),
+                  }
+                : current,
+            )
+          }
+          onTurnCountChange={(value) =>
+            setRewriteDraft((current) =>
+              current
+                ? {
+                    ...current,
+                    turnCount:
+                      current.mode === 'single_reply'
+                        ? 1
+                        : Math.min(6, Math.max(2, Number.isFinite(value) ? Math.round(value) : 2)),
+                  }
+                : current,
+            )
+          }
+          onSubmit={handleSubmitRewrite}
+          onCancel={() => setRewriteDraft(null)}
+        />
+        {renderHistoryContent(selectedMessageModels, handleOpenRewrite)}
+      </div>
+    ) : undefined
 
   if (state.phase !== 'ready') {
     return <BootScreen label={label} detail={state.detail} />
@@ -443,7 +691,28 @@ export default function App() {
             loading={hydrationStatus === 'loading' || (selectedConversationId !== null && selectedConversationMessagesState === undefined)}
             error={hydrationStatus === 'error' || (selectedConversationId !== null && messageLoadErrorByConversation[selectedConversationId] === true)}
             emptyVariant={shellState?.showWelcome ? 'welcome' : 'empty'}
-          />
+            headerActions={
+              selectedConversationId !== null ? (
+                <button type="button" onClick={() => setInspectorOpen((current) => !current)}>
+                  {inspectorOpen ? '隐藏分析' : '分析侧栏'}
+                </button>
+              ) : null
+            }
+            detailPanel={
+              <AnalysisInspector
+                open={inspectorOpen}
+                loading={inspectorLoading}
+                errorMessage={inspectorError}
+                topics={inspectorTopics}
+                profile={inspectorProfile}
+                snapshot={inspectorSnapshot}
+                onClose={() => setInspectorOpen(false)}
+              />
+            }
+            onRewriteMessage={handleOpenRewrite}
+          >
+            {chatChildren}
+          </ChatPane>
         }
       />
       <WelcomeModal
