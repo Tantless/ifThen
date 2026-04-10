@@ -1,8 +1,10 @@
 import { app, BrowserWindow, Menu } from 'electron'
+import { release as getOsRelease } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { waitForHealth } from './backend/health.js'
 import { buildPythonLaunchSpec, getDesktopBackendPaths, resolveDesktopRepoRoot } from './backend/paths.js'
 import { BackendProcessManager } from './backend/processManager.js'
+import { getWindowsAppearanceOptions } from './backend/windowAppearance.js'
 import { registerDesktopIpc } from './ipc.js'
 
 const processManager = new BackendProcessManager()
@@ -26,14 +28,17 @@ async function bootstrapBackend() {
 }
 
 export async function createWindow() {
+  const appearanceOptions = getWindowsAppearanceOptions({
+    platform: process.platform,
+    release: getOsRelease(),
+  })
+
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    frame: false,
-    titleBarStyle: 'hidden',
-    backgroundColor: '#f5f5f5',
+    ...appearanceOptions,
     show: false,
     webPreferences: {
       preload: fileURLToPath(new URL('./preload.cjs', import.meta.url)),
