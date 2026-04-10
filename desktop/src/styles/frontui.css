@@ -24,6 +24,12 @@ body {
   background: #f5f5f5;
 }
 
+.desktop-shell-root--windows-modern {
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.08) 38%, transparent 64%),
+    #eef1f5;
+}
+
 .desktop-shell-main {
   display: flex;
   width: 100%;
@@ -33,6 +39,16 @@ body {
   flex-direction: column;
   overflow: hidden;
   background: #ffffff;
+}
+
+.desktop-shell-main--windowed {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow:
+    0 18px 48px rgba(18, 24, 33, 0.14),
+    0 2px 8px rgba(18, 24, 33, 0.08);
+  overflow: hidden;
 }
 
 .desktop-shell-titlebar,
@@ -55,6 +71,25 @@ body {
   display: flex;
   flex-shrink: 0;
   align-items: stretch;
+}
+
+.desktop-titlebar--windows-modern {
+  background: linear-gradient(to bottom, rgba(250, 251, 252, 0.82), rgba(244, 246, 248, 0.72));
+  border-bottom: 1px solid rgba(26, 32, 44, 0.08);
+  backdrop-filter: blur(18px) saturate(1.15);
+}
+
+.desktop-titlebar__button--windows:hover {
+  background: rgba(17, 24, 39, 0.06);
+}
+
+.desktop-titlebar__button--windows:active {
+  background: rgba(17, 24, 39, 0.1);
+}
+
+.desktop-titlebar__button--close:hover {
+  background: #e81123;
+  color: #fff;
 }
 
 .rewrite-result-enter {

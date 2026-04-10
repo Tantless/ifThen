@@ -76,7 +76,7 @@ export function WindowTitleBar({
 
   return (
     <header
-      className="desktop-titlebar flex h-10 w-full items-stretch justify-between border-b border-black/5 bg-[#ededed] text-[#1f1f1f] select-none"
+      className="desktop-titlebar desktop-titlebar--windows-modern flex h-10 w-full items-stretch justify-between text-[#1f1f1f] select-none"
       style={dragRegionStyle}
     >
       <div className="desktop-titlebar__drag-region flex min-w-0 flex-1 items-center px-4" style={dragRegionStyle}>
@@ -89,7 +89,7 @@ export function WindowTitleBar({
       >
         <button
           type="button"
-          className="desktop-titlebar__button desktop-titlebar__button--minimize flex h-10 w-12 items-center justify-center text-sm text-[#4c4c4c] transition-colors hover:bg-black/5"
+          className="desktop-titlebar__button desktop-titlebar__button--windows desktop-titlebar__button--minimize flex h-10 w-12 items-center justify-center text-sm text-[#4c4c4c] transition-colors"
           aria-label="最小化窗口"
           onClick={onMinimize}
         >
@@ -97,7 +97,7 @@ export function WindowTitleBar({
         </button>
         <button
           type="button"
-          className="desktop-titlebar__button desktop-titlebar__button--maximize flex h-10 w-12 items-center justify-center text-sm text-[#4c4c4c] transition-colors hover:bg-black/5"
+          className="desktop-titlebar__button desktop-titlebar__button--windows desktop-titlebar__button--maximize flex h-10 w-12 items-center justify-center text-sm text-[#4c4c4c] transition-colors"
           aria-label={maximizeLabel}
           onClick={onToggleMaximize}
         >
@@ -105,7 +105,7 @@ export function WindowTitleBar({
         </button>
         <button
           type="button"
-          className="desktop-titlebar__button desktop-titlebar__button--close flex h-10 w-12 items-center justify-center text-sm text-[#4c4c4c] transition-colors hover:bg-[#e81123] hover:text-white"
+          className="desktop-titlebar__button desktop-titlebar__button--windows desktop-titlebar__button--close flex h-10 w-12 items-center justify-center text-sm text-[#4c4c4c] transition-colors"
           aria-label="关闭窗口"
           onClick={onClose}
         >
