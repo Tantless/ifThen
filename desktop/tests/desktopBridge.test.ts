@@ -1,4 +1,33 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { DesktopBridge, DesktopWindowState } from '../src/types/desktop'
+
+const { exposeInMainWorld, invoke } = vi.hoisted(() => ({
+  exposeInMainWorld: vi.fn(),
+  invoke: vi.fn(),
+}))
+
+const preloadSource = readFileSync(new URL('../electron/preload.cts', import.meta.url), 'utf8')
+
+function executePreload() {
+  const loadModule = new Function('require', preloadSource)
+
+  loadModule((moduleId: string) => {
+    if (moduleId === 'electron') {
+      return {
+        contextBridge: {
+          exposeInMainWorld,
+        },
+        ipcRenderer: {
+          invoke,
+        },
+      }
+    }
+
+    throw new Error(`Unexpected preload dependency: ${moduleId}`)
+  })
+}
 
 import {
   decideAppShellState,
@@ -60,6 +89,53 @@ describe('readImportFile', () => {
       fileName: 'chat.txt',
       content: '第一行',
     })
+  })
+})
+
+describe('desktop preload bridge', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    executePreload()
+  })
+
+  it('exposes window controls on the desktop bridge', async () => {
+    expect(exposeInMainWorld).toHaveBeenCalledTimes(1)
+    expect(exposeInMainWorld).toHaveBeenCalledWith(
+      'desktop',
+      expect.objectContaining({
+        window: expect.objectContaining({
+          minimize: expect.any(Function),
+          toggleMaximize: expect.any(Function),
+          close: expect.any(Function),
+          getState: expect.any(Function),
+        }),
+      }),
+    )
+  })
+
+  it('routes desktop.window actions through the expected IPC channels', async () => {
+    const bridge = exposeInMainWorld.mock.calls[0]?.[1]
+
+    if (!bridge || typeof bridge !== 'object' || !('window' in bridge)) {
+      throw new Error('expected preload to expose a desktop window bridge')
+    }
+
+    const windowBridge = (bridge as DesktopBridge).window
+    invoke
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ isMaximized: true } satisfies DesktopWindowState)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ isMaximized: false } satisfies DesktopWindowState)
+
+    await windowBridge.minimize()
+    await expect(windowBridge.toggleMaximize()).resolves.toEqual({ isMaximized: true })
+    await windowBridge.close()
+    await expect(windowBridge.getState()).resolves.toEqual({ isMaximized: false })
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'desktop:window-minimize')
+    expect(invoke).toHaveBeenNthCalledWith(2, 'desktop:window-toggle-maximize')
+    expect(invoke).toHaveBeenNthCalledWith(3, 'desktop:window-close')
+    expect(invoke).toHaveBeenNthCalledWith(4, 'desktop:window-get-state')
   })
 })
 

@@ -25,25 +25,34 @@ describe('resolveDesktopRepoRoot', () => {
 })
 
 describe('electron esm source imports', () => {
-  it('uses explicit .js suffixes for runtime relative imports', () => {
+  it('uses explicit .js suffixes for relative imports under NodeNext resolution', () => {
     const runtimeImportFiles = [
+      'electron/backend/paths.ts',
+      'electron/backend/processManager.ts',
       'electron/main.ts',
       'electron/ipc.ts',
     ]
 
     for (const relativePath of runtimeImportFiles) {
       const source = fs.readFileSync(path.resolve(process.cwd(), relativePath), 'utf8')
-      const runtimeRelativeImports = source
+      const relativeImports = source
         .split('\n')
         .map((line) => line.trim())
-        .filter((line) => line.startsWith('import ') && !line.startsWith('import type '))
+        .filter((line) => line.startsWith('import '))
         .filter((line) => line.includes(" from './") || line.includes(' from "../'))
 
-      expect(runtimeRelativeImports, relativePath).not.toHaveLength(0)
-      for (const line of runtimeRelativeImports) {
+      expect(relativeImports, relativePath).not.toHaveLength(0)
+      for (const line of relativeImports) {
         expect(line, `${relativePath}: ${line}`).toMatch(/from ['"]\.\.?(?:\/[^'"]+)*\.js['"]$/)
       }
     }
+  })
+})
+
+describe('electron preload runtime contract', () => {
+  it('loads the CommonJS preload artifact expected by Electron', () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'electron/main.ts'), 'utf8')
+    expect(source).toContain("./preload.cjs")
   })
 })
 

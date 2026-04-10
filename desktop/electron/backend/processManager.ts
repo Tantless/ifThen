@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import type { BackendLaunchSpec, ManagedServiceState, ServiceState } from './contracts'
+import type { BackendLaunchSpec, ManagedServiceState, ServiceState } from './contracts.js'
 
 export function toManagedServiceState(input: {
   api: ServiceState

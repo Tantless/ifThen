@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { waitForHealth } from './backend/health.js'
 import { buildPythonLaunchSpec, getDesktopBackendPaths, resolveDesktopRepoRoot } from './backend/paths.js'
@@ -25,19 +25,23 @@ async function bootstrapBackend() {
   processManager.startWorker(buildPythonLaunchSpec('worker', repoRoot))
 }
 
-async function createWindow() {
+export async function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1100,
     minHeight: 700,
+    frame: false,
+    titleBarStyle: 'hidden',
+    backgroundColor: '#f5f5f5',
     show: false,
     webPreferences: {
-      preload: fileURLToPath(new URL('./preload.js', import.meta.url)),
+      preload: fileURLToPath(new URL('./preload.cjs', import.meta.url)),
       contextIsolation: true,
       nodeIntegration: false,
     },
   })
+  Menu.setApplicationMenu(null)
 
   const rendererUrl = process.env.IF_THEN_DESKTOP_RENDERER_URL
 

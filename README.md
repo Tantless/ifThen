@@ -19,16 +19,18 @@
 当前 `main` 分支已经具备：
 
 - Python 后端主链路（导入 / 解析 / 分析 / 检索 / 推演）
-- Electron 桌面宿主层
+- Electron frameless shell + custom title bar + full-window frontUI shell
 - React + TypeScript 桌面前端主流程
 - 一轮桌面前端 visual polish
+- frontUI 风格主壳迁移（主聊天界面已切到 frontUI 三栏布局）
 
 当前验证基线：
 
 - `python -m pytest -q` → `71 passed`
-- `cd desktop && npm test` → `9 files / 46 tests passed`
+- `cd desktop && npm test` → `12 files / 72 tests passed`
 - `cd desktop && npm run typecheck` → 通过
 - `cd desktop && npm run build` → 通过
+- 手工 GUI 验证需人工执行，当前未在本次自动验证中复核
 
 ---
 
@@ -46,7 +48,7 @@
 
 ### 桌面端能力
 
-- Electron 单窗口桌面应用壳
+- Electron frameless shell + custom title bar + full-window frontUI shell
 - 自动拉起本地 Python API / worker
 - 欢迎引导、设置抽屉、导入弹窗
 - 会话列表、历史聊天浏览、分析状态展示
@@ -213,6 +215,17 @@ npx electron .
 2. `cd D:\newProj\desktop && npm run build:electron`
 3. `cd D:\newProj\desktop && $env:IF_THEN_DESKTOP_RENDERER_URL = "http://127.0.0.1:5173"; npx electron .`
 
+当前阶段启动成功后，你应看到的是：
+
+- frontUI 风格三栏主界面
+- 左侧深色导航栏
+- 中间会话列表
+- 右侧聊天窗口
+
+如果开发态仍看到默认菜单栏或原生标题栏，应直接视为回归。
+
+如果当前还没有配置模型或尚未导入会话，首次进入仍会弹出欢迎引导。
+
 ### 本地构建后运行
 
 ```powershell
@@ -225,7 +238,7 @@ npx electron .
 
 - `desktop/dist/`：renderer 静态资源
 - `desktop/dist-electron/electron/main.js`
-- `desktop/dist-electron/electron/preload.js`
+- `desktop/dist-electron/electron/preload.cjs`
 
 ---
 
@@ -391,6 +404,7 @@ $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 ### 桌面应用阶段
 
 - Electron 桌面宿主层完成
+- 微信式窗口壳完成：Electron 无边框窗口、自定义标题栏、全窗口铺满
 - 桌面前端主流程完成：
   - 欢迎引导
   - 设置抽屉
@@ -401,6 +415,11 @@ $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
   - 分支视图
   - 分析侧栏
 - 桌面前端 visual polish 完成
+- frontUI 视觉迁移第一阶段完成：
+  - 主聊天界面已切到 frontUI 主壳
+  - frontUI 适配层已接入真实会话 / 消息数据
+  - 设置、导入、欢迎引导仍保留真实桌面流程
+  - 输入框发送、联系人 tab、文件 tab 仍存在过渡态实现
 
 ### 质量收口
 
@@ -424,8 +443,10 @@ $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 ## 相关文档
 
 - `docs/2026-04-08-milestone-progress-summary.md`
+- `docs/desktop-frontui-migration-status.md`
 - `docs/superpowers/specs/2026-04-05-counterfactual-conversation-mvp-design.md`
 - `docs/superpowers/specs/2026-04-06-simulation-llm-alignment-design.md`
 - `docs/superpowers/specs/2026-04-06-desktop-app-design.md`
 - `docs/superpowers/specs/2026-04-07-desktop-frontend-product-shell-design.md`
 - `docs/superpowers/specs/2026-04-08-desktop-frontend-visual-polish-design.md`
+- `docs/superpowers/specs/2026-04-08-frontui-visual-migration-design.md`

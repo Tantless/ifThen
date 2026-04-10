@@ -30,7 +30,11 @@ local_llm_config.py
 # Local temp / reference directories
 _tmp_qce_review/
 .omx/
+.superpowers/
 
 # Local backup files
 *.bak
 *.tmp
+
+# Desktop local package artifacts
+desktop/*.tgz

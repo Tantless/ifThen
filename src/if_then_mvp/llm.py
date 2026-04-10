@@ -31,17 +31,33 @@ class OpenAICompatibleTransport:
         headers = {"Authorization": f"Bearer {api_key}"}
         try:
             with httpx.Client(timeout=self.timeout_seconds) as client:
-                response = client.post(f"{base_url.rstrip('/')}/chat/completions", json=payload, headers=headers)
+                endpoint = f"{base_url.rstrip('/')}/chat/completions"
+                response = client.post(endpoint, json=payload, headers=headers)
                 response.raise_for_status()
+
+                try:
+                    response_payload = response.json()
+                except ValueError as exc:
+                    raise LLMClientError("Chat completion response did not contain valid JSON") from exc
+
+                try:
+                    return _extract_message_content(response_payload)
+                except LLMClientError as exc:
+                    if not _should_retry_with_stream(response_payload, exc):
+                        raise
+
+                    stream_response = client.post(
+                        endpoint,
+                        json={**payload, "stream": True},
+                        headers=headers,
+                    )
+                    stream_response.raise_for_status()
+                    return _extract_streaming_message_content(
+                        stream_response.text,
+                        missing_content_error=str(exc),
+                    )
         except httpx.HTTPError as exc:
             raise LLMClientError("Chat completion request failed") from exc
-
-        try:
-            response_payload = response.json()
-        except ValueError as exc:
-            raise LLMClientError("Chat completion response did not contain valid JSON") from exc
-
-        return _extract_message_content(response_payload)
 
 
 @dataclass(slots=True)
@@ -127,3 +143,61 @@ def _extract_message_content(response_payload: Any) -> str:
         raise LLMClientError("Chat completion message content must be a string")
 
     return content
+
+
+def _should_retry_with_stream(response_payload: Any, error: LLMClientError) -> bool:
+    if str(error) != "Chat completion message content must be a string":
+        return False
+
+    if not isinstance(response_payload, dict):
+        return False
+
+    choices = response_payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return False
+
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return False
+
+    message = first_choice.get("message")
+    return isinstance(message, dict)
+
+
+def _extract_streaming_message_content(sse_payload: str, *, missing_content_error: str) -> str:
+    content_parts: list[str] = []
+
+    for raw_line in sse_payload.splitlines():
+        line = raw_line.strip()
+        if not line or not line.startswith("data:"):
+            continue
+
+        data = line[5:].strip()
+        if data == "[DONE]":
+            break
+
+        try:
+            chunk_payload = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise LLMClientError("Chat completion stream chunk did not contain valid JSON") from exc
+
+        choices = chunk_payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            continue
+
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            continue
+
+        delta = first_choice.get("delta")
+        if not isinstance(delta, dict):
+            continue
+
+        content = delta.get("content")
+        if isinstance(content, str):
+            content_parts.append(content)
+
+    if not content_parts:
+        raise LLMClientError(missing_content_error)
+
+    return "".join(content_parts)

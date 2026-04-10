@@ -4,6 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from if_then_mvp.config import get_settings
@@ -51,6 +52,11 @@ from if_then_mvp.simulation import assess_branch, generate_first_reply, simulate
 
 INVALID_TEXT_DETAIL = "Uploaded file must be valid UTF-8 text"
 INVALID_EXPORT_DETAIL = "Uploaded file must be a valid QQ private chat export"
+DESKTOP_RENDERER_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "null",
+]
 
 
 def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
@@ -60,6 +66,13 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
         yield
 
     app = FastAPI(title="If Then MVP API", lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=DESKTOP_RENDERER_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -238,22 +251,20 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             return [PersonaProfileRead.model_validate(item, from_attributes=True) for item in rows]
 
     @app.get("/conversations/{conversation_id}/timeline-state", response_model=SnapshotRead)
-    def get_timeline_state(conversation_id: int, at: str) -> SnapshotRead:
+    def get_timeline_state(conversation_id: int, at: str | None = None) -> SnapshotRead:
         with session_scope() as session:
             _require_conversation(session, conversation_id)
-            row = (
-                session.execute(
-                    select(RelationshipSnapshot)
-                .where(
-                        RelationshipSnapshot.conversation_id == conversation_id,
-                        RelationshipSnapshot.as_of_time <= at,
-                    )
-                    .join(Message, RelationshipSnapshot.as_of_message_id == Message.id)
-                    .order_by(RelationshipSnapshot.as_of_time.desc(), Message.sequence_no.desc())
-                )
-                .scalars()
-                .first()
+            query = (
+                select(RelationshipSnapshot)
+                .join(Message, RelationshipSnapshot.as_of_message_id == Message.id)
+                .where(RelationshipSnapshot.conversation_id == conversation_id)
             )
+            if at is not None:
+                query = query.where(RelationshipSnapshot.as_of_time <= at)
+
+            row = session.execute(
+                query.order_by(RelationshipSnapshot.as_of_time.desc(), Message.sequence_no.desc())
+            ).scalars().first()
             if row is None:
                 raise HTTPException(status_code=404, detail="No snapshot found before the requested time")
             return SnapshotRead.model_validate(row, from_attributes=True)

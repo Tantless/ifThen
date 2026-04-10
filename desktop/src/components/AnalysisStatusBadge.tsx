@@ -1,26 +1,36 @@
+import type { JobRead } from '../types/api'
+import { resolveJobStageProgressLabel } from '../lib/analysisProgress'
+
 type AnalysisStatusBadgeProps = {
   status: string | null | undefined
   progressPercent?: number | null
+  currentStage?: string | null
+  currentStagePercent?: number | null
+  statusMessage?: string | null
 }
 
-function resolveStatusLabel(status: string | null | undefined, progressPercent?: number | null): string {
-  if (status === 'running' || status === 'queued') {
-    const progress = Math.max(0, Math.round(progressPercent ?? 0))
-    return progress > 0 ? `分析中 ${progress}%` : '排队分析中'
+function resolveStatusLabel(props: AnalysisStatusBadgeProps): string {
+  if (!props.status) {
+    return '待分析'
   }
 
-  if (status === 'completed') {
-    return '分析完成'
+  const pseudoJob: JobRead = {
+    id: -1,
+    status: props.status,
+    current_stage: props.currentStage ?? '',
+    progress_percent: Math.round(props.progressPercent ?? 0),
+    current_stage_percent: Math.round(props.currentStagePercent ?? props.progressPercent ?? 0),
+    current_stage_total_units: 0,
+    current_stage_completed_units: 0,
+    overall_total_units: 0,
+    overall_completed_units: 0,
+    status_message: props.statusMessage ?? null,
   }
 
-  if (status === 'failed') {
-    return '分析失败'
-  }
-
-  return '待分析'
+  return resolveJobStageProgressLabel(pseudoJob) || '待分析'
 }
 
-export function AnalysisStatusBadge({ status, progressPercent }: AnalysisStatusBadgeProps) {
+export function AnalysisStatusBadge(props: AnalysisStatusBadgeProps) {
   return (
     <span
       style={{
@@ -34,7 +44,7 @@ export function AnalysisStatusBadge({ status, progressPercent }: AnalysisStatusB
         fontWeight: 600,
       }}
     >
-      {resolveStatusLabel(status, progressPercent)}
+      {resolveStatusLabel(props)}
     </span>
   )
 }

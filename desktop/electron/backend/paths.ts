@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 
-import type { BackendLaunchSpec } from './contracts'
+import type { BackendLaunchSpec } from './contracts.js'
 
 const DEFAULT_HEALTH_URL = 'http://127.0.0.1:8000/health'
 

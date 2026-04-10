@@ -9,11 +9,15 @@ describe('buildSettingsFormState', () => {
         { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
         { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
         { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+        { setting_key: 'simulation.default_mode', setting_value: 'short_thread', is_secret: false },
+        { setting_key: 'simulation.default_turn_count', setting_value: '4', is_secret: false },
       ]),
     ).toEqual({
       baseUrl: 'https://example.test/v1',
       apiKey: 'secret-key',
       chatModel: 'gpt-5.4',
+      simulationMode: 'short_thread',
+      simulationTurnCount: 4,
     })
   })
 })

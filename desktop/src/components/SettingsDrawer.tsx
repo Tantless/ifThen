@@ -83,6 +83,40 @@ export function SettingsDrawer({
           />
         </label>
 
+        <label className="desktop-drawer__field">
+          <span className="desktop-drawer__label">默认推演模式</span>
+          <select
+            className="desktop-drawer__input"
+            value={formState.simulationMode}
+            onChange={(event) =>
+              setFormState((current) => ({
+                ...current,
+                simulationMode: event.target.value as SettingsFormState['simulationMode'],
+              }))
+            }
+          >
+            <option value="single_reply">单轮回复</option>
+            <option value="short_thread">短链推演</option>
+          </select>
+        </label>
+
+        <label className="desktop-drawer__field">
+          <span className="desktop-drawer__label">默认推演轮数</span>
+          <input
+            className="desktop-drawer__input"
+            type="number"
+            min={1}
+            max={6}
+            value={formState.simulationTurnCount}
+            onChange={(event) =>
+              setFormState((current) => ({
+                ...current,
+                simulationTurnCount: Math.min(6, Math.max(1, Number.parseInt(event.target.value, 10) || 1)),
+              }))
+            }
+          />
+        </label>
+
         {errorMessage ? (
           <p role="alert" className="desktop-drawer__error">
             {errorMessage}

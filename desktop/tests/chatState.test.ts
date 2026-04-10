@@ -92,7 +92,7 @@ describe('chatState', () => {
     ).toBe('2026-04-07T12:00:00Z')
   })
 
-  it('falls back to the latest visible message timestamp in history mode', () => {
+  it('returns null in history mode so snapshot tab can直接请求后端最新快照', () => {
     expect(
       resolveInspectorSnapshotAt(
         { mode: 'history' },
@@ -101,7 +101,7 @@ describe('chatState', () => {
           { id: 2, timestamp: '2026-04-07T09:00:00Z' },
         ],
       ),
-    ).toBe('2026-04-07T09:00:00Z')
+    ).toBeNull()
   })
 
   it('invalidates stale rewrite requests when the active draft changes', () => {

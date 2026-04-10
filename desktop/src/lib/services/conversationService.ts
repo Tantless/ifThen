@@ -59,7 +59,7 @@ export function readProfile(conversationId: number): Promise<PersonaProfileRead[
   return apiClient.get<PersonaProfileRead[]>(`/conversations/${conversationId}/profile`)
 }
 
-export function readSnapshot(conversationId: number, at: string): Promise<SnapshotRead> {
+export function readSnapshot(conversationId: number, at?: string): Promise<SnapshotRead> {
   return apiClient.get<SnapshotRead>(withQuery(`/conversations/${conversationId}/timeline-state`, { at }))
 }
 

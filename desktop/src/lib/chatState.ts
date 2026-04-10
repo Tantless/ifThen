@@ -39,6 +39,13 @@ export type LatestJobLoadState =
   | { status: 'loaded' }
   | { status: 'retry_wait'; retryAt: number }
 
+export type MessageLoadState =
+  | { status: 'idle' }
+  | { status: 'loading'; startedAt: number }
+  | { status: 'retry_wait'; startedAt: number; retryAt: number }
+  | { status: 'loaded' }
+  | { status: 'failed' }
+
 export function enterBranchView(_state: HistoryChatViewState, input: EnterBranchViewInput): BranchChatViewState {
   return {
     mode: 'branch',
@@ -50,12 +57,12 @@ export function exitBranchView(_state: BranchChatViewState): HistoryChatViewStat
   return { mode: 'history' }
 }
 
-export function resolveInspectorSnapshotAt(state: ChatViewState, messages: TimestampMessage[]): string | null {
+export function resolveInspectorSnapshotAt(state: ChatViewState, _messages: TimestampMessage[]): string | null {
   if (state.mode === 'branch') {
     return state.targetMessageTimestamp
   }
 
-  return messages.at(-1)?.timestamp ?? null
+  return null
 }
 
 export function isRewriteRequestCurrent(input: {
