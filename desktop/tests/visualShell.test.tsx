@@ -914,7 +914,8 @@ describe('App frontUI integration', () => {
     await flushAsyncWork(4)
 
     const inputs = Array.from(container.querySelectorAll('.desktop-drawer__input'))
-    const [baseUrlInput, apiKeyInput, chatModelInput, simulationModeSelect, turnCountInput] = inputs as [
+    const [baseUrlInput, apiKeyInput, chatModelInput, simulationModelInput, simulationModeSelect, turnCountInput] = inputs as [
+      HTMLInputElement,
       HTMLInputElement,
       HTMLInputElement,
       HTMLInputElement,
@@ -931,6 +932,9 @@ describe('App frontUI integration', () => {
       })
       getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(chatModelInput).onChange?.({
         target: { value: 'gpt-5.4-mini' },
+      })
+      getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(simulationModelInput).onChange?.({
+        target: { value: '' },
       })
       getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(simulationModeSelect).onChange?.({
         target: { value: 'short_thread' },
@@ -955,7 +959,7 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(6)
 
-    expect(mockedWriteSetting).toHaveBeenCalledTimes(5)
+    expect(mockedWriteSetting).toHaveBeenCalledTimes(6)
     expect(mockedWriteSetting).toHaveBeenCalledWith({
       setting_key: 'simulation.default_mode',
       setting_value: 'short_thread',
@@ -964,6 +968,11 @@ describe('App frontUI integration', () => {
     expect(mockedWriteSetting).toHaveBeenCalledWith({
       setting_key: 'simulation.default_turn_count',
       setting_value: '4',
+      is_secret: false,
+    })
+    expect(mockedWriteSetting).toHaveBeenCalledWith({
+      setting_key: 'llm.simulation_model',
+      setting_value: '',
       is_secret: false,
     })
   })

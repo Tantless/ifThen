@@ -73,13 +73,24 @@ export function SettingsDrawer({
         </label>
 
         <label className="desktop-drawer__field">
-          <span className="desktop-drawer__label">Chat Model</span>
+          <span className="desktop-drawer__label">Chat Model（分析）</span>
           <input
             className="desktop-drawer__input"
             type="text"
             value={formState.chatModel}
             placeholder="gpt-5.4"
             onChange={(event) => setFormState((current) => ({ ...current, chatModel: event.target.value }))}
+          />
+        </label>
+
+        <label className="desktop-drawer__field">
+          <span className="desktop-drawer__label">Simulation Model（推演）</span>
+          <input
+            className="desktop-drawer__input"
+            type="text"
+            value={formState.simulationModel}
+            placeholder="留空则使用分析模型"
+            onChange={(event) => setFormState((current) => ({ ...current, simulationModel: event.target.value }))}
           />
         </label>
 

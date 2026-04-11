@@ -892,6 +892,7 @@ export default function App() {
         writeSetting({ setting_key: 'llm.base_url', setting_value: formState.baseUrl.trim(), is_secret: false }),
         writeSetting({ setting_key: 'llm.api_key', setting_value: formState.apiKey.trim(), is_secret: true }),
         writeSetting({ setting_key: 'llm.chat_model', setting_value: formState.chatModel.trim(), is_secret: false }),
+        writeSetting({ setting_key: 'llm.simulation_model', setting_value: formState.simulationModel.trim(), is_secret: false }),
         writeSetting({
           setting_key: 'simulation.default_mode',
           setting_value: formState.simulationMode,
