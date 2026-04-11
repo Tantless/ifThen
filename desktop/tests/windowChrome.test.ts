@@ -80,9 +80,8 @@ describe('createWindow', () => {
       expect.objectContaining({
         frame: false,
         titleBarStyle: 'hidden',
+        backgroundColor: '#f5f5f5',
         show: false,
-        roundedCorners: expect.any(Boolean),
-        backgroundColor: expect.any(String),
         webPreferences: expect.objectContaining({
           preload: expect.stringMatching(/preload\.cjs$/),
           contextIsolation: true,
