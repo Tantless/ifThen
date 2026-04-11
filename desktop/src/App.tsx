@@ -12,6 +12,7 @@ import { FrontChatWindow } from './frontui/ChatWindow'
 import { WindowTitleBar } from './frontui/WindowTitleBar'
 import {
   FRONTUI_SELF_AVATAR,
+  FRONTUI_PLACEHOLDER_AVATAR,
   MOCK_CONTACTS_TAB_ITEMS,
   MOCK_FILES_TAB_ITEMS,
 } from './frontui/mockState'
@@ -323,6 +324,26 @@ export default function App() {
       ),
     )
   }, [conversationSearch, conversations, latestJobsByConversation, selectedConversationId])
+
+  const contactsListItems = useMemo(() => {
+    if (!conversations || conversations.length === 0) {
+      return []
+    }
+
+    return conversations.map((conversation) => ({
+      id: `contact-${conversation.id}`,
+      conversationId: conversation.id,
+      displayName: conversation.other_display_name || '未命名联系人',
+      avatarUrl: FRONTUI_PLACEHOLDER_AVATAR,
+      previewText: `共 ${conversation.id} 条聊天记录`,
+      timestampLabel: '',
+      progress: null,
+      unreadCount: 0,
+      active: false,
+      source: 'real' as const,
+    }))
+  }, [conversations])
+
   const rewriteGeneratedMessages = useMemo(() => {
     if (
       !rewriteDraft ||
@@ -1153,7 +1174,9 @@ export default function App() {
         ? filteredConversationItems
         : []
       : activeTab === 'contacts'
-        ? MOCK_CONTACTS_TAB_ITEMS
+        ? hydrationStatus === 'ready'
+          ? contactsListItems
+          : []
         : MOCK_FILES_TAB_ITEMS
 
   const handleSelectFrontConversation = (conversationId: number) => {

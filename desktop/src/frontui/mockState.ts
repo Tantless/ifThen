@@ -6,32 +6,6 @@ export const FRONTUI_PLACEHOLDER_AVATAR =
 export const FRONTUI_SELF_AVATAR =
   'https://images.unsplash.com/photo-1680104073282-8462cdf70b6a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBtYW4lMjBwb3J0cmFpdCUyMGZhY2V8ZW58MXx8fHwxNzc1NDM0OTk3fDA&ixlib=rb-4.1.0&q=80&w=256'
 
-export const MOCK_CONTACTS_TAB_ITEMS: FrontChatListItem[] = [
-  {
-    id: 'mock-contact-1',
-    conversationId: null,
-    displayName: '通讯录功能开发中',
-    avatarUrl: FRONTUI_PLACEHOLDER_AVATAR,
-    previewText: '此入口暂保留 frontUI 视觉位',
-    timestampLabel: '',
-    progress: null,
-    unreadCount: 0,
-    active: false,
-    source: 'mock',
-  },
-]
+export const MOCK_CONTACTS_TAB_ITEMS: FrontChatListItem[] = []
 
-export const MOCK_FILES_TAB_ITEMS: FrontChatListItem[] = [
-  {
-    id: 'mock-file-1',
-    conversationId: null,
-    displayName: '文件入口开发中',
-    avatarUrl: FRONTUI_PLACEHOLDER_AVATAR,
-    previewText: '后续接入真实文件能力',
-    timestampLabel: '',
-    progress: null,
-    unreadCount: 0,
-    active: false,
-    source: 'mock',
-  },
-]
+export const MOCK_FILES_TAB_ITEMS: FrontChatListItem[] = []
