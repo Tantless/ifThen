@@ -423,6 +423,7 @@ class FakeHTTPResponse:
         self._payload = payload
         self._json_error = json_error
         self._status_error = status_error
+        self.text = ""  # Add text attribute for streaming response fallback
 
     def raise_for_status(self) -> None:
         if self._status_error is not None:
