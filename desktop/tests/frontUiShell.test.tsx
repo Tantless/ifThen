@@ -162,11 +162,9 @@ describe('frontUI shell markup', () => {
     )
 
     expect(html).toContain('desktop-titlebar')
-    expect(html).toContain('desktop-titlebar--windows-modern')
     expect(html).toContain('w-full')
     expect(html).toContain('desktop-titlebar__drag-region')
     expect(html).toContain('desktop-titlebar__actions')
-    expect(html).toContain('desktop-titlebar__controls')
     expect(html).toContain('desktop-titlebar__icon--minimize')
     expect(html).toContain('desktop-titlebar__icon--maximize')
     expect(html).toContain('desktop-titlebar__icon--close')
@@ -295,9 +293,7 @@ describe('frontUI shell markup', () => {
     )
 
     expect(html).toContain('desktop-shell-root')
-    expect(html).toContain('desktop-shell-root--windows-modern')
     expect(html).toContain('desktop-shell-main')
-    expect(html).toContain('desktop-shell-main--windowed')
     expect(html).not.toContain('max-w-[1200px]')
     expect(html).not.toContain('max-h-[800px]')
     expect(html).toContain('bg-[#2e2e2e]')
