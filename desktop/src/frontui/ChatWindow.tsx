@@ -432,7 +432,7 @@ export function FrontChatWindow({
                   <span className="h-1.5 w-1.5 rounded-full bg-[#07c160]/55 animate-pulse [animation-delay:240ms]" />
                 </div>
                 <p className="text-[14px] font-medium text-[#2a2a2a]">正在推演……</p>
-                <p className="mt-1 text-[12px] text-[#6f6f6f]">{rewriteState.stageLabel ?? '生成答案中……'}</p>
+                <p className="mt-1 text-[12px] text-[#6f6f6f]">{rewriteState.stageLabel ?? '正在等待推演结果返回'}</p>
               </div>
             </div>
           </div>

@@ -678,7 +678,7 @@ describe('App frontUI integration', () => {
     expect(pendingOverlay).not.toBeNull()
     expect(pendingOverlay?.className).toContain('absolute')
     expect(container.textContent).toContain('正在推演')
-    expect(container.textContent).toMatch(/总结中|结合人格中|生成答案中/)
+    expect(container.textContent).toContain('先判断改写影响，再生成首轮回复，最多续写 2 轮')
     expect(container.textContent).toContain('我想先冷静一下，晚点继续聊可以吗？')
 
     const ghostedMessage = container.querySelector('[data-chat-message-id="message-13"]')
@@ -848,6 +848,8 @@ describe('App frontUI integration', () => {
       }
     })
     await flushAsyncWork(8)
+
+    expect(container.textContent).toContain('先判断改写影响，再生成对方首轮回复')
 
     await act(async () => {
       deferredSimulation.resolve({

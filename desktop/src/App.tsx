@@ -36,6 +36,7 @@ import {
 } from './lib/adapters'
 import { resolveJobProgress } from './lib/analysisProgress'
 import { buildFrontChatItem, buildFrontChatMessagesFromSimulation, buildFrontChatWindowState } from './lib/frontUiAdapters'
+import { resolveSimulationPendingStageLabel } from './lib/simulationPending'
 import {
   importConversation,
   listConversations,
@@ -76,6 +77,7 @@ type RewriteDraft = {
   status: 'editing' | 'pending' | 'completed'
   simulation: SimulationRead | null
   errorMessage: string | null
+  pendingStageLabel: string | null
 }
 
 function isPollingJob(job: JobRead | null | undefined): job is JobRead {
@@ -86,7 +88,6 @@ const MESSAGE_LOAD_RETRY_INTERVAL_MS = 1500
 const MESSAGE_LOAD_TIMEOUT_MS = 10_000
 const INITIAL_MESSAGE_PAGE_SIZE = 80
 const OLDER_MESSAGE_PAGE_SIZE = 50
-const REWRITE_PENDING_STAGE_LABELS = ['总结中……', '结合人格中……', '生成答案中……'] as const
 
 type MessagePaginationState = {
   hasOlder: boolean
@@ -97,7 +98,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<FrontSidebarTab>('chat')
   const [chatViewState, setChatViewState] = useState<ChatViewState>({ mode: 'history' })
   const [rewriteDraft, setRewriteDraft] = useState<RewriteDraft | null>(null)
-  const [rewriteStageIndex, setRewriteStageIndex] = useState(0)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [inspectorTab, setInspectorTab] = useState<AnalysisInspectorTab>('topics')
   const [inspectorLoadingByTab, setInspectorLoadingByTab] = useState<Record<AnalysisInspectorTab, boolean>>({
@@ -436,21 +436,6 @@ export default function App() {
       activeRewriteRequestRef.current = null
     }
   }, [analysisCompleted])
-
-  useEffect(() => {
-    if (rewriteDraft?.status !== 'pending') {
-      setRewriteStageIndex(0)
-      return
-    }
-
-    const timerId = window.setInterval(() => {
-      setRewriteStageIndex((current) => (current + 1) % REWRITE_PENDING_STAGE_LABELS.length)
-    }, 900)
-
-    return () => {
-      window.clearInterval(timerId)
-    }
-  }, [rewriteDraft?.status])
 
   useEffect(() => {
     if (activeTab === 'chat' && analysisCompleted) {
@@ -998,6 +983,7 @@ export default function App() {
       status: 'editing',
       simulation: null,
       errorMessage: null,
+      pendingStageLabel: null,
     })
   }
 
@@ -1031,6 +1017,7 @@ export default function App() {
             status: 'editing',
             simulation: null,
             errorMessage: null,
+            pendingStageLabel: null,
           }
         : current,
     )
@@ -1070,6 +1057,10 @@ export default function App() {
             status: 'pending',
             simulation: null,
             errorMessage: null,
+            pendingStageLabel: resolveSimulationPendingStageLabel(
+              settingsFormState.simulationMode,
+              settingsFormState.simulationTurnCount,
+            ),
           }
         : current,
     )
@@ -1265,10 +1256,7 @@ export default function App() {
                     state: rewriteDraft.status,
                     targetMessageId: rewriteDraft.targetMessageId,
                     draftText: rewriteDraft.replacementContent,
-                    stageLabel:
-                      rewriteDraft.status === 'pending'
-                        ? REWRITE_PENDING_STAGE_LABELS[rewriteStageIndex]
-                        : null,
+                    stageLabel: rewriteDraft.status === 'pending' ? rewriteDraft.pendingStageLabel : null,
                     errorMessage: rewriteDraft.errorMessage,
                     generatedMessages: rewriteGeneratedMessages,
                   }
