@@ -9,7 +9,7 @@
 在开始任何工作前，按以下顺序阅读文档：
 
 1. **AGENTS.md**（本文档）- 协作规范
-2. **plan/current-tasks.md** - 当前待办任务（必读）
+2. **plan/TODO.md** - 项目待办事项（必读）
 3. **CLAUDE.md** - 项目技术架构与开发命令
 4. **README.md** - 项目概览与快速开始
 5. **docs/2026-04-08-milestone-progress-summary.md** - 项目状态与里程碑进度
@@ -37,21 +37,18 @@ cd desktop && npm test && npm run typecheck
 
 ### 3. 任务管理机制
 
-**任务文件夹**：`plan/`
+**任务文件**：`plan/TODO.md`
 
-- **plan/current-tasks.md** - 当前正在进行或即将开始的任务
-- **plan/backlog.md** - 待排期的功能和优化项
-- **plan/completed.md** - 已完成的任务归档
+项目使用单一 TODO 文件管理所有待办事项，按优先级分为 P1（高）、P2（中）、P3（低）。
 
 **任务工作流**：
 
-1. **开始工作前**：查看 `plan/current-tasks.md`，选择优先级最高的任务
-2. **任务进行中**：更新任务状态为 `IN_PROGRESS`，记录进展和遇到的问题
+1. **开始工作前**：查看 `plan/TODO.md`，选择优先级最高的任务
+2. **任务进行中**：在任务描述中标注进展和遇到的问题
 3. **任务完成后**：
-   - 将任务从 `current-tasks.md` 移至 `completed.md`
-   - 更新完成日期和验收结果
+   - 在 `plan/TODO.md` 中标记完成或移除该任务
    - 运行完整测试套件验证
-4. **发现新需求**：添加到 `plan/backlog.md`，标注优先级和依赖关系
+4. **发现新需求**：添加到 `plan/TODO.md` 对应优先级分类下
 
 ### 4. 工作交接协议
 
@@ -60,23 +57,23 @@ cd desktop && npm test && npm run typecheck
 1. **运行完整测试套件**，确保所有测试通过
 2. **提交所有变更**，使用清晰的 commit message
 3. **更新任务状态**：
-   - 更新 `plan/current-tasks.md` 中的任务进度
-   - 如果完成任务，移至 `plan/completed.md`
-   - 如果发现新需求，添加到 `plan/backlog.md`
+   - 更新 `plan/TODO.md` 中的任务进度
+   - 如果完成任务，标记完成或移除
+   - 如果发现新需求，添加到 `plan/TODO.md`
 4. **更新文档**：
    - 如果完成了里程碑任务，更新 `docs/2026-04-08-milestone-progress-summary.md`
    - 如果发现重要架构变更，更新 `CLAUDE.md`
 5. **记录未完成工作**：
-   - 在 `plan/current-tasks.md` 中标注阻塞原因
+   - 在 `plan/TODO.md` 中标注阻塞原因
    - 在 commit message 中说明未完成的部分
 
 #### 交接后（新 agent）
 
-1. **阅读任务清单**：查看 `plan/current-tasks.md`，了解当前任务状态
+1. **阅读任务清单**：查看 `plan/TODO.md`，了解当前任务状态
 2. **阅读最近 commit**：`git log --oneline -10`，理解最近的变更
 3. **检查工作区状态**：`git status`，确认工作区干净
 4. **运行测试基线**：确认环境正常，测试通过
-5. **选择任务**：从 `plan/current-tasks.md` 选择优先级最高的任务
+5. **选择任务**：从 `plan/TODO.md` 选择优先级最高的任务
 6. **阅读相关文档**：查看任务相关的设计文档和技术文档
 
 ## 开发规范
@@ -292,8 +289,8 @@ describe('NewComponent', () => {
 - [ ] 相关文档已更新（如有架构变更）
 - [ ] 没有提交敏感信息（API key、密码等）
 - [ ] 没有提交本地配置文件（`local_llm_config.py`）
-- [ ] **任务状态已更新**（`plan/current-tasks.md` 或 `plan/completed.md`）
-- [ ] **如有新需求，已添加到 `plan/backlog.md`**
+- [ ] **任务状态已更新**（`plan/TODO.md`）
+- [ ] **如有新需求，已添加到 `plan/TODO.md`**
 
 ## 紧急情况处理
 
@@ -394,15 +391,15 @@ git worktree remove .worktrees/feature-name
 
 ## 协作最佳实践
 
-1. **查看任务清单**：每次开始工作前先查看 `plan/current-tasks.md`
+1. **查看任务清单**：每次开始工作前先查看 `plan/TODO.md`
 2. **频繁 commit**：小步快跑，每个 commit 只做一件事
 3. **清晰沟通**：通过 commit message 和任务更新传递意图
 4. **保持同步**：定期 pull 最新代码，避免大规模冲突
 5. **测试先行**：修改代码前先运行测试，确保基线正确
 6. **文档同步**：代码变更后立即更新相关文档和任务状态
 7. **最小变更**：只修改必要的代码，避免连带重构
-8. **任务驱动**：所有工作应该对应 `plan/` 中的某个任务
-9. **及时归档**：完成任务后立即移至 `plan/completed.md`
+8. **任务驱动**：所有工作应该对应 `plan/TODO.md` 中的某个任务
+9. **及时更新**：完成任务后立即更新 `plan/TODO.md`
 10. **保持谦逊**：如果不确定，查阅文档或保留原有实现
 
 ---

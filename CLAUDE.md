@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 重要提示
 
 **开始工作前必读**：
-1. 查看 `plan/current-tasks.md` 了解当前待办任务
+1. 查看 `plan/TODO.md` 了解当前待办任务
 2. 查看 `AGENTS.md` 了解协作规范
 3. 运行测试基线确认环境正常
 
@@ -209,21 +209,21 @@ Data structure:
 
 ## Task Management
 
-**任务管理文件夹**：`plan/`
+**任务管理文件**：`plan/TODO.md`
 
-- **plan/current-tasks.md** - 当前任务清单（开始工作前必读）
-- **plan/backlog.md** - 待排期任务
-- **plan/completed.md** - 已完成任务归档
+项目使用单一 TODO 文件管理所有待办事项，按优先级分为 P1（高）、P2（中）、P3（低）。
 
 **工作流程**：
-1. 从 `plan/current-tasks.md` 选择任务
-2. 更新任务状态为 `IN_PROGRESS`
-3. 完成后移至 `plan/completed.md`
-4. 发现新需求添加到 `plan/backlog.md`
+1. 从 `plan/TODO.md` 选择任务
+2. 在任务描述中标注进展
+3. 完成后标记完成或移除
+4. 发现新需求添加到对应优先级分类下
 
 **当前优先级**（2026-04-11）：
-1. M4：Windows Release / 打包发布准备（P1）
-2. Desktop FrontUI 完整迁移（P2）
-3. Prompt 工程优化（P2）
+1. Windows Release / 打包发布准备（P1）
+2. 项目代码重构（P1）
+3. 用户体验优化（P2）
+4. FrontUI 完整迁移（P2）
+5. Prompt 工程优化（P2）
 
-详细任务分解和验收标准请查看 `plan/current-tasks.md`。
+详细任务分解请查看 `plan/TODO.md`。
