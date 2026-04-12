@@ -203,6 +203,7 @@ describe('desktop modal chrome', () => {
     expect(html).toContain('3月2日')
     expect(html).toContain('20:18')
     expect(html).toContain('20:19')
+    expect(html).toContain('chat-history-modal__group-chip')
     expect(html).not.toContain('2025-03-02 20:18:03')
     expect(html).not.toContain('2025-03-02 20:19:03')
   })
