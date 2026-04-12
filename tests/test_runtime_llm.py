@@ -116,6 +116,40 @@ def test_load_effective_llm_config_prefers_saved_settings_over_env_and_local_fil
     assert config.chat_model == "db-model"
 
 
+def test_load_effective_llm_config_uses_simulation_specific_api_settings_for_api_role(monkeypatch):
+    fake_module = types.ModuleType("local_llm_config")
+    fake_module.API_LLM_CONFIG = {
+        "base_url": "https://file-api.example/v1",
+        "api_key": "file-api-key",
+        "chat_model": "file-api-model",
+    }
+    fake_module.WORKER_LLM_CONFIG = {
+        "base_url": "https://file-worker.example/v1",
+        "api_key": "file-worker-key",
+        "chat_model": "file-worker-model",
+    }
+    monkeypatch.setitem(__import__("sys").modules, "local_llm_config", fake_module)
+    monkeypatch.setenv("IF_THEN_LLM_BASE_URL", "https://env-analysis.example/v1")
+    monkeypatch.setenv("IF_THEN_LLM_API_KEY", "env-analysis-key")
+    monkeypatch.setenv("IF_THEN_LLM_CHAT_MODEL", "env-analysis-model")
+
+    config = load_effective_llm_config(
+        role="api",
+        settings_map={
+            "llm.base_url": "https://db-analysis.example/v1",
+            "llm.api_key": "db-analysis-key",
+            "llm.chat_model": "db-analysis-model",
+            "llm.simulation_base_url": "https://db-simulation.example/v1",
+            "llm.simulation_api_key": "db-simulation-key",
+            "llm.simulation_model": "db-simulation-model",
+        },
+    )
+
+    assert config.base_url == "https://db-simulation.example/v1"
+    assert config.api_key == "db-simulation-key"
+    assert config.chat_model == "db-simulation-model"
+
+
 def test_build_runtime_llm_client_falls_back_to_env_when_saved_settings_missing(monkeypatch):
     monkeypatch.delitem(__import__("sys").modules, "local_llm_config", raising=False)
     monkeypatch.setenv("IF_THEN_LLM_BASE_URL", "https://env.example/v1")
@@ -127,3 +161,19 @@ def test_build_runtime_llm_client_falls_back_to_env_when_saved_settings_missing(
     assert client.base_url == "https://env.example/v1"
     assert client.api_key == "env-key"
     assert client.chat_model == "env-model"
+
+
+def test_build_runtime_llm_client_prefers_simulation_env_for_api_role(monkeypatch):
+    monkeypatch.delitem(__import__("sys").modules, "local_llm_config", raising=False)
+    monkeypatch.setenv("IF_THEN_LLM_BASE_URL", "https://env-analysis.example/v1")
+    monkeypatch.setenv("IF_THEN_LLM_API_KEY", "env-analysis-key")
+    monkeypatch.setenv("IF_THEN_LLM_CHAT_MODEL", "env-analysis-model")
+    monkeypatch.setenv("IF_THEN_LLM_SIMULATION_BASE_URL", "https://env-simulation.example/v1")
+    monkeypatch.setenv("IF_THEN_LLM_SIMULATION_API_KEY", "env-simulation-key")
+    monkeypatch.setenv("IF_THEN_LLM_SIMULATION_MODEL", "env-simulation-model")
+
+    client = build_runtime_llm_client(role="api", settings_map={})
+
+    assert client.base_url == "https://env-simulation.example/v1"
+    assert client.api_key == "env-simulation-key"
+    assert client.chat_model == "env-simulation-model"

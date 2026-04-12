@@ -84,6 +84,28 @@ export function SettingsDrawer({
         </label>
 
         <label className="desktop-drawer__field">
+          <span className="desktop-drawer__label">Simulation Base URL（推演）</span>
+          <input
+            className="desktop-drawer__input"
+            type="url"
+            value={formState.simulationBaseUrl}
+            placeholder="留空则使用分析 Base URL"
+            onChange={(event) => setFormState((current) => ({ ...current, simulationBaseUrl: event.target.value }))}
+          />
+        </label>
+
+        <label className="desktop-drawer__field">
+          <span className="desktop-drawer__label">Simulation API Key（推演）</span>
+          <input
+            className="desktop-drawer__input"
+            type="password"
+            value={formState.simulationApiKey}
+            placeholder="留空则使用分析 API Key"
+            onChange={(event) => setFormState((current) => ({ ...current, simulationApiKey: event.target.value }))}
+          />
+        </label>
+
+        <label className="desktop-drawer__field">
           <span className="desktop-drawer__label">Simulation Model（推演）</span>
           <input
             className="desktop-drawer__input"

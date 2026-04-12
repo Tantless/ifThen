@@ -5,6 +5,8 @@ export type SettingsFormState = {
   baseUrl: string
   apiKey: string
   chatModel: string
+  simulationBaseUrl: string
+  simulationApiKey: string
   simulationModel: string
   simulationMode: 'single_reply' | 'short_thread'
   simulationTurnCount: number
@@ -60,6 +62,8 @@ export function buildSettingsFormState(entries: SettingRead[]): SettingsFormStat
     baseUrl: byKey.get('llm.base_url') ?? '',
     apiKey: byKey.get('llm.api_key') ?? '',
     chatModel: byKey.get('llm.chat_model') ?? '',
+    simulationBaseUrl: byKey.get('llm.simulation_base_url') ?? '',
+    simulationApiKey: byKey.get('llm.simulation_api_key') ?? '',
     simulationModel: byKey.get('llm.simulation_model') ?? '',
     simulationMode: byKey.get('simulation.default_mode') === 'short_thread' ? 'short_thread' : 'single_reply',
     simulationTurnCount: Math.min(6, Math.max(1, Number.parseInt(byKey.get('simulation.default_turn_count') ?? '1', 10) || 1)),

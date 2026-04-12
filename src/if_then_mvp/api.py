@@ -632,8 +632,9 @@ def _build_runtime_llm_client(session) -> ChatJSONClient:
             status_code=503,
             detail=(
                 "Simulation LLM is not configured. "
-                "Set llm.base_url, llm.api_key, and llm.chat_model via /settings "
-                "or IF_THEN_LLM_BASE_URL / IF_THEN_LLM_API_KEY / IF_THEN_LLM_CHAT_MODEL."
+                "Set llm.simulation_base_url / llm.simulation_api_key / llm.simulation_model via /settings "
+                "(or leave them blank to fall back to llm.base_url / llm.api_key / llm.chat_model), "
+                "or use IF_THEN_LLM_SIMULATION_BASE_URL / IF_THEN_LLM_SIMULATION_API_KEY / IF_THEN_LLM_SIMULATION_MODEL."
             ),
         ) from exc
 

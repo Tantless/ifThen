@@ -1132,6 +1132,8 @@ describe('App frontUI integration', () => {
       { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
       { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
       { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+      { setting_key: 'llm.simulation_base_url', setting_value: 'https://simulation.example.test/v1', is_secret: false },
+      { setting_key: 'llm.simulation_api_key', setting_value: 'simulation-secret', is_secret: true },
       { setting_key: 'simulation.default_mode', setting_value: 'single_reply', is_secret: false },
       { setting_key: 'simulation.default_turn_count', setting_value: '1', is_secret: false },
     ])
@@ -1158,7 +1160,18 @@ describe('App frontUI integration', () => {
     await flushAsyncWork(4)
 
     const inputs = Array.from(container.querySelectorAll('.desktop-drawer__input'))
-    const [baseUrlInput, apiKeyInput, chatModelInput, simulationModelInput, simulationModeSelect, turnCountInput] = inputs as [
+    const [
+      baseUrlInput,
+      apiKeyInput,
+      chatModelInput,
+      simulationBaseUrlInput,
+      simulationApiKeyInput,
+      simulationModelInput,
+      simulationModeSelect,
+      turnCountInput,
+    ] = inputs as [
+      HTMLInputElement,
+      HTMLInputElement,
       HTMLInputElement,
       HTMLInputElement,
       HTMLInputElement,
@@ -1176,6 +1189,12 @@ describe('App frontUI integration', () => {
       })
       getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(chatModelInput).onChange?.({
         target: { value: 'gpt-5.4-mini' },
+      })
+      getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(simulationBaseUrlInput).onChange?.({
+        target: { value: 'https://simulation.example.dev/v1' },
+      })
+      getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(simulationApiKeyInput).onChange?.({
+        target: { value: 'simulation-next-secret' },
       })
       getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(simulationModelInput).onChange?.({
         target: { value: '' },
@@ -1203,7 +1222,17 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(6)
 
-    expect(mockedWriteSetting).toHaveBeenCalledTimes(7)
+    expect(mockedWriteSetting).toHaveBeenCalledTimes(9)
+    expect(mockedWriteSetting).toHaveBeenCalledWith({
+      setting_key: 'llm.simulation_base_url',
+      setting_value: 'https://simulation.example.dev/v1',
+      is_secret: false,
+    })
+    expect(mockedWriteSetting).toHaveBeenCalledWith({
+      setting_key: 'llm.simulation_api_key',
+      setting_value: 'simulation-next-secret',
+      is_secret: true,
+    })
     expect(mockedWriteSetting).toHaveBeenCalledWith({
       setting_key: 'simulation.default_mode',
       setting_value: 'short_thread',

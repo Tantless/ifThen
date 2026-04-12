@@ -106,6 +106,13 @@ The system requires an OpenAI-compatible chat endpoint. Configuration priority:
 
 Both API and worker share the same configuration resolution logic via `runtime_llm.py`.
 
+Simulation requests can optionally override the analysis endpoint by setting
+`llm.simulation_base_url`, `llm.simulation_api_key`, and `llm.simulation_model`
+in `/settings`, or `IF_THEN_LLM_SIMULATION_BASE_URL`,
+`IF_THEN_LLM_SIMULATION_API_KEY`, and `IF_THEN_LLM_SIMULATION_MODEL` in the
+environment. Any empty simulation-specific field falls back to the analysis
+(`llm.*`) value.
+
 ### Data Directory
 
 Set `IF_THEN_DATA_DIR` environment variable to specify data location (defaults to `.data/` in project root):

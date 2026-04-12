@@ -30,7 +30,17 @@ describe('desktop modal chrome', () => {
     const html = renderToStaticMarkup(
       <SettingsDrawer
         open
-        initialState={{ baseUrl: '', apiKey: '', chatModel: '', simulationModel: '', simulationMode: 'single_reply', simulationTurnCount: 1, selfAvatarUrl: 'data:image/svg+xml;base64,self-avatar' }}
+        initialState={{
+          baseUrl: '',
+          apiKey: '',
+          chatModel: '',
+          simulationBaseUrl: '',
+          simulationApiKey: '',
+          simulationModel: '',
+          simulationMode: 'single_reply',
+          simulationTurnCount: 1,
+          selfAvatarUrl: 'data:image/svg+xml;base64,self-avatar',
+        }}
         onClose={() => undefined}
         onSave={() => undefined}
       />,

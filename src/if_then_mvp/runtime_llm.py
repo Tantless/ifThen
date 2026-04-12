@@ -82,12 +82,19 @@ def load_effective_llm_config(
     settings_map = dict(settings_map or {})
     env = env or os.environ
 
-    base_url = settings_map.get("llm.base_url") or env.get("IF_THEN_LLM_BASE_URL")
-    api_key = settings_map.get("llm.api_key") or env.get("IF_THEN_LLM_API_KEY")
-
-    # 根据 role 选择对应的模型配置
     if role == "api":
-        # API (推演) 优先使用 llm.simulation_model，回退到 llm.chat_model
+        base_url = (
+            settings_map.get("llm.simulation_base_url")
+            or settings_map.get("llm.base_url")
+            or env.get("IF_THEN_LLM_SIMULATION_BASE_URL")
+            or env.get("IF_THEN_LLM_BASE_URL")
+        )
+        api_key = (
+            settings_map.get("llm.simulation_api_key")
+            or settings_map.get("llm.api_key")
+            or env.get("IF_THEN_LLM_SIMULATION_API_KEY")
+            or env.get("IF_THEN_LLM_API_KEY")
+        )
         chat_model = (
             settings_map.get("llm.simulation_model")
             or settings_map.get("llm.chat_model")
@@ -95,7 +102,8 @@ def load_effective_llm_config(
             or env.get("IF_THEN_LLM_CHAT_MODEL")
         )
     else:
-        # Worker (分析) 使用 llm.chat_model
+        base_url = settings_map.get("llm.base_url") or env.get("IF_THEN_LLM_BASE_URL")
+        api_key = settings_map.get("llm.api_key") or env.get("IF_THEN_LLM_API_KEY")
         chat_model = settings_map.get("llm.chat_model") or env.get("IF_THEN_LLM_CHAT_MODEL")
 
     if base_url and api_key and chat_model:
@@ -137,7 +145,16 @@ def build_runtime_llm_client(
 def load_runtime_settings_map(session) -> dict[str, str]:
     rows = session.execute(
         select(AppSetting).where(
-            AppSetting.setting_key.in_(("llm.base_url", "llm.api_key", "llm.chat_model", "llm.simulation_model"))
+            AppSetting.setting_key.in_(
+                (
+                    "llm.base_url",
+                    "llm.api_key",
+                    "llm.chat_model",
+                    "llm.simulation_base_url",
+                    "llm.simulation_api_key",
+                    "llm.simulation_model",
+                )
+            )
         )
     ).scalars().all()
     return {row.setting_key: row.setting_value for row in rows}
