@@ -26,8 +26,8 @@
 
 当前验证基线：
 
-- `python -m pytest -q` → `71 passed`
-- `cd desktop && npm test` → `12 files / 72 tests passed`
+- `python -m pytest -q` → `86 passed`
+- `cd desktop && npm test` → `13 files / 110 tests passed`
 - `cd desktop && npm run typecheck` → 通过
 - `cd desktop && npm run build` → 通过
 - 手工 GUI 验证需人工执行，当前未在本次自动验证中复核
@@ -442,8 +442,7 @@ $env:IF_THEN_DATA_DIR = "D:\newProj\.data"
 
 ## 相关文档
 
-- `docs/2026-04-08-milestone-progress-summary.md`
-- `docs/desktop-frontui-migration-status.md`
+- `docs/project-status.md`
 - `docs/superpowers/specs/2026-04-05-counterfactual-conversation-mvp-design.md`
 - `docs/superpowers/specs/2026-04-06-simulation-llm-alignment-design.md`
 - `docs/superpowers/specs/2026-04-06-desktop-app-design.md`

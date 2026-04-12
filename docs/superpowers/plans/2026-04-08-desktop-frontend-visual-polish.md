@@ -15,7 +15,7 @@
 - 状态：**已完成并已并入 `main`**
 - 结果：桌面端三栏结构、欢迎弹窗、设置抽屉、导入弹窗与 analysis 增强层的视觉语言已统一到当前产品基线。
 - 当前验证参考：`cd desktop && npm test` 为 `9 files / 46 tests passed`，`npm run typecheck` / `npm run build` 通过。
-- 说明：下方 `- [ ]` 复选框保留为原始执行脚本，不再表示当前待办；当前总体进度以 `docs/2026-04-08-milestone-progress-summary.md` 为准。
+- 说明：下方 `- [ ]` 复选框保留为原始执行脚本，不再表示当前待办；当前总体进度以 `docs/project-status.md` 为准。
 
 ## File Map
 

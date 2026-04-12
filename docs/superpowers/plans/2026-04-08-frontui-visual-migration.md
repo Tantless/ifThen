@@ -30,7 +30,7 @@
 - `desktop/src/lib/frontUiAdapters.ts` — transforms from `ConversationRead`, `MessageRead`, `JobRead`, and app state into frontUI view models.
 - `desktop/tests/frontUiAdapters.test.ts` — adapter-level regression tests.
 - `desktop/tests/frontUiShell.test.tsx` — renderer shell markup and mock/real integration tests.
-- `docs/desktop-frontui-migration-status.md` — table of real vs mock vs pending capability status.
+- `docs/project-status.md` — canonical current-state doc, including the frontUI real/mock/pending summary.
 
 ### Delete / Retire After Cutover
 - `desktop/src/components/AppShell.tsx`
@@ -511,13 +511,13 @@ git commit -m "Swap the desktop shell to the frontUI chat layout"
 ### Task 5: Record the real-vs-mock migration status and verify the desktop app manually
 
 **Files:**
-- Create: `docs/desktop-frontui-migration-status.md`
+- Create: `docs/project-status.md`
 - Modify: `README.md`
 - Test: manual Electron run
 
 - [ ] **Step 1: Write the migration status document with an explicit capability table**
 
-Create `docs/desktop-frontui-migration-status.md` with a table like:
+Create or update `docs/project-status.md` with a table like:
 
 ```md
 | Area | Front-end Entry | Data Source | Current State | Next Step |
@@ -537,7 +537,7 @@ Create `docs/desktop-frontui-migration-status.md` with a table like:
 Add one paragraph under the desktop section:
 
 ```md
-桌面前端当前已切换到 frontUI 主聊天壳。主聊天浏览链路优先接入真实后端；部分非核心标签页与输入操作仍可能使用临时 mock，详见 `docs/desktop-frontui-migration-status.md`。
+桌面前端当前已切换到 frontUI 主聊天壳。主聊天浏览链路优先接入真实后端；部分非核心标签页与输入操作仍可能使用临时 mock，详见 `docs/project-status.md`。
 ```
 
 - [ ] **Step 3: Run manual Electron verification**
@@ -582,7 +582,7 @@ Expected: PASS after the manual verification confirms the GUI is wired correctly
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/desktop-frontui-migration-status.md README.md
+git add docs/project-status.md README.md
 git commit -m "Document frontUI migration status and desktop verification"
 ```
 
@@ -594,7 +594,7 @@ git commit -m "Document frontUI migration status and desktop verification"
 - frontUI 作为视觉母版：Task 1 + Task 3 + Task 4 cover the shell migration.
 - 保留 desktop 现有真实功能：Task 4 explicitly preserves boot, settings, import, and current orchestration.
 - 允许 mock 过渡：Task 2 defines `mockState`, Task 5 documents every mock area.
-- 用文档而非前端标识记录状态：Task 5 creates `docs/desktop-frontui-migration-status.md`.
+- 用文档而非前端标识记录状态：Task 5 writes the status summary into `docs/project-status.md`.
 - 先拿下主聊天界面视觉一致性：Task 3 + Task 4 prioritize the frontUI three-column shell.
 
 ### Placeholder scan
@@ -605,4 +605,4 @@ git commit -m "Document frontUI migration status and desktop verification"
 ### Type consistency
 - `FrontChatListItem`, `FrontChatMessage`, and `FrontChatWindowState` are defined in Task 2 before Task 3/4 consume them.
 - The frontUI renderer shell names (`FrontAppShell`, `FrontSidebar`, `FrontChatList`, `FrontChatWindow`) stay consistent across tasks.
-- The migration status document path is consistently `docs/desktop-frontui-migration-status.md`.
+- The migration status summary now lives in `docs/project-status.md`.

@@ -712,7 +712,7 @@ git commit -m "Wire the custom title bar into the desktop app shell"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/desktop-frontui-migration-status.md`
+- Modify: `docs/project-status.md`
 
 - [ ] **Step 1: 更新文档，明确当前已进入无边框窗口阶段**
 
@@ -723,7 +723,7 @@ git commit -m "Wire the custom title bar into the desktop app shell"
 - 开发态若看到系统菜单栏或默认标题栏，视为回归
 ```
 
-在 `docs/desktop-frontui-migration-status.md` 增加：
+在 `docs/project-status.md` 增加：
 
 ```md
 | 微信式窗口壳 | Electron frameless window + custom title bar | Real | 已完成菜单栏移除、无边框窗口、自定义标题栏 |
@@ -772,7 +772,7 @@ npx electron .
 - [ ] **Step 4: Commit**
 
 ```bash
-git add README.md docs/desktop-frontui-migration-status.md
+git add README.md docs/project-status.md
 git commit -m "Document the frameless wechat-style desktop shell"
 ```
 

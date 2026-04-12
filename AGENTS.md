@@ -12,7 +12,7 @@
 2. **plan/TODO.md** - 项目待办事项（必读）
 3. **CLAUDE.md** - 项目技术架构与开发命令
 4. **README.md** - 项目概览与快速开始
-5. **docs/2026-04-08-milestone-progress-summary.md** - 项目状态与里程碑进度
+5. **docs/project-status.md** - 项目状态、里程碑与现状总览
 6. **docs/superpowers/specs/** - 具体功能的设计文档
 
 ### 2. 状态同步机制
@@ -30,8 +30,8 @@ cd desktop && npm test && npm run typecheck
 ```
 
 **当前验证基线**（2026-04-12）：
-- Python 测试：83 passed
-- Desktop 测试：13 files / 104 tests passed
+- Python 测试：86 passed
+- Desktop 测试：13 files / 110 tests passed
 - TypeScript 类型检查：通过
 - Desktop 构建：通过
 
@@ -61,7 +61,7 @@ cd desktop && npm test && npm run typecheck
    - 如果完成任务，标记完成或移除
    - 如果发现新需求，添加到 `plan/TODO.md`
 4. **更新文档**：
-   - 如果完成了里程碑任务，更新 `docs/2026-04-08-milestone-progress-summary.md`
+   - 如果完成了里程碑任务，更新 `docs/project-status.md`
    - 如果发现重要架构变更，更新 `CLAUDE.md`
 5. **记录未完成工作**：
    - 在 `plan/TODO.md` 中标注阻塞原因
@@ -406,4 +406,4 @@ git worktree remove .worktrees/feature-name
 
 **最后更新**：2026-04-12  
 **维护者**：项目协作 agents  
-**版本**：1.1
+**版本**：1.2

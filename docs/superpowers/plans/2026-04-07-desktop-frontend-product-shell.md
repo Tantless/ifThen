@@ -15,7 +15,7 @@
 - 状态：**已完成并已并入 `main`**
 - 结果：桌面端主链路已跑通，覆盖欢迎引导、模型配置、导入聊天、会话列表、历史消息浏览、改写推演、分支视图与分析侧栏。
 - 当前验证参考：`cd desktop && npm test` 为 `9 files / 46 tests passed`，`npm run typecheck` / `npm run build` 通过。
-- 说明：下方 `- [ ]` 复选框保留为原始执行脚本，不再表示当前待办；当前总体进度以 `docs/2026-04-08-milestone-progress-summary.md` 为准。
+- 说明：下方 `- [ ]` 复选框保留为原始执行脚本，不再表示当前待办；当前总体进度以 `docs/project-status.md` 为准。
 
 ## File Map
 

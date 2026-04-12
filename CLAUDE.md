@@ -31,7 +31,7 @@ pip install -e .[dev]
 
 **Testing**:
 ```powershell
-python -m pytest -q                    # Run all tests (71 tests)
+python -m pytest -q                    # Run all tests (86 tests)
 python -m pytest tests/test_*.py       # Run specific test file
 python -m pytest -k "test_name"        # Run tests matching pattern
 ```
@@ -68,7 +68,7 @@ npm install
 **Testing**:
 ```powershell
 cd desktop
-npm test                               # Run all tests (12 files / 72 tests)
+npm test                               # Run all tests (13 files / 110 tests)
 npm run typecheck                      # Type check all TypeScript
 ```
 
@@ -218,7 +218,7 @@ Data structure:
 
 **任务管理文件**：`plan/TODO.md`
 
-项目使用单一 TODO 文件管理所有待办事项，按优先级分为 P1（高）、P2（中）、P3（低）。
+项目使用单一 TODO 文件管理所有待办事项，按优先级分为 L1（高工作量）、L2（中工作量）、L3（低工作量）。
 
 **工作流程**：
 1. 从 `plan/TODO.md` 选择任务
@@ -226,11 +226,10 @@ Data structure:
 3. 完成后标记完成或移除
 4. 发现新需求添加到对应优先级分类下
 
-**当前优先级**（2026-04-11）：
-1. Windows Release / 打包发布准备（P1）
-2. 项目代码重构（P1）
-3. 用户体验优化（P2）
-4. FrontUI 完整迁移（P2）
-5. Prompt 工程优化（P2）
+**当前优先级**（2026-04-12）：
+1. Windows 打包发布（L1）
+2. 重构项目代码（L1）
+3. 迭代任务按 `plan/TODO.md` 中的 L2 / L3 顺序继续推进
+4. 设计与实现历史请参考 `docs/project-status.md`
 
 详细任务分解请查看 `plan/TODO.md`。
