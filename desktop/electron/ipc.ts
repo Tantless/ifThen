@@ -41,6 +41,39 @@ export function registerDesktopIpc(processManager: BackendProcessManager) {
     }
   })
 
+  ipcMain.handle('desktop:pick-avatar-file', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'Avatar image', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'] }],
+    })
+
+    const filePath = result.canceled ? null : (result.filePaths[0] ?? null)
+    if (!filePath) {
+      return null
+    }
+
+    const bytes = await readFile(filePath)
+    const extension = path.extname(filePath).toLowerCase()
+    const mimeType =
+      extension === '.png'
+        ? 'image/png'
+        : extension === '.jpg' || extension === '.jpeg'
+          ? 'image/jpeg'
+          : extension === '.webp'
+            ? 'image/webp'
+            : extension === '.gif'
+              ? 'image/gif'
+              : extension === '.svg'
+                ? 'image/svg+xml'
+                : 'application/octet-stream'
+
+    return {
+      fileName: path.basename(filePath),
+      mimeType,
+      dataUrl: `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}`,
+    }
+  })
+
   ipcMain.handle('desktop:get-app-info', () => ({
     name: app.getName(),
     version: app.getVersion(),

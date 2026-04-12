@@ -18,6 +18,12 @@ export type DesktopImportFilePayload = {
   content: string
 }
 
+export type DesktopAvatarFilePayload = {
+  fileName: string
+  mimeType: string
+  dataUrl: string
+}
+
 export type DesktopWindowState = {
   isMaximized: boolean
 }
@@ -32,6 +38,7 @@ export type DesktopWindowBridge = {
 export type DesktopBridge = {
   getServiceState: () => Promise<DesktopServiceState>
   pickImportFile: () => Promise<DesktopFileSelectionPayload>
+  pickAvatarFile: () => Promise<DesktopAvatarFilePayload | null>
   getAppInfo: () => Promise<DesktopAppInfo>
   readImportFile: () => Promise<DesktopImportFilePayload>
   window: DesktopWindowBridge

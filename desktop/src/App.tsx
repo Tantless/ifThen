@@ -112,6 +112,10 @@ function resolveConversationStatusFromJob(currentStatus: string, job: JobRead): 
   return currentStatus
 }
 
+function resolveSettingValue(entries: SettingRead[] | null, key: string): string {
+  return entries?.find((entry) => entry.setting_key === key)?.setting_value.trim() ?? ''
+}
+
 const MESSAGE_LOAD_RETRY_INTERVAL_MS = 1500
 const MESSAGE_LOAD_TIMEOUT_MS = 10_000
 const INITIAL_MESSAGE_PAGE_SIZE = 80
@@ -332,11 +336,18 @@ export default function App() {
   const selectedConversationMessageLoadState =
     selectedConversationId === null ? undefined : messageLoadStateByConversation[selectedConversationId]
   const settingsFormState = useMemo(() => buildSettingsFormState(settings ?? []), [settings])
+  const selfAvatarUrl = useMemo(
+    () => resolveSettingValue(settings, 'profile.self_avatar_url') || FRONTUI_SELF_AVATAR,
+    [settings],
+  )
+  const resolveConversationAvatarUrl = (conversationId: number) =>
+    resolveSettingValue(settings, `conversation.${conversationId}.other_avatar_url`) || FRONTUI_PLACEHOLDER_AVATAR
   const filteredConversationItems = useMemo(() => {
     const normalizedSearch = conversationSearch.trim().toLowerCase()
     const items = (conversations ?? []).map((conversation) =>
       buildFrontChatItem({
         conversation,
+        otherAvatarUrl: resolveConversationAvatarUrl(conversation.id),
         latestJob: latestJobsByConversation[conversation.id] ?? null,
         isActive: conversation.id === selectedConversationId,
       }),
@@ -351,7 +362,7 @@ export default function App() {
         value.toLowerCase().includes(normalizedSearch),
       ),
     )
-  }, [conversationSearch, conversations, latestJobsByConversation, selectedConversationId])
+  }, [conversationSearch, conversations, latestJobsByConversation, selectedConversationId, settings])
 
   const contactsListItems = useMemo(() => {
     if (!conversations || conversations.length === 0) {
@@ -362,7 +373,7 @@ export default function App() {
       id: `contact-${conversation.id}`,
       conversationId: conversation.id,
       displayName: conversation.other_display_name || '未命名联系人',
-      avatarUrl: FRONTUI_PLACEHOLDER_AVATAR,
+      avatarUrl: resolveConversationAvatarUrl(conversation.id),
       previewText: `共 ${conversation.id} 条聊天记录`,
       timestampLabel: '',
       progress: null,
@@ -370,7 +381,7 @@ export default function App() {
       active: false,
       source: 'real' as const,
     }))
-  }, [conversations])
+  }, [conversations, settings])
 
   const rewriteGeneratedMessages = useMemo(() => {
     if (
@@ -387,12 +398,16 @@ export default function App() {
       simulation: rewriteDraft.simulation,
       selfDisplayName: selectedConversation.self_display_name,
       otherDisplayName: selectedConversation.other_display_name,
+      selfAvatarUrl,
+      otherAvatarUrl: resolveConversationAvatarUrl(selectedConversation.id),
       timestampRaw: rewriteDraft.targetMessageTimestamp,
     })
-  }, [rewriteDraft, selectedConversation])
+  }, [rewriteDraft, selectedConversation, selfAvatarUrl, settings])
   const selectedMessageModels = useMemo(() => {
     const realState = buildFrontChatWindowState({
       selectedConversation: activeTab === 'chat' ? selectedConversation : null,
+      selfAvatarUrl,
+      otherAvatarUrl: selectedConversation ? resolveConversationAvatarUrl(selectedConversation.id) : FRONTUI_PLACEHOLDER_AVATAR,
       messages: selectedConversationMessagesState ?? [],
     })
 
@@ -439,6 +454,8 @@ export default function App() {
     selectedConversation,
     selectedConversationId,
     selectedConversationMessagesState,
+    selfAvatarUrl,
+    settings,
   ])
   const analysisCompleted = selectedConversation?.status === 'ready' && selectedJob?.status === 'completed'
   const selectedConversationProgress = useMemo(() => {
@@ -1053,6 +1070,23 @@ export default function App() {
     return Array.from(next.values())
   }
 
+  const persistSelfAvatarSetting = async (avatarUrl: string) => {
+    const savedAvatarUrl = resolveSettingValue(settings, 'profile.self_avatar_url')
+    const normalizedAvatarUrl = avatarUrl.trim()
+
+    if (!normalizedAvatarUrl || normalizedAvatarUrl === savedAvatarUrl) {
+      return
+    }
+
+    const updatedSetting = await writeSetting({
+      setting_key: 'profile.self_avatar_url',
+      setting_value: normalizedAvatarUrl,
+      is_secret: false,
+    })
+
+    setSettings((current) => upsertSettings(current ?? [], [updatedSetting]))
+  }
+
   const handleSaveSettings = async (formState: SettingsFormState) => {
     setSettingsSavePending(true)
     setSettingsError(null)
@@ -1073,6 +1107,11 @@ export default function App() {
           setting_value: String(formState.simulationTurnCount),
           is_secret: false,
         }),
+        writeSetting({
+          setting_key: 'profile.self_avatar_url',
+          setting_value: formState.selfAvatarUrl.trim(),
+          is_secret: false,
+        }),
       ])
 
       setSettings((current) => upsertSettings(current ?? [], updates))
@@ -1087,7 +1126,17 @@ export default function App() {
     }
   }
 
-  const handleImportConversation = async ({ filePath, selfDisplayName, autoAnalyze }: { filePath: string; selfDisplayName: string; autoAnalyze: boolean }) => {
+  const handleImportConversation = async ({
+    filePath,
+    selfDisplayName,
+    autoAnalyze,
+    otherAvatarUrl,
+  }: {
+    filePath: string
+    selfDisplayName: string
+    autoAnalyze: boolean
+    otherAvatarUrl: string
+  }) => {
     setImportPending(true)
     setImportError(null)
 
@@ -1111,6 +1160,20 @@ export default function App() {
         selfDisplayName: selfDisplayName.trim(),
         autoAnalyze,
       })
+      const settingsUpdates: SettingRead[] = []
+
+      if (otherAvatarUrl.trim()) {
+        const otherAvatarSetting = await writeSetting({
+          setting_key: `conversation.${response.conversation.id}.other_avatar_url`,
+          setting_value: otherAvatarUrl.trim(),
+          is_secret: false,
+        })
+        settingsUpdates.push(otherAvatarSetting)
+      }
+
+      if (settingsUpdates.length > 0) {
+        setSettings((current) => upsertSettings(current ?? [], settingsUpdates))
+      }
 
       setConversations((current) => {
         const existing = current ?? []
@@ -1405,7 +1468,7 @@ export default function App() {
       messageId: null,
       align: 'right',
       speakerName,
-      avatarUrl: FRONTUI_SELF_AVATAR,
+      avatarUrl: selfAvatarUrl,
       text,
       timestampLabel: format(new Date(), 'HH:mm'),
       timestampRaw: new Date().toISOString(),
@@ -1453,6 +1516,7 @@ export default function App() {
         sidebar={
           <FrontSidebar
             activeTab={activeTab}
+            selfAvatarUrl={selfAvatarUrl}
             onTabChange={setActiveTab}
             onOpenSettings={() => setShowSettings(true)}
             onOpenImport={() => {
@@ -1515,11 +1579,14 @@ export default function App() {
       />
       <WelcomeModal
         open={showWelcome}
-        onConfigureModel={() => {
+        initialSelfAvatarUrl={selfAvatarUrl}
+        onConfigureModel={async (avatarUrl) => {
+          await persistSelfAvatarSetting(avatarUrl)
           setShowWelcome(false)
           setShowSettings(true)
         }}
-        onImportConversation={() => {
+        onImportConversation={async (avatarUrl) => {
+          await persistSelfAvatarSetting(avatarUrl)
           setShowWelcome(false)
           setShowImportDialog(true)
         }}

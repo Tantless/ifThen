@@ -81,6 +81,31 @@ describe('registerDesktopIpc', () => {
     expect(readFile).toHaveBeenCalledTimes(1)
   })
 
+  it('returns a data-url avatar payload after selecting an image file', async () => {
+    showOpenDialog.mockResolvedValueOnce({
+      canceled: false,
+      filePaths: ['C:/avatars/avatar.png'],
+    })
+    readFile.mockResolvedValueOnce(Uint8Array.from([137, 80, 78, 71]))
+
+    registerDesktopIpc({
+      getState: () => ({ phase: 'ready' }),
+    } as any)
+
+    const pickAvatarFile = handlers.get('desktop:pick-avatar-file')
+    expect(pickAvatarFile).toBeTypeOf('function')
+
+    if (!pickAvatarFile) {
+      throw new Error('expected avatar IPC handler to be registered')
+    }
+
+    await expect(pickAvatarFile()).resolves.toEqual({
+      fileName: 'avatar.png',
+      mimeType: 'image/png',
+      dataUrl: 'data:image/png;base64,iVBORw==',
+    })
+  })
+
   it('registers window control handlers against the invoking window', async () => {
     registerDesktopIpc({
       getState: () => ({ phase: 'ready' }),

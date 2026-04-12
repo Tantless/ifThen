@@ -1,4 +1,5 @@
 import type { ConversationRead, JobRead, MessageRead, SettingRead } from '../types/api'
+import { DEFAULT_SELF_AVATAR_URL } from './avatarPresets'
 
 export type SettingsFormState = {
   baseUrl: string
@@ -7,6 +8,7 @@ export type SettingsFormState = {
   simulationModel: string
   simulationMode: 'single_reply' | 'short_thread'
   simulationTurnCount: number
+  selfAvatarUrl: string
 }
 
 export type ConversationListItem = {
@@ -61,6 +63,7 @@ export function buildSettingsFormState(entries: SettingRead[]): SettingsFormStat
     simulationModel: byKey.get('llm.simulation_model') ?? '',
     simulationMode: byKey.get('simulation.default_mode') === 'short_thread' ? 'short_thread' : 'single_reply',
     simulationTurnCount: Math.min(6, Math.max(1, Number.parseInt(byKey.get('simulation.default_turn_count') ?? '1', 10) || 1)),
+    selfAvatarUrl: byKey.get('profile.self_avatar_url') ?? DEFAULT_SELF_AVATAR_URL,
   }
 }
 

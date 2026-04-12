@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildConversationListItem, buildMessageBubbleModel, buildSettingsFormState } from '../src/lib/adapters'
+import { DEFAULT_SELF_AVATAR_URL } from '../src/lib/avatarPresets'
 
 describe('buildSettingsFormState', () => {
   it('maps persisted llm settings into the form state', () => {
@@ -20,6 +21,7 @@ describe('buildSettingsFormState', () => {
       simulationModel: 'gpt-4o',
       simulationMode: 'short_thread',
       simulationTurnCount: 4,
+      selfAvatarUrl: DEFAULT_SELF_AVATAR_URL,
     })
   })
 })

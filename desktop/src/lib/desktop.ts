@@ -23,9 +23,16 @@ export type DesktopImportFilePayload = {
   content: string
 }
 
+export type DesktopAvatarFilePayload = {
+  fileName: string
+  mimeType: string
+  dataUrl: string
+}
+
 type DesktopBridge = {
   getServiceState: () => Promise<DesktopStatePayload>
   pickImportFile: () => Promise<DesktopFileSelectionPayload>
+  pickAvatarFile: () => Promise<DesktopAvatarFilePayload | null>
   getAppInfo: () => Promise<DesktopAppInfo>
   readImportFile: () => Promise<DesktopImportFilePayload>
 }
@@ -59,7 +66,7 @@ export function normalizeDesktopFileSelection(input: DesktopFileSelectionPayload
 }
 
 export function shouldUseDesktopBridge(capability: string): boolean {
-  return capability === 'pick-import-file' || capability === 'read-import-file'
+  return capability === 'pick-import-file' || capability === 'pick-avatar-file' || capability === 'read-import-file'
 }
 
 function getDesktopBridge(): DesktopBridge | undefined {
@@ -86,6 +93,16 @@ export async function openImportFileDialog(): Promise<string | null> {
 
   const selection = await desktopBridge.pickImportFile()
   return normalizeDesktopFileSelection(selection)
+}
+
+export async function pickAvatarFile(): Promise<DesktopAvatarFilePayload | null> {
+  const desktopBridge = getDesktopBridge()
+
+  if (!desktopBridge || !shouldUseDesktopBridge('pick-avatar-file')) {
+    return null
+  }
+
+  return desktopBridge.pickAvatarFile()
 }
 
 export function createImportFileBlob(input: DesktopImportFilePayload): Blob {

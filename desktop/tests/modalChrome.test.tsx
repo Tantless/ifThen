@@ -11,6 +11,7 @@ describe('desktop modal chrome', () => {
     const welcome = renderToStaticMarkup(
       <WelcomeModal
         open
+        initialSelfAvatarUrl="data:image/svg+xml;base64,welcome-avatar"
         onConfigureModel={() => undefined}
         onImportConversation={() => undefined}
         onClose={() => undefined}
@@ -28,7 +29,7 @@ describe('desktop modal chrome', () => {
     const html = renderToStaticMarkup(
       <SettingsDrawer
         open
-        initialState={{ baseUrl: '', apiKey: '', chatModel: '' }}
+        initialState={{ baseUrl: '', apiKey: '', chatModel: '', simulationModel: '', simulationMode: 'single_reply', simulationTurnCount: 1, selfAvatarUrl: 'data:image/svg+xml;base64,self-avatar' }}
         onClose={() => undefined}
         onSave={() => undefined}
       />,

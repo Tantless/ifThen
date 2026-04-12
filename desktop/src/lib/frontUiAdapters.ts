@@ -70,16 +70,17 @@ function resolveMessageAvatar(message: MessageRead): string {
 
 export function buildFrontChatItem(input: {
   conversation: ConversationRead
+  otherAvatarUrl?: string
   latestJob?: JobRead | null
   isActive: boolean
 }): FrontChatListItem {
-  const { conversation, latestJob, isActive } = input
+  const { conversation, otherAvatarUrl, latestJob, isActive } = input
 
   return {
     id: `conversation-${conversation.id}`,
     conversationId: conversation.id,
     displayName: resolveConversationDisplayName(conversation),
-    avatarUrl: FRONTUI_PLACEHOLDER_AVATAR,
+    avatarUrl: otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR,
     previewText: resolveConversationPreviewText(conversation),
     timestampLabel: resolveJobTimestampLabel(latestJob),
     progress: resolveJobProgress(latestJob),
@@ -89,8 +90,12 @@ export function buildFrontChatItem(input: {
   }
 }
 
-export function buildFrontChatMessage(input: { message: MessageRead }): FrontChatMessage {
-  const { message } = input
+export function buildFrontChatMessage(input: {
+  message: MessageRead
+  selfAvatarUrl?: string
+  otherAvatarUrl?: string
+}): FrontChatMessage {
+  const { message, selfAvatarUrl, otherAvatarUrl } = input
   const isSelf = message.speaker_role === 'self'
 
   return {
@@ -98,7 +103,7 @@ export function buildFrontChatMessage(input: { message: MessageRead }): FrontCha
     messageId: message.id,
     align: isSelf ? 'right' : 'left',
     speakerName: trimText(message.speaker_name) || (isSelf ? '我' : '对方'),
-    avatarUrl: resolveMessageAvatar(message),
+    avatarUrl: isSelf ? selfAvatarUrl || FRONTUI_SELF_AVATAR : otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR,
     text: message.content_text,
     timestampLabel: resolveTimestampLabel(message.timestamp),
     timestampRaw: message.timestamp,
@@ -109,9 +114,11 @@ export function buildFrontChatMessage(input: { message: MessageRead }): FrontCha
 
 export function buildFrontChatWindowState(input: {
   selectedConversation: ConversationRead | null
+  selfAvatarUrl?: string
+  otherAvatarUrl?: string
   messages: MessageRead[]
 }): FrontChatWindowState {
-  const { selectedConversation, messages } = input
+  const { selectedConversation, selfAvatarUrl, otherAvatarUrl, messages } = input
 
   if (!selectedConversation) {
     return { mode: 'placeholder' }
@@ -120,7 +127,7 @@ export function buildFrontChatWindowState(input: {
   return {
     mode: 'conversation',
     title: resolveConversationDisplayName(selectedConversation),
-    messages: messages.map((message) => buildFrontChatMessage({ message })),
+    messages: messages.map((message) => buildFrontChatMessage({ message, selfAvatarUrl, otherAvatarUrl })),
   }
 }
 
@@ -128,9 +135,18 @@ export function buildFrontChatMessagesFromSimulation(input: {
   simulation: SimulationRead
   selfDisplayName?: string
   otherDisplayName?: string
+  selfAvatarUrl?: string
+  otherAvatarUrl?: string
   timestampRaw: string
 }): FrontChatMessage[] {
-  const { simulation, selfDisplayName = '我', otherDisplayName = '对方', timestampRaw } = input
+  const {
+    simulation,
+    selfDisplayName = '我',
+    otherDisplayName = '对方',
+    selfAvatarUrl,
+    otherAvatarUrl,
+    timestampRaw,
+  } = input
   const normalizedTimestamp = trimText(timestampRaw) || new Date().toISOString()
 
   if (simulation.simulated_turns.length > 0) {
@@ -141,7 +157,7 @@ export function buildFrontChatMessagesFromSimulation(input: {
         messageId: null,
         align: isSelf ? 'right' : 'left',
         speakerName: isSelf ? selfDisplayName : otherDisplayName,
-        avatarUrl: isSelf ? FRONTUI_SELF_AVATAR : FRONTUI_PLACEHOLDER_AVATAR,
+        avatarUrl: isSelf ? selfAvatarUrl || FRONTUI_SELF_AVATAR : otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR,
         text: turn.message_text,
         timestampLabel: resolveTimestampLabel(normalizedTimestamp),
         timestampRaw: normalizedTimestamp,
@@ -158,7 +174,7 @@ export function buildFrontChatMessagesFromSimulation(input: {
         messageId: null,
         align: 'left',
         speakerName: otherDisplayName,
-        avatarUrl: FRONTUI_PLACEHOLDER_AVATAR,
+        avatarUrl: otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR,
         text: simulation.first_reply_text ?? '',
         timestampLabel: resolveTimestampLabel(normalizedTimestamp),
         timestampRaw: normalizedTimestamp,

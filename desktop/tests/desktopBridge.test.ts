@@ -37,6 +37,7 @@ import {
 import {
   createImportFileBlob,
   normalizeDesktopFileSelection,
+  pickAvatarFile,
   readImportFile,
   shouldUseDesktopBridge,
 } from '../src/lib/desktop'
@@ -54,6 +55,7 @@ describe('normalizeDesktopFileSelection', () => {
 describe('shouldUseDesktopBridge', () => {
   it('requires the bridge for file picking only', () => {
     expect(shouldUseDesktopBridge('pick-import-file')).toBe(true)
+    expect(shouldUseDesktopBridge('pick-avatar-file')).toBe(true)
     expect(shouldUseDesktopBridge('read-import-file')).toBe(true)
     expect(shouldUseDesktopBridge('read-conversations')).toBe(false)
   })
@@ -88,6 +90,32 @@ describe('readImportFile', () => {
     await expect(readImportFile()).resolves.toEqual({
       fileName: 'chat.txt',
       content: '第一行',
+    })
+  })
+})
+
+describe('pickAvatarFile', () => {
+  it('returns null when the desktop bridge is unavailable', async () => {
+    await expect(pickAvatarFile()).resolves.toBeNull()
+  })
+
+  it('reads the avatar payload from the desktop bridge', async () => {
+    ;(globalThis as typeof globalThis & {
+      desktop?: {
+        pickAvatarFile: () => Promise<{ fileName: string; mimeType: string; dataUrl: string }>
+      }
+    }).desktop = {
+      pickAvatarFile: async () => ({
+        fileName: 'avatar.png',
+        mimeType: 'image/png',
+        dataUrl: 'data:image/png;base64,AAAB',
+      }),
+    }
+
+    await expect(pickAvatarFile()).resolves.toEqual({
+      fileName: 'avatar.png',
+      mimeType: 'image/png',
+      dataUrl: 'data:image/png;base64,AAAB',
     })
   })
 })

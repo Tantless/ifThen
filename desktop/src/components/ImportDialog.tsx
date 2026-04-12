@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 
 import { openImportFileDialog } from '../lib/desktop'
+import { AvatarPicker } from './AvatarPicker'
+import { DEFAULT_OTHER_AVATAR_URL } from '../lib/avatarPresets'
 
 type ImportDialogSubmitPayload = {
   filePath: string
   selfDisplayName: string
   autoAnalyze: boolean
+  otherAvatarUrl: string
 }
 
 type ImportDialogProps = {
@@ -26,12 +29,14 @@ export function ImportDialog({
   const [selectedPath, setSelectedPath] = useState<string>('')
   const [selfDisplayName, setSelfDisplayName] = useState('')
   const [autoAnalyze, setAutoAnalyze] = useState(false)
+  const [otherAvatarUrl, setOtherAvatarUrl] = useState(DEFAULT_OTHER_AVATAR_URL)
 
   useEffect(() => {
     if (open) {
       setSelectedPath('')
       setSelfDisplayName('')
       setAutoAnalyze(false)
+      setOtherAvatarUrl(DEFAULT_OTHER_AVATAR_URL)
     }
   }, [open])
 
@@ -66,6 +71,7 @@ export function ImportDialog({
               filePath: selectedPath.trim(),
               selfDisplayName: selfDisplayName.trim(),
               autoAnalyze,
+              otherAvatarUrl,
             })
           }}
         >
@@ -98,6 +104,8 @@ export function ImportDialog({
               onChange={(event) => setSelfDisplayName(event.target.value)}
             />
           </label>
+
+          <AvatarPicker title="对方头像" selectedAvatarUrl={otherAvatarUrl} onChange={setOtherAvatarUrl} />
 
           <label className="desktop-modal__field" style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
             <input

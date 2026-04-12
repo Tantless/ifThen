@@ -19,6 +19,7 @@ import { listConversationJobs, readJob } from '../src/lib/services/jobService'
 import { createSimulation, listConversationSimulationJobs, readSimulation } from '../src/lib/services/simulationService'
 import { readSettings, writeSetting } from '../src/lib/services/settingsService'
 import type { ConversationRead, JobRead, MessageRead, SettingRead } from '../src/types/api'
+import { AVATAR_PRESETS } from '../src/lib/avatarPresets'
 
 vi.mock('../src/lib/services/conversationService', () => ({
   listConversations: vi.fn(),
@@ -293,6 +294,8 @@ describe('App frontUI integration', () => {
       { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
       { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
       { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+      { setting_key: 'profile.self_avatar_url', setting_value: AVATAR_PRESETS[0].url, is_secret: false },
+      { setting_key: 'conversation.7.other_avatar_url', setting_value: AVATAR_PRESETS[3].url, is_secret: false },
     ]
     const conversations: ConversationRead[] = [
       {
@@ -360,6 +363,8 @@ describe('App frontUI integration', () => {
     expect(container.querySelector('.desktop-modal__panel--welcome')).toBeNull()
     expect(mockedListMessages).toHaveBeenCalledWith(7, { order: 'desc', limit: 80 })
     expect(mockedListConversationJobs).toHaveBeenCalledWith(7, 1)
+    expect((container.querySelector('img[alt="当前用户头像"]') as HTMLImageElement | null)?.src).toBe(AVATAR_PRESETS[0].url)
+    expect((container.querySelector('img[alt="和小李的聊天"]') as HTMLImageElement | null)?.src).toBe(AVATAR_PRESETS[3].url)
 
     const settingsButton = container.querySelector('button[aria-label="设置"]')
     expect(settingsButton).not.toBeNull()
@@ -1063,7 +1068,7 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(6)
 
-    expect(mockedWriteSetting).toHaveBeenCalledTimes(6)
+    expect(mockedWriteSetting).toHaveBeenCalledTimes(8)
     expect(mockedWriteSetting).toHaveBeenCalledWith({
       setting_key: 'simulation.default_mode',
       setting_value: 'short_thread',
@@ -1077,6 +1082,11 @@ describe('App frontUI integration', () => {
     expect(mockedWriteSetting).toHaveBeenCalledWith({
       setting_key: 'llm.simulation_model',
       setting_value: '',
+      is_secret: false,
+    })
+    expect(mockedWriteSetting).toHaveBeenCalledWith({
+      setting_key: 'profile.self_avatar_url',
+      setting_value: AVATAR_PRESETS[0].url,
       is_secret: false,
     })
   })
@@ -1096,6 +1106,47 @@ describe('App frontUI integration', () => {
     expect(container.textContent).toContain('配置模型')
     expect(container.textContent).toContain('导入会话')
     expect(container.textContent).toContain('选择一段对话开始聊天')
+  })
+
+  it('首次欢迎流程支持选择并持久化自己的头像', async () => {
+    mockedReadSettings.mockResolvedValue([])
+    mockedListConversations.mockResolvedValue([])
+    mockedWriteSetting.mockImplementation(async (payload) => payload)
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(8)
+
+    const avatarPresetButton = container.querySelector('[data-testid="avatar-preset-avatar-preset-2"]')
+    expect(avatarPresetButton).not.toBeNull()
+
+    await act(async () => {
+      if (avatarPresetButton) {
+        getReactProps<{ onClick?: () => void }>(avatarPresetButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(2)
+
+    const configureButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('配置模型') ?? false,
+    )
+    expect(configureButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (configureButton) {
+        await getReactProps<{ onClick?: () => Promise<void> | void }>(configureButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    expect(mockedWriteSetting).toHaveBeenCalledWith({
+      setting_key: 'profile.self_avatar_url',
+      setting_value: AVATAR_PRESETS[1].url,
+      is_secret: false,
+    })
   })
 
   it('导入新会话后会在消息尚未落库时重试加载，直到聊天记录可渲染', async () => {
@@ -1182,6 +1233,16 @@ describe('App frontUI integration', () => {
     await flushAsyncWork(4)
     expect(container.textContent).toContain('C:\\Users\\Tantless\\Desktop\\聊天记录.txt')
 
+    const avatarPresetButton = container.querySelector('[data-testid="avatar-preset-avatar-preset-3"]')
+    expect(avatarPresetButton).not.toBeNull()
+
+    await act(async () => {
+      if (avatarPresetButton) {
+        getReactProps<{ onClick?: () => void }>(avatarPresetButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(2)
+
     const nameInput = container.querySelector('.desktop-modal__input') as HTMLInputElement | null
     expect(nameInput).not.toBeNull()
 
@@ -1219,6 +1280,11 @@ describe('App frontUI integration', () => {
     expect(container.textContent).not.toContain('终于显示出来了')
     expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent === '分析')).toBe(false)
     expect(container.textContent).toContain('开始分析')
+    expect(mockedWriteSetting).toHaveBeenCalledWith({
+      setting_key: 'conversation.99.other_avatar_url',
+      setting_value: AVATAR_PRESETS[2].url,
+      is_secret: false,
+    })
 
     await advanceTimersAndFlush(1500, 8)
 
