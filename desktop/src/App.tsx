@@ -40,6 +40,7 @@ import { resolveJobProgress } from './lib/analysisProgress'
 import { buildFrontChatItem, buildFrontChatMessagesFromSimulation, buildFrontChatWindowState } from './lib/frontUiAdapters'
 import { resolveSimulationPendingStageLabel } from './lib/simulationPending'
 import {
+  deleteConversation,
   importConversation,
   listConversations,
   listMessages,
@@ -1456,6 +1457,55 @@ export default function App() {
     setSelectedConversationId(conversationId)
   }
 
+  const handleDeleteConversation = async (conversationId: number) => {
+    await deleteConversation(conversationId)
+
+    setConversations((current) => current?.filter((conversation) => conversation.id !== conversationId) ?? [])
+    setLatestJobsByConversation((current) => {
+      const next = { ...current }
+      delete next[conversationId]
+      return next
+    })
+    setLatestJobLoadStateByConversation((current) => {
+      const next = { ...current }
+      delete next[conversationId]
+      return next
+    })
+    setMessagesByConversation((current) => {
+      const next = { ...current }
+      delete next[conversationId]
+      return next
+    })
+    setMessagePaginationByConversation((current) => {
+      const next = { ...current }
+      delete next[conversationId]
+      return next
+    })
+    setMessageLoadStateByConversation((current) => {
+      const next = { ...current }
+      delete next[conversationId]
+      return next
+    })
+    setMessageLoadErrorByConversation((current) => {
+      const next = { ...current }
+      delete next[conversationId]
+      return next
+    })
+    setMockMessagesByConversation((current) => {
+      const next = { ...current }
+      delete next[conversationId]
+      return next
+    })
+    setSettings((current) => current?.filter((entry) => entry.setting_key !== `conversation.${conversationId}.other_avatar_url`) ?? [])
+
+    if (selectedConversationId === conversationId) {
+      setChatViewState({ mode: 'history' })
+      setRewriteDraft(null)
+      setInspectorOpen(false)
+      setSelectedConversationId((current) => (current === conversationId ? null : current))
+    }
+  }
+
   const handleSendFrontMessage = (text: string) => {
     if (activeTab !== 'chat' || selectedConversationId === null) {
       return
@@ -1545,6 +1595,7 @@ export default function App() {
             searchQuery={conversationSearch}
             onSearchChange={setConversationSearch}
             onSelectChat={handleSelectFrontConversation}
+            onDeleteChat={handleDeleteConversation}
             onOpenImport={() => {
               setImportError(null)
               setShowImportDialog(true)

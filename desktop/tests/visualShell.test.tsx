@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../src/App'
 import {
+  deleteConversation,
   importConversation,
   listConversations,
   listMessages,
@@ -28,6 +29,7 @@ vi.mock('../src/lib/services/conversationService', () => ({
   readProfile: vi.fn(),
   readSnapshot: vi.fn(),
   importConversation: vi.fn(),
+  deleteConversation: vi.fn(),
   startAnalysis: vi.fn(),
 }))
 
@@ -55,6 +57,7 @@ const mockedListTopics = vi.mocked(listTopics)
 const mockedReadProfile = vi.mocked(readProfile)
 const mockedReadSnapshot = vi.mocked(readSnapshot)
 const mockedImportConversation = vi.mocked(importConversation)
+const mockedDeleteConversation = vi.mocked(deleteConversation)
 const mockedStartAnalysis = vi.mocked(startAnalysis)
 const mockedListConversationJobs = vi.mocked(listConversationJobs)
 const mockedReadJob = vi.mocked(readJob)
@@ -209,6 +212,7 @@ beforeEach(() => {
     snapshot_summary: '稳定',
   })
   mockedImportConversation.mockRejectedValue(new Error('not used in visual shell tests'))
+  mockedDeleteConversation.mockRejectedValue(new Error('not used in visual shell tests'))
   mockedStartAnalysis.mockRejectedValue(new Error('not used in visual shell tests'))
   mockedListConversationJobs.mockResolvedValue([])
   mockedReadJob.mockResolvedValue({
@@ -396,6 +400,119 @@ describe('App frontUI integration', () => {
     expect(container.querySelector('.desktop-modal__panel')).not.toBeNull()
     expect(container.textContent).toContain('更换头像')
     expect(container.textContent).toContain('我的头像')
+  })
+
+  it('右键删除会话后会调用后端并从前端列表与消息区移除', async () => {
+    const settings: SettingRead[] = [
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+    ]
+    const conversations: ConversationRead[] = [
+      {
+        id: 7,
+        title: '和小李的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '小李',
+        source_format: 'qq_export_v5',
+        status: 'ready',
+      },
+      {
+        id: 8,
+        title: '和阿青的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '阿青',
+        source_format: 'qq_export_v5',
+        status: 'ready',
+      },
+    ]
+    const messagesByConversation = new Map<number, MessageRead[]>([
+      [
+        7,
+        [
+          {
+            id: 11,
+            sequence_no: 1,
+            speaker_name: '小李',
+            speaker_role: 'other',
+            timestamp: '2026-04-08T10:01:00',
+            content_text: '这是小李的消息',
+            message_type: 'text',
+            resource_items: null,
+          },
+        ],
+      ],
+      [
+        8,
+        [
+          {
+            id: 21,
+            sequence_no: 1,
+            speaker_name: '阿青',
+            speaker_role: 'other',
+            timestamp: '2026-04-08T11:01:00',
+            content_text: '这是阿青的消息',
+            message_type: 'text',
+            resource_items: null,
+          },
+        ],
+      ],
+    ])
+
+    mockedReadSettings.mockResolvedValue(settings)
+    mockedListConversations.mockResolvedValue(conversations)
+    mockedListMessages.mockImplementation(async (conversationId) => [...(messagesByConversation.get(conversationId) ?? [])].reverse())
+    mockedListConversationJobs.mockResolvedValue([])
+    mockedDeleteConversation.mockResolvedValue(undefined)
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(12)
+
+    expect(container.textContent).toContain('和小李的聊天')
+    expect(container.textContent).toContain('和阿青的聊天')
+    expect(container.textContent).toContain('这是小李的消息')
+
+    const xiaoliButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('和小李的聊天') ?? false,
+    )
+    expect(xiaoliButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (xiaoliButton) {
+        getReactProps<{
+          onContextMenu?: (event: { preventDefault: () => void; clientX: number; clientY: number }) => void
+        }>(xiaoliButton).onContextMenu?.({
+          preventDefault: () => undefined,
+          clientX: 120,
+          clientY: 160,
+        })
+      }
+    })
+    await flushAsyncWork(2)
+
+    const deleteButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('删除会话') ?? false,
+    )
+    expect(deleteButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (deleteButton) {
+        await getReactProps<{ onClick?: () => Promise<void> | void }>(deleteButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(6)
+
+    expect(mockedDeleteConversation).toHaveBeenCalledWith(7)
+    expect(container.textContent).not.toContain('和小李的聊天')
+    expect(container.textContent).toContain('和阿青的聊天')
+    expect(container.textContent).not.toContain('这是小李的消息')
+    expect(container.textContent).toContain('这是阿青的消息')
   })
 
   it('聊天窗口首次只加载最近 80 条，并在滚动到顶部时继续加载更早 50 条消息', async () => {

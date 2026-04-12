@@ -369,6 +369,26 @@ describe('frontUI shell markup', () => {
   })
 
   it('wires sidebar and list callbacks to desktop-safe props', () => {
+    activeDom = new JSDOM('<!doctype html><html><body></body></html>')
+    const { window } = activeDom
+    Object.assign(globalThis, {
+      window,
+      document: window.document,
+      HTMLElement: window.HTMLElement,
+      Event: window.Event,
+      MouseEvent: window.MouseEvent,
+      IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
+    })
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    mountedRoots.push({ root, container })
+
     const events: string[] = []
 
     const sidebarTree = FrontSidebar({
@@ -377,40 +397,135 @@ describe('frontUI shell markup', () => {
       onTabChange: (tab) => events.push(`tab:${tab}`),
       onOpenSettings: () => events.push('settings'),
     })
-    const listTree = FrontChatList({
-      items: [
-        {
-          id: 'conversation-7',
-          conversationId: 7,
-          displayName: '和小李的聊天',
-          avatarUrl: 'https://example.test/avatar.png',
-          previewText: '我 / 小李 · qq export v5',
-          timestampLabel: '42%',
-          progress: null,
-          unreadCount: 0,
-          active: true,
-          source: 'real',
-        },
-      ],
-      activeChatId: 7,
-      searchQuery: '',
-      onSearchChange: (value) => events.push(`search:${value}`),
-      onSelectChat: (conversationId) => events.push(`select:${conversationId}`),
-      onOpenImport: () => events.push('list-import'),
-    })
 
     const sidebarButtons = collectElements(sidebarTree).filter((element) => element.type === 'button')
-    const listInput = collectElements(listTree).find((element) => element.type === 'input')
-    const listButtons = collectElements(listTree).filter((element) => element.type === 'button')
+
+    act(() => {
+      root.render(
+        <FrontChatList
+          items={[
+            {
+              id: 'conversation-7',
+              conversationId: 7,
+              displayName: '和小李的聊天',
+              avatarUrl: 'https://example.test/avatar.png',
+              previewText: '我 / 小李 · qq export v5',
+              timestampLabel: '42%',
+              progress: null,
+              unreadCount: 0,
+              active: true,
+              source: 'real',
+            },
+          ]}
+          activeChatId={7}
+          searchQuery=""
+          onSearchChange={(value) => events.push(`search:${value}`)}
+          onSelectChat={(conversationId) => events.push(`select:${conversationId}`)}
+          onDeleteChat={async (conversationId) => events.push(`delete:${conversationId}`)}
+          onOpenImport={() => events.push('list-import')}
+        />,
+      )
+    })
+
+    const listInput = container.querySelector('input')
+    const listButtons = Array.from(container.querySelectorAll('button'))
 
     sidebarButtons[0]?.props.onClick?.()
     sidebarButtons[1]?.props.onClick?.()
     sidebarButtons.at(-1)?.props.onClick?.()
-    listInput?.props.onChange?.({ target: { value: '阿青' } })
-    listButtons[0]?.props.onClick?.()
-    listButtons[1]?.props.onClick?.()
+
+    if (listInput) {
+      getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(listInput).onChange?.({
+        target: { value: '阿青' },
+      })
+    }
+    getReactProps<{ onClick?: () => void }>(listButtons[0] as Element).onClick?.()
+    getReactProps<{ onClick?: () => void }>(listButtons[1] as Element).onClick?.()
 
     expect(events).toEqual(['avatar', 'tab:chat', 'settings', 'search:阿青', 'list-import', 'select:7'])
+  })
+
+  it('opens a chat-list context menu on right click and wires delete through it', async () => {
+    activeDom = new JSDOM('<!doctype html><html><body></body></html>')
+    const { window } = activeDom
+    Object.assign(globalThis, {
+      window,
+      document: window.document,
+      HTMLElement: window.HTMLElement,
+      Event: window.Event,
+      MouseEvent: window.MouseEvent,
+      IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
+    })
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    mountedRoots.push({ root, container })
+
+    const events: string[] = []
+
+    await act(async () => {
+      root.render(
+        <FrontChatList
+          items={[
+            {
+              id: 'conversation-7',
+              conversationId: 7,
+              displayName: '和小李的聊天',
+              avatarUrl: 'https://example.test/avatar.png',
+              previewText: '我 / 小李 · qq export v5',
+              timestampLabel: '42%',
+              progress: null,
+              unreadCount: 0,
+              active: true,
+              source: 'real',
+            },
+          ]}
+          activeChatId={7}
+          searchQuery=""
+          onSearchChange={() => undefined}
+          onSelectChat={() => undefined}
+          onDeleteChat={async (conversationId) => {
+            events.push(`delete:${conversationId}`)
+          }}
+          onOpenImport={() => undefined}
+        />,
+      )
+    })
+
+    const conversationButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('和小李的聊天') ?? false,
+    )
+    expect(conversationButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (conversationButton) {
+        getReactProps<{
+          onContextMenu?: (event: { preventDefault: () => void; clientX: number; clientY: number }) => void
+        }>(conversationButton).onContextMenu?.({
+          preventDefault: () => undefined,
+          clientX: 120,
+          clientY: 160,
+        })
+      }
+    })
+
+    const deleteButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('删除会话') ?? false,
+    )
+    expect(deleteButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (deleteButton) {
+        await getReactProps<{ onClick?: () => Promise<void> | void }>(deleteButton).onClick?.()
+      }
+    })
+
+    expect(events).toEqual(['delete:7'])
   })
 
   it('keeps the sidebar focused on chat list and settings entry points only', () => {

@@ -41,6 +41,10 @@ export function listConversations(): Promise<ConversationRead[]> {
   return apiClient.get<ConversationRead[]>('/conversations')
 }
 
+export function deleteConversation(conversationId: number): Promise<void> {
+  return apiClient.delete(`/conversations/${conversationId}`)
+}
+
 export function listMessages(conversationId: number, options: ListMessagesOptions = {}): Promise<MessageRead[]> {
   return apiClient.get<MessageRead[]>(
     withQuery(`/conversations/${conversationId}/messages`, {
