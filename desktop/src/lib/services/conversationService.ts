@@ -2,6 +2,7 @@ import { apiClient } from '../apiClient'
 import type {
   ConversationRead,
   ImportResponse,
+  JobRead,
   MessageRead,
   PersonaProfileRead,
   SnapshotRead,
@@ -20,6 +21,7 @@ type ImportConversationInput = {
   file: Blob
   fileName?: string
   selfDisplayName: string
+  autoAnalyze?: boolean
 }
 
 function withQuery(path: string, entries: Record<string, string | number | undefined>): string {
@@ -71,5 +73,13 @@ export function importConversation(input: ImportConversationInput): Promise<Impo
   formData.append('file', input.file, fileName)
   formData.append('self_display_name', input.selfDisplayName)
 
+  if (input.autoAnalyze !== undefined) {
+    formData.append('auto_analyze', String(input.autoAnalyze))
+  }
+
   return apiClient.post<ImportResponse>('/imports/qq-text', formData)
+}
+
+export function startAnalysis(conversationId: number): Promise<JobRead> {
+  return apiClient.post<JobRead>(`/conversations/${conversationId}/start-analysis`, {})
 }

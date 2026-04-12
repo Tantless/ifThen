@@ -32,122 +32,123 @@ export function AnalysisInspector({
   const isLoading = loadingByTab[currentTab]
 
   return (
-    <aside className="analysis-inspector">
-      <div className="analysis-inspector__header">
-        <div>
-          <p className="analysis-inspector__eyebrow">分析侧栏</p>
-          <h3>topics / profile / snapshot</h3>
+    <div className="desktop-modal" role="dialog" aria-modal="true" aria-labelledby="analysis-dialog-title">
+      <section className="desktop-modal__panel desktop-modal__panel--analysis">
+        <header className="desktop-modal__header desktop-modal__header--split">
+          <div>
+            <p className="desktop-modal__eyebrow">分析</p>
+            <h2 id="analysis-dialog-title" className="desktop-modal__title">
+              会话分析结果
+            </h2>
+          </div>
+          <button type="button" className="desktop-modal__button" onClick={onClose}>
+            关闭
+          </button>
+        </header>
+
+        <div className="desktop-modal__tabs" role="tablist" aria-label="分析标签">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentTab === 'topics'}
+            className={`desktop-modal__tab${currentTab === 'topics' ? ' desktop-modal__tab--active' : ''}`}
+            onClick={() => onTabChange('topics')}
+          >
+            话题
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentTab === 'profile'}
+            className={`desktop-modal__tab${currentTab === 'profile' ? ' desktop-modal__tab--active' : ''}`}
+            onClick={() => onTabChange('profile')}
+          >
+            人格
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={currentTab === 'snapshot'}
+            className={`desktop-modal__tab${currentTab === 'snapshot' ? ' desktop-modal__tab--active' : ''}`}
+            onClick={() => onTabChange('snapshot')}
+          >
+            快照
+          </button>
         </div>
-        <button type="button" onClick={onClose}>
-          收起
-        </button>
-      </div>
 
-      <div className="analysis-inspector__tabs" role="tablist" aria-label="分析标签">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={currentTab === 'topics'}
-          className={`analysis-inspector__tab${currentTab === 'topics' ? ' analysis-inspector__tab--active' : ''}`}
-          onClick={() => onTabChange('topics')}
-        >
-          Topics
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={currentTab === 'profile'}
-          className={`analysis-inspector__tab${currentTab === 'profile' ? ' analysis-inspector__tab--active' : ''}`}
-          onClick={() => onTabChange('profile')}
-        >
-          Persona
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={currentTab === 'snapshot'}
-          className={`analysis-inspector__tab${currentTab === 'snapshot' ? ' analysis-inspector__tab--active' : ''}`}
-          onClick={() => onTabChange('snapshot')}
-        >
-          Snapshot
-        </button>
-      </div>
+        <div className="desktop-modal__content">
+          {isLoading ? <p className="desktop-modal__state">正在加载分析数据…</p> : null}
+          {errorMessage ? (
+            <p className="desktop-modal__state desktop-modal__state--error" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
 
-      <section className="analysis-inspector__panel">
-        {isLoading ? <p className="analysis-inspector__state">正在加载分析视角…</p> : null}
-        {errorMessage ? (
-          <p className="analysis-inspector__state analysis-inspector__state--error" role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
+          {!isLoading && !errorMessage ? (
+            <>
+              {currentTab === 'topics' ? (
+                <section className="desktop-modal__section" role="tabpanel">
+                  {topics.length === 0 ? (
+                    <p className="desktop-modal__empty">暂无话题数据</p>
+                  ) : (
+                    <ul className="desktop-modal__list">
+                      {topics.map((topic) => (
+                        <li key={topic.id} className="desktop-modal__list-item">
+                          <strong className="desktop-modal__list-title">{topic.topic_name}</strong>
+                          <p className="desktop-modal__list-text">{topic.topic_summary}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              ) : null}
 
-        {!isLoading && !errorMessage ? (
-          <>
-            {currentTab === 'topics' ? (
-              <section className="analysis-inspector__section" role="tabpanel">
-                <h4>Topics</h4>
-                {topics.length === 0 ? (
-                  <p className="analysis-inspector__empty">暂无 topics 数据。</p>
-                ) : (
-                  <ul>
-                    {topics.map((topic) => (
-                      <li key={topic.id}>
-                        <strong>{topic.topic_name}</strong>
-                        <p>{topic.topic_summary}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            ) : null}
+              {currentTab === 'profile' ? (
+                <section className="desktop-modal__section" role="tabpanel">
+                  {profile.length === 0 ? (
+                    <p className="desktop-modal__empty">暂无人格数据</p>
+                  ) : (
+                    <ul className="desktop-modal__list">
+                      {profile.map((item) => (
+                        <li key={item.subject_role} className="desktop-modal__list-item">
+                          <strong className="desktop-modal__list-title">{item.subject_role}</strong>
+                          <p className="desktop-modal__list-text">{item.global_persona_summary}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              ) : null}
 
-            {currentTab === 'profile' ? (
-              <section className="analysis-inspector__section" role="tabpanel">
-                <h4>Persona</h4>
-                {profile.length === 0 ? (
-                  <p className="analysis-inspector__empty">暂无 persona 数据。</p>
-                ) : (
-                  <ul>
-                    {profile.map((item) => (
-                      <li key={item.subject_role}>
-                        <strong>{item.subject_role}</strong>
-                        <p>{item.global_persona_summary}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            ) : null}
-
-            {currentTab === 'snapshot' ? (
-              <section className="analysis-inspector__section" role="tabpanel">
-                <h4>Snapshot</h4>
-                {snapshot ? (
-                  <div className="analysis-inspector__snapshot">
-                    <p>{snapshot.snapshot_summary}</p>
-                    <dl>
-                      <div>
-                        <dt>关系温度</dt>
-                        <dd>{snapshot.relationship_temperature}</dd>
-                      </div>
-                      <div>
-                        <dt>关系阶段</dt>
-                        <dd>{snapshot.relationship_phase}</dd>
-                      </div>
-                      <div>
-                        <dt>紧张程度</dt>
-                        <dd>{snapshot.tension_level}</dd>
-                      </div>
-                    </dl>
-                  </div>
-                ) : (
-                  <p className="analysis-inspector__empty">暂无 snapshot 数据。</p>
-                )}
-              </section>
-            ) : null}
-          </>
-        ) : null}
+              {currentTab === 'snapshot' ? (
+                <section className="desktop-modal__section" role="tabpanel">
+                  {snapshot ? (
+                    <div className="desktop-modal__snapshot">
+                      <p className="desktop-modal__snapshot-summary">{snapshot.snapshot_summary}</p>
+                      <dl className="desktop-modal__snapshot-details">
+                        <div className="desktop-modal__snapshot-row">
+                          <dt className="desktop-modal__snapshot-label">关系温度</dt>
+                          <dd className="desktop-modal__snapshot-value">{snapshot.relationship_temperature}</dd>
+                        </div>
+                        <div className="desktop-modal__snapshot-row">
+                          <dt className="desktop-modal__snapshot-label">关系阶段</dt>
+                          <dd className="desktop-modal__snapshot-value">{snapshot.relationship_phase}</dd>
+                        </div>
+                        <div className="desktop-modal__snapshot-row">
+                          <dt className="desktop-modal__snapshot-label">紧张程度</dt>
+                          <dd className="desktop-modal__snapshot-value">{snapshot.tension_level}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ) : (
+                    <p className="desktop-modal__empty">暂无快照数据</p>
+                  )}
+                </section>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </section>
-    </aside>
+    </div>
   )
 }

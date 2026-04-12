@@ -129,7 +129,8 @@ PERSONA_SYSTEM_PROMPT = (
     "5. 不要做心理诊断、依恋类型判断、创伤推测或隐藏动机猜测。"
     "6. `global_persona_summary`、`style_traits`、`conflict_traits`、`relationship_specific_patterns` 各自职责不同，不能互相重复堆砌。"
     "7. 你的输出必须服务后续分支判断和对话推演，因此要尽量写成“这个人通常怎么说、怎么应对、面对当前对象有什么特别模式”，而不是空泛评价。"
-    "8. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+    "8. 优先提炼能直接约束措辞、长度、推进方式的行为模式。"
+    "9. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 SNAPSHOT_SYSTEM_PROMPT = (
     "你是一个“截止安全”的关系状态快照估计器。"
@@ -141,11 +142,12 @@ SNAPSHOT_SYSTEM_PROMPT = (
     "3. 你要做的是在已有关系背景上进行连续更新，而不是每次都从零重新判断。"
     "4. 如果证据不足，必须保守，不要把单段氛围、一次解释或一次冷淡夸大成整体关系转折。"
     "5. 不要把普通简短、普通礼貌、普通谨慎自动解释为高 tension、高 defensiveness 或关系恶化。"
-    "6. `relationship_temperature`、`tension_level`、`openness_level`、`initiative_balance`、`defensiveness_level`、`unresolved_conflict_flags`、`relationship_phase` 各自职责不同，不能互相混淆或重复。"
-    "7. `relationship_phase` 只能在趋势相对明确时使用，不能只依据当前这一段的局部气氛下重判断。"
-    "8. `unresolved_conflict_flags` 只有在确实存在未化解的问题、误解、冲突或推进阻力时才填写，否则应保持空列表。"
-    "9. `snapshot_summary` 必须总结当前时点的关系状态及其相对上一快照的有限变化，而不是复述当前段剧情。"
-    "10. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+    "6. 先判断哪些状态应延续，再判断哪些字段发生了有限变化。"
+    "7. `relationship_temperature`、`tension_level`、`openness_level`、`initiative_balance`、`defensiveness_level`、`unresolved_conflict_flags`、`relationship_phase` 各自职责不同，不能互相混淆或重复。"
+    "8. `relationship_phase` 只能在趋势相对明确时使用，不能只依据当前这一段的局部气氛下重判断。"
+    "9. `unresolved_conflict_flags` 只有在确实存在未化解的问题、误解、冲突或推进阻力时才填写，否则应保持空列表。"
+    "10. `snapshot_summary` 必须总结当前时点的关系状态及其相对上一快照的有限变化，而不是复述当前段剧情。"
+    "11. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 
 
@@ -333,6 +335,7 @@ def _build_persona_prompt(*, subject_role: str, segment_summaries: list[dict]) -
         "- 单次事件、单段异常、某一时刻情绪，不应直接上升为长期人格",
         "- 证据不足时宁可写弱结论，也不要写戏剧化强结论",
         "- 不要把“这段关系当前状态”误写成人格本身；关系状态属于 snapshot，不属于 persona",
+        "- 优先提炼能直接约束后续措辞、长度、推进方式的行为模式",
         "",
         "2. `global_persona_summary` 的职责",
         "- 用 2 到 4 句总结该角色在这段关系中的总体互动倾向",
@@ -401,6 +404,7 @@ def _build_persona_prompt(*, subject_role: str, segment_summaries: list[dict]) -
         "- 尽量写成能约束后续推演的话",
         "- 如果材料不足，列表项可以更少，但不要为了凑数编造",
         "- `confidence` 取 0 到 1 之间；跨段证据越稳定越高，证据稀薄或矛盾时更低",
+        "- 如果不确定更像全局倾向还是关系特定模式，优先降低结论强度或写进 `relationship_specific_patterns`",
         "请再次自检：",
         "- 有没有把单次事件误写成长期人格",
         "- 有没有把短期状态误写成稳定特征",
@@ -431,6 +435,7 @@ def _build_snapshot_prompt(*, segment_summary: dict, prior_snapshot: str | None)
         "- 当前会话段只负责在这个背景上做更新，而不是完全推翻之前状态",
         "- 没有强证据时，优先保持连续性和保守性，不要大幅跳变",
         "- 不要把当前段的局部氛围直接等同于整体关系状态",
+        "- 先判断哪些状态应延续，再判断哪些字段发生了有限变化",
         "",
         "2. `relationship_temperature` 的职责",
         "- 表示截至当前段结束时，这段关系整体的情感温度",
@@ -516,6 +521,7 @@ def _build_snapshot_prompt(*, segment_summary: dict, prior_snapshot: str | None)
         "- 尽量让各字段之间分工清晰，不重复堆砌同一个意思",
         "- 如果证据不足，优先延续上一状态或只做小幅修正",
         "- 不要为了显得深刻而强行制造关系戏剧性",
+        "- 如果只是普通礼貌、普通接话或普通停顿，不要把它解释成关系修复或关系恶化",
         "",
         "请再次自检：",
         "- 有没有把当前段氛围误写成整体关系状态",

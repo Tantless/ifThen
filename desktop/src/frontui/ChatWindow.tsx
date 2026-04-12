@@ -42,6 +42,9 @@ type FrontChatWindowProps = {
   hasOlderMessages?: boolean
   olderMessagesPending?: boolean
   onLoadOlderMessages?: () => Promise<void> | void
+  showStartAnalysisButton?: boolean
+  onStartAnalysis?: () => void
+  startAnalysisPending?: boolean
 }
 
 export function FrontChatWindow({
@@ -61,6 +64,9 @@ export function FrontChatWindow({
   hasOlderMessages = false,
   olderMessagesPending = false,
   onLoadOlderMessages,
+  showStartAnalysisButton = false,
+  onStartAnalysis,
+  startAnalysisPending = false,
 }: FrontChatWindowProps) {
   const [inputText, setInputText] = useState('')
   const [historyLoadHint, setHistoryLoadHint] = useState<'hidden' | 'loading' | 'loaded'>('hidden')
@@ -347,6 +353,24 @@ export function FrontChatWindow({
           </div>
         </div>
         {analysisProgress ? <HeaderProgressBar progress={analysisProgress} /> : null}
+        {showStartAnalysisButton && onStartAnalysis ? (
+          <div className="border-t border-[#ebebeb] bg-[#f7f9fa] px-5 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-[#333]">聊天记录已导入</p>
+                <p className="mt-1 text-[12px] text-[#888]">开始分析以提取话题、人格特征和关系快照</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-md bg-[#07c160] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#06ad56] disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={onStartAnalysis}
+                disabled={startAnalysisPending}
+              >
+                {startAnalysisPending ? '启动中…' : '开始分析'}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {rewriteState?.state === 'completed' ? (
           <div className="border-t border-[#ebebeb] bg-[#f2f9f0] px-5 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">

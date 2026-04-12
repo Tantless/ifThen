@@ -5,6 +5,7 @@ import { openImportFileDialog } from '../lib/desktop'
 type ImportDialogSubmitPayload = {
   filePath: string
   selfDisplayName: string
+  autoAnalyze: boolean
 }
 
 type ImportDialogProps = {
@@ -24,11 +25,13 @@ export function ImportDialog({
 }: ImportDialogProps) {
   const [selectedPath, setSelectedPath] = useState<string>('')
   const [selfDisplayName, setSelfDisplayName] = useState('')
+  const [autoAnalyze, setAutoAnalyze] = useState(false)
 
   useEffect(() => {
     if (open) {
       setSelectedPath('')
       setSelfDisplayName('')
+      setAutoAnalyze(false)
     }
   }, [open])
 
@@ -62,6 +65,7 @@ export function ImportDialog({
             await onSubmit({
               filePath: selectedPath.trim(),
               selfDisplayName: selfDisplayName.trim(),
+              autoAnalyze,
             })
           }}
         >
@@ -95,8 +99,19 @@ export function ImportDialog({
             />
           </label>
 
+          <label className="desktop-modal__field" style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="checkbox"
+              checked={autoAnalyze}
+              onChange={(event) => setAutoAnalyze(event.target.checked)}
+            />
+            <span className="desktop-modal__label" style={{ margin: 0 }}>导入后立即开始分析</span>
+          </label>
+
           <p className="desktop-modal__body desktop-modal__body--muted">
-            选择本地 QQ 导出文本后，桌面壳会读取 UTF-8 内容并提交到现有导入接口。
+            {autoAnalyze
+              ? '导入后将自动进行分段、话题提取、人格分析等操作。'
+              : '导入后仅展示聊天记录，你可以稍后手动触发分析。'}
           </p>
 
           {errorMessage ? (

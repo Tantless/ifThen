@@ -112,6 +112,50 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
                 raise HTTPException(status_code=404, detail="Job not found")
             return _job_to_read(row)
 
+    @app.post("/conversations/{conversation_id}/start-analysis", response_model=JobRead, status_code=202)
+    def start_analysis(conversation_id: int) -> JobRead:
+        with session_scope() as session:
+            conversation = _require_conversation(session, conversation_id)
+
+            # Check if there's already a queued or running job
+            existing_job = session.execute(
+                select(AnalysisJob)
+                .where(
+                    AnalysisJob.conversation_id == conversation_id,
+                    AnalysisJob.status.in_(["queued", "running"]),
+                )
+                .order_by(AnalysisJob.id.desc())
+            ).scalar_one_or_none()
+
+            if existing_job is not None:
+                raise HTTPException(status_code=409, detail="Analysis already queued or running")
+
+            # Get the import batch
+            batch = session.execute(
+                select(ImportBatch)
+                .where(ImportBatch.conversation_id == conversation_id)
+                .order_by(ImportBatch.id.desc())
+            ).scalar_one_or_none()
+
+            if batch is None:
+                raise HTTPException(status_code=400, detail="No import batch found for this conversation")
+
+            # Create a new analysis job
+            job = AnalysisJob(
+                conversation_id=conversation_id,
+                job_type="full_analysis",
+                status="queued",
+                current_stage="created",
+                progress_percent=0,
+                retry_count=0,
+                payload_json={"import_id": batch.id},
+            )
+            session.add(job)
+            conversation.status = "queued"
+            session.flush()
+
+            return _job_to_read(job)
+
     @app.post("/conversations/{conversation_id}/rerun-analysis", response_model=JobRead, status_code=202)
     def rerun_analysis(conversation_id: int) -> JobRead:
         with session_scope() as session:
@@ -421,7 +465,11 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             )
 
     @app.post("/imports/qq-text", response_model=ImportResponse, status_code=201)
-    async def import_qq_text(file: UploadFile = File(...), self_display_name: str = Form(...)) -> ImportResponse:
+    async def import_qq_text(
+        file: UploadFile = File(...),
+        self_display_name: str = Form(...),
+        auto_analyze: bool = Form(default=True),
+    ) -> ImportResponse:
         settings = get_settings()
         raw_bytes = await file.read()
 
@@ -452,7 +500,7 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
                         "unknown",
                     ),
                     source_format="qq_chat_exporter_v5",
-                    status="queued",
+                    status="queued" if auto_analyze else "imported",
                 )
                 session.add(conversation)
                 session.flush()
@@ -467,9 +515,10 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
                 session.add(batch)
                 session.flush()
 
+                job_type = "full_analysis" if auto_analyze else "import_only"
                 job = AnalysisJob(
                     conversation_id=conversation.id,
-                    job_type="full_analysis",
+                    job_type=job_type,
                     status="queued",
                     current_stage="created",
                     progress_percent=0,

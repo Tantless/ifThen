@@ -26,6 +26,9 @@ from if_then_mvp.simulation import (
     NEXT_TURN_SYSTEM_PROMPT,
     NextTurnPayload,
     TurnStatePayload,
+    assess_branch,
+    generate_first_reply,
+    simulate_short_thread,
 )
 
 
@@ -68,6 +71,109 @@ class FakeSimulationLLM:
         response = self._responses[len(self.calls) - 1]
         assert isinstance(response, response_model)
         return response
+
+
+def _sample_context_pack() -> dict:
+    return {
+        "original_message_text": "我们已成功添加为好友，现在可以开始聊天啦～",
+        "replacement_content": "如果你方便的话，我们慢慢聊就好",
+        "cutoff_timestamp": "2025-03-02T20:18:04",
+        "cutoff_sequence_no": 4,
+        "moment_state_estimate": {
+            "relationship_temperature": "warm",
+            "tension_level": "low",
+            "openness_level": "medium",
+            "initiative_balance": "balanced",
+            "defensiveness_level": "low",
+            "relationship_phase": "warming",
+            "active_sensitive_topics": ["初次接触"],
+            "state_rationale": "刚建立连接，整体偏轻松，但仍在试探阶段。",
+        },
+        "persona_self": {
+            "global_persona_summary": "我方整体偏主动接话。",
+            "style_traits": ["愿意主动接续"],
+            "conflict_traits": ["压力下会解释"],
+            "relationship_specific_patterns": ["面对对方时会更主动给台阶"],
+        },
+        "persona_other": {
+            "global_persona_summary": "对方整体轻松但不会一下子说很多。",
+            "style_traits": ["回复偏简短", "会先轻接一下"],
+            "conflict_traits": ["有顾虑时先收一点"],
+            "relationship_specific_patterns": ["面对当前对象时愿意顺着聊一点"],
+        },
+        "related_topic_digests": [
+            {
+                "topic_name": "开场聊天",
+                "topic_summary": "双方在刚加上好友的阶段试着建立联系。",
+                "topic_status": "ongoing",
+            }
+        ],
+        "same_day_prior_segments": [
+            {
+                "summary_text": "更早前有过一段轻松的开场互动。",
+                "relationship_impact": "neutral_positive",
+            }
+        ],
+        "current_segment_history": [
+            {"speaker_role": "other", "content_text": "我是凉ゥ"},
+        ],
+    }
+
+
+def test_simulation_prompt_builders_strengthen_realism_constraints():
+    fake_llm = FakeSimulationLLM(
+        [
+            BranchAssessmentPayload(
+                branch_direction="closer",
+                state_shift_summary="新说法更柔和，降低了推进压力。",
+                other_immediate_feeling="更放松",
+                reply_strategy="light_follow_up",
+                risk_flags=["当前关系仍在试探期"],
+                confidence=0.82,
+            ),
+            FirstReplyPayload(
+                first_reply_text="好呀，那就慢慢聊。",
+                strategy_used="light_follow_up",
+                first_reply_style_notes="对方会先轻接一下，不会一下子说很多。",
+                state_after_turn=TurnStatePayload(**_state_payload(openness_level="high")),
+            ),
+            NextTurnPayload(
+                message_text="好，那我慢慢说。",
+                strategy_used="self_follow_up",
+                state_after_turn=TurnStatePayload(**_state_payload(openness_level="high")),
+                generation_notes="我方顺着当前轻松但仍克制的节奏继续。",
+                should_stop=False,
+                stopping_reason=None,
+            ),
+        ]
+    )
+    context_pack = _sample_context_pack()
+
+    assessment = assess_branch(llm_client=fake_llm, context_pack=context_pack)
+    first_reply = generate_first_reply(
+        llm_client=fake_llm,
+        context_pack=context_pack,
+        assessment=assessment,
+    )
+    simulate_short_thread(
+        llm_client=fake_llm,
+        context_pack=context_pack,
+        assessment=assessment,
+        first_reply=first_reply,
+        turn_count=2,
+    )
+
+    branch_prompt = fake_llm.calls[0]["user_prompt"]
+    assert "先比较原话和改写分别触发了什么，再判断状态变化" in branch_prompt
+    assert "如果只能确认更容易被接一句，不要把它写成关系明显拉近" in branch_prompt
+
+    first_reply_prompt = fake_llm.calls[1]["user_prompt"]
+    assert "避免分析腔、治疗腔、总结腔或过度完整的书面表达" in first_reply_prompt
+    assert "宁可短一点、留一点，也不要假装对方突然很会说" in first_reply_prompt
+
+    next_turn_prompt = fake_llm.calls[2]["user_prompt"]
+    assert "允许自然变短、自然停住，不以把对话写完整为目标" in next_turn_prompt
+    assert "如果继续只会重复礼貌承接或轻微改写上一句，应优先收束" in next_turn_prompt
 
 
 def test_simulations_endpoint_returns_first_reply_and_short_thread(tmp_path, monkeypatch):
@@ -329,6 +435,8 @@ def test_simulations_endpoint_returns_first_reply_and_short_thread(tmp_path, mon
     assert "9. 边界示例" in branch_prompt
     assert "10. 输出质量要求" in branch_prompt
     assert "- 有没有把略微改善写成明显翻盘" in branch_prompt
+    assert "先比较原话和改写分别触发了什么，再判断状态变化" in branch_prompt
+    assert "如果只能确认更容易被接一句，不要把它写成关系明显拉近" in branch_prompt
     assert '"original_message_text": "我们已成功添加为好友，现在可以开始聊天啦～"' in branch_prompt
     assert '"replacement_content": "如果你方便的话，我们慢慢聊就好"' in branch_prompt
     assert "开场聊天" in branch_prompt
@@ -351,6 +459,8 @@ def test_simulations_endpoint_returns_first_reply_and_short_thread(tmp_path, mon
     assert "9. 边界示例" in first_reply_prompt
     assert "10. 输出质量要求" in first_reply_prompt
     assert "- 有没有把首轮回复写得过于理想化或过于会说话" in first_reply_prompt
+    assert "避免分析腔、治疗腔、总结腔或过度完整的书面表达" in first_reply_prompt
+    assert "宁可短一点、留一点，也不要假装对方突然很会说" in first_reply_prompt
     assert '"reply_strategy": "light_follow_up"' in first_reply_prompt
     assert '"replacement_content": "如果你方便的话，我们慢慢聊就好"' in first_reply_prompt
     assert '"speaker_role": "self"' in first_reply_prompt
@@ -371,6 +481,8 @@ def test_simulations_endpoint_returns_first_reply_and_short_thread(tmp_path, mon
     assert "8. 边界示例" in next_turn_prompt
     assert "9. 输出质量要求" in next_turn_prompt
     assert "- 有没有让这一轮说得比当前关系允许的更多、更深、更热" in next_turn_prompt
+    assert "允许自然变短、自然停住，不以把对话写完整为目标" in next_turn_prompt
+    assert "如果继续只会重复礼貌承接或轻微改写上一句，应优先收束" in next_turn_prompt
     assert '"speaker_role": "self"' in next_turn_prompt
     assert '"reply_strategy": "light_follow_up"' in next_turn_prompt
     assert '"message_text": "好呀，那我们就慢慢聊，别着急。"' in next_turn_prompt

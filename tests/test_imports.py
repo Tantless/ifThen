@@ -9,10 +9,20 @@ from if_then_mvp.db import get_sessionmaker, init_db, session_scope
 from if_then_mvp.models import AnalysisJob, Conversation, ImportBatch
 
 
-def _post_import(client: TestClient, sample_bytes: bytes, filename: str = "聊天记录.txt"):
+def _post_import(
+    client: TestClient,
+    sample_bytes: bytes,
+    filename: str = "聊天记录.txt",
+    *,
+    auto_analyze: bool | None = None,
+):
+    data = {"self_display_name": "Tantless"}
+    if auto_analyze is not None:
+        data["auto_analyze"] = str(auto_analyze).lower()
+
     return client.post(
         "/imports/qq-text",
-        data={"self_display_name": "Tantless"},
+        data=data,
         files={"file": (filename, sample_bytes, "text/plain")},
     )
 
@@ -44,6 +54,30 @@ def test_import_endpoint_persists_upload_and_enqueues_job(tmp_path, monkeypatch)
     assert upload_path.name != "聊天记录.txt"
     assert upload_path.exists()
     assert upload_path.read_bytes() == sample_bytes
+
+
+def test_import_endpoint_can_skip_analysis_and_queue_import_only_job(tmp_path, monkeypatch):
+    uploads_root = tmp_path / "app_data"
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(uploads_root))
+    init_db()
+
+    sample_bytes = Path("tests/fixtures/qq_export_sample.txt").read_bytes()
+
+    with TestClient(create_app()) as client:
+        response = _post_import(client, sample_bytes, auto_analyze=False)
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["conversation"]["status"] == "imported"
+    assert payload["job"]["status"] == "queued"
+
+    with session_scope() as session:
+        conversation = session.query(Conversation).one()
+        job = session.query(AnalysisJob).one()
+
+    assert conversation.status == "imported"
+    assert job.job_type == "import_only"
+    assert job.payload_json["import_id"] == 1
 
 
 def test_import_endpoint_keeps_distinct_files_for_same_original_filename(tmp_path, monkeypatch):

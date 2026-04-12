@@ -45,6 +45,7 @@ import {
   listTopics,
   readProfile,
   readSnapshot,
+  startAnalysis,
 } from './lib/services/conversationService'
 import { listConversationJobs, readJob } from './lib/services/jobService'
 import { readSettings, writeSetting } from './lib/services/settingsService'
@@ -85,6 +86,26 @@ function isPollingJob(job: JobRead | null | undefined): job is JobRead {
   return job?.status === 'running' || job?.status === 'queued'
 }
 
+function resolveConversationStatusFromJob(currentStatus: string, job: JobRead): string {
+  if (job.status === 'failed') {
+    return 'failed'
+  }
+
+  if (job.status === 'running') {
+    return currentStatus === 'imported' ? 'imported' : 'analyzing'
+  }
+
+  if (job.status === 'queued') {
+    return currentStatus === 'imported' ? 'imported' : 'queued'
+  }
+
+  if (job.status === 'completed') {
+    return currentStatus === 'imported' ? 'imported' : 'ready'
+  }
+
+  return currentStatus
+}
+
 const MESSAGE_LOAD_RETRY_INTERVAL_MS = 1500
 const MESSAGE_LOAD_TIMEOUT_MS = 10_000
 const INITIAL_MESSAGE_PAGE_SIZE = 80
@@ -122,6 +143,7 @@ export default function App() {
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [importPending, setImportPending] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [startAnalysisPending, setStartAnalysisPending] = useState(false)
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null)
   const [conversationSearch, setConversationSearch] = useState('')
   const [latestJobsByConversation, setLatestJobsByConversation] = useState<Record<number, JobRead | null>>({})
@@ -412,8 +434,14 @@ export default function App() {
     selectedConversationId,
     selectedConversationMessagesState,
   ])
-  const analysisCompleted = selectedJob?.status === 'completed'
-  const selectedConversationProgress = useMemo(() => resolveJobProgress(selectedJob), [selectedJob])
+  const analysisCompleted = selectedConversation?.status === 'ready' && selectedJob?.status === 'completed'
+  const selectedConversationProgress = useMemo(() => {
+    if (selectedConversation?.status === 'imported' && selectedJob?.status === 'completed') {
+      return null
+    }
+
+    return resolveJobProgress(selectedJob)
+  }, [selectedConversation?.status, selectedJob])
   const snapshotAt = useMemo(
     () =>
       resolveInspectorSnapshotAt(
@@ -457,12 +485,6 @@ export default function App() {
       activeRewriteRequestRef.current = null
     }
   }, [analysisCompleted])
-
-  useEffect(() => {
-    if (activeTab === 'chat' && analysisCompleted) {
-      setInspectorOpen(true)
-    }
-  }, [activeTab, analysisCompleted, selectedConversationId])
 
   useEffect(() => {
     if (state.phase !== 'ready' || selectedConversationId === null) {
@@ -780,6 +802,20 @@ export default function App() {
           ...current,
           [selectedConversationId]: nextJob,
         }))
+        setConversations((current) => {
+          if (!current) {
+            return current
+          }
+
+          return current.map((conversation) =>
+            conversation.id === selectedConversationId
+              ? {
+                  ...conversation,
+                  status: resolveConversationStatusFromJob(conversation.status, nextJob),
+                }
+              : conversation,
+          )
+        })
 
         if (!isPollingJob(nextJob)) {
           return
@@ -830,7 +866,7 @@ export default function App() {
 
         setInspectorTopics(result.status === 'fulfilled' ? result.value : [])
         if (result.status === 'rejected') {
-          setInspectorError('分析侧栏数据读取失败')
+          setInspectorError('分析数据读取失败')
         }
       } else if (inspectorTab === 'profile') {
         const result = await readProfile(selectedConversationId)
@@ -843,7 +879,7 @@ export default function App() {
 
         setInspectorProfile(result.status === 'fulfilled' ? result.value : [])
         if (result.status === 'rejected') {
-          setInspectorError('分析侧栏数据读取失败')
+          setInspectorError('分析数据读取失败')
         }
       } else {
         const result = await readSnapshot(selectedConversationId, snapshotAt ?? undefined)
@@ -856,7 +892,7 @@ export default function App() {
 
         setInspectorSnapshot(result.status === 'fulfilled' ? result.value : null)
         if (result.status === 'rejected') {
-          setInspectorError('分析侧栏数据读取失败')
+          setInspectorError('分析数据读取失败')
         }
       }
 
@@ -917,7 +953,7 @@ export default function App() {
     }
   }
 
-  const handleImportConversation = async ({ filePath, selfDisplayName }: { filePath: string; selfDisplayName: string }) => {
+  const handleImportConversation = async ({ filePath, selfDisplayName, autoAnalyze }: { filePath: string; selfDisplayName: string; autoAnalyze: boolean }) => {
     setImportPending(true)
     setImportError(null)
 
@@ -939,6 +975,7 @@ export default function App() {
         file: createImportFileBlob(importFile),
         fileName: importFile.fileName,
         selfDisplayName: selfDisplayName.trim(),
+        autoAnalyze,
       })
 
       setConversations((current) => {
@@ -981,6 +1018,39 @@ export default function App() {
       setImportError(error instanceof Error ? error.message : '导入会话失败')
     } finally {
       setImportPending(false)
+    }
+  }
+
+  const handleStartAnalysis = async () => {
+    if (selectedConversationId === null) {
+      return
+    }
+
+    setStartAnalysisPending(true)
+
+    try {
+      const job = await startAnalysis(selectedConversationId)
+
+      setLatestJobsByConversation((current) => ({
+        ...current,
+        [selectedConversationId]: job,
+      }))
+      setLatestJobLoadStateByConversation((current) => ({
+        ...current,
+        [selectedConversationId]: { status: 'loaded' },
+      }))
+      setConversations((current) => {
+        if (!current) return current
+        return current.map((conv) =>
+          conv.id === selectedConversationId
+            ? { ...conv, status: 'queued' }
+            : conv
+        )
+      })
+    } catch (error) {
+      console.error('Failed to start analysis:', error)
+    } finally {
+      setStartAnalysisPending(false)
     }
   }
 
@@ -1274,6 +1344,9 @@ export default function App() {
             }
             showInspectorButton={activeTab === 'chat' && analysisCompleted}
             onToggleInspector={() => setInspectorOpen((current) => !current)}
+            showStartAnalysisButton={activeTab === 'chat' && selectedConversation?.status === 'imported'}
+            onStartAnalysis={handleStartAnalysis}
+            startAnalysisPending={startAnalysisPending}
             rewriteState={
               activeTab === 'chat' && rewriteDraft && rewriteDraft.conversationId === selectedConversationId
                 ? {
@@ -1299,21 +1372,6 @@ export default function App() {
             olderMessagesPending={activeTab === 'chat' && !!selectedConversationPaginationState?.loadingOlder}
             onLoadOlderMessages={handleLoadOlderMessages}
           />
-        }
-        aside={
-          activeTab === 'chat' ? (
-            <AnalysisInspector
-              open={inspectorOpen}
-              currentTab={inspectorTab}
-              loadingByTab={inspectorLoadingByTab}
-              errorMessage={inspectorError}
-              topics={inspectorTopics}
-              profile={inspectorProfile}
-              snapshot={inspectorSnapshot}
-              onTabChange={setInspectorTab}
-              onClose={() => setInspectorOpen(false)}
-            />
-          ) : undefined
         }
       />
       <WelcomeModal
@@ -1342,6 +1400,17 @@ export default function App() {
         errorMessage={importError}
         onClose={() => setShowImportDialog(false)}
         onSubmit={handleImportConversation}
+      />
+      <AnalysisInspector
+        open={inspectorOpen}
+        currentTab={inspectorTab}
+        loadingByTab={inspectorLoadingByTab}
+        errorMessage={inspectorError}
+        topics={inspectorTopics}
+        profile={inspectorProfile}
+        snapshot={inspectorSnapshot}
+        onTabChange={setInspectorTab}
+        onClose={() => setInspectorOpen(false)}
       />
     </>
   )

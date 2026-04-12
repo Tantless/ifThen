@@ -333,7 +333,7 @@ class SpyLLM(FakeLLM):
     pass
 
 
-def _seed_job(*, fixture_path: Path):
+def _seed_job(*, fixture_path: Path, job_type: str = "full_analysis", conversation_status: str = "queued"):
     with session_scope() as session:
         conversation = Conversation(
             title="梣ゥ",
@@ -341,7 +341,7 @@ def _seed_job(*, fixture_path: Path):
             self_display_name="Tantless",
             other_display_name="梣ゥ",
             source_format="qq_chat_exporter_v5",
-            status="queued",
+            status=conversation_status,
         )
         session.add(conversation)
         session.flush()
@@ -358,7 +358,7 @@ def _seed_job(*, fixture_path: Path):
 
         job = AnalysisJob(
             conversation_id=conversation.id,
-            job_type="full_analysis",
+            job_type=job_type,
             status="queued",
             current_stage="created",
             progress_percent=0,
@@ -448,6 +448,32 @@ def test_run_next_job_parses_messages_and_creates_analysis_artifacts(tmp_path, m
         assert progress["status_message"].startswith("completed ")
         conversation = session.query(Conversation).one()
         assert conversation.status == "ready"
+
+
+def test_run_next_job_completes_import_only_without_analysis_artifacts(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    fixture_path = Path("tests/fixtures/qq_export_sample.txt")
+    init_db()
+    _seed_job(fixture_path=fixture_path, job_type="import_only", conversation_status="imported")
+
+    processed = run_next_job(llm_client=FakeLLM())
+
+    assert processed is True
+
+    with session_scope() as session:
+        assert session.query(Message).count() == 6
+        assert session.query(Segment).count() == 0
+        assert session.query(SegmentSummary).count() == 0
+        assert session.query(Topic).count() == 0
+        assert session.query(PersonaProfile).count() == 0
+        assert session.query(RelationshipSnapshot).count() == 0
+        job = session.query(AnalysisJob).one()
+        assert job.status == "completed"
+        assert job.current_stage == "completed"
+        assert job.job_type == "import_only"
+        assert job.payload_json["progress"]["status_message"] == "imported 6 messages"
+        conversation = session.query(Conversation).one()
+        assert conversation.status == "imported"
 
 
 def test_run_next_job_creates_multiple_topics_and_multi_topic_links(tmp_path, monkeypatch):

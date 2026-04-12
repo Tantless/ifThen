@@ -13,6 +13,7 @@ import {
   listTopics,
   readProfile,
   readSnapshot,
+  startAnalysis,
 } from '../src/lib/services/conversationService'
 import { listConversationJobs, readJob } from '../src/lib/services/jobService'
 import { createSimulation } from '../src/lib/services/simulationService'
@@ -26,6 +27,7 @@ vi.mock('../src/lib/services/conversationService', () => ({
   readProfile: vi.fn(),
   readSnapshot: vi.fn(),
   importConversation: vi.fn(),
+  startAnalysis: vi.fn(),
 }))
 
 vi.mock('../src/lib/services/jobService', () => ({
@@ -50,6 +52,7 @@ const mockedListTopics = vi.mocked(listTopics)
 const mockedReadProfile = vi.mocked(readProfile)
 const mockedReadSnapshot = vi.mocked(readSnapshot)
 const mockedImportConversation = vi.mocked(importConversation)
+const mockedStartAnalysis = vi.mocked(startAnalysis)
 const mockedListConversationJobs = vi.mocked(listConversationJobs)
 const mockedReadJob = vi.mocked(readJob)
 const mockedCreateSimulation = vi.mocked(createSimulation)
@@ -198,6 +201,7 @@ beforeEach(() => {
     snapshot_summary: '稳定',
   })
   mockedImportConversation.mockRejectedValue(new Error('not used in visual shell tests'))
+  mockedStartAnalysis.mockRejectedValue(new Error('not used in visual shell tests'))
   mockedListConversationJobs.mockResolvedValue([])
   mockedReadJob.mockResolvedValue({
     id: 1,
@@ -274,7 +278,7 @@ describe('App frontUI integration', () => {
         self_display_name: '我',
         other_display_name: '小李',
         source_format: 'qq_export_v5',
-        status: 'imported',
+        status: 'ready',
       },
     ]
     const messages: MessageRead[] = [
@@ -547,7 +551,7 @@ describe('App frontUI integration', () => {
         self_display_name: '我',
         other_display_name: '小李',
         source_format: 'qq_export_v5',
-        status: 'imported',
+        status: 'ready',
       },
     ]
     const messages: MessageRead[] = [
@@ -610,9 +614,11 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork()
 
-    const inspectorButton = Array.from(container.querySelectorAll('button')).find(
-      (element) => element.textContent?.includes('分析') ?? false,
-    )
+    const allButtons = Array.from(container.querySelectorAll('button'))
+    const analysisButtons = allButtons.filter((element) => element.textContent?.includes('分析') ?? false)
+
+    // Should find the "分析" button in the header (not "开始分析")
+    const inspectorButton = analysisButtons.find((btn) => btn.textContent === '分析')
 
     expect(inspectorButton).not.toBeUndefined()
 
@@ -621,9 +627,13 @@ describe('App frontUI integration', () => {
         getReactProps<{ onClick?: () => void }>(inspectorButton).onClick?.()
       }
     })
-    await flushAsyncWork()
+    await act(async () => {
+      await flushAsyncWork(8)
+    })
 
-    expect(container.textContent).toContain('分析侧栏')
+    const modalDialog = container.querySelector('[role="dialog"]')
+    expect(modalDialog).not.toBeNull()
+    expect(container.textContent).toContain('会话分析结果')
     expect(mockedListTopics).toHaveBeenCalledWith(7)
 
     const rewriteTarget = container.querySelector('[data-chat-message-id="message-12"] .cursor-pointer')
@@ -758,7 +768,7 @@ describe('App frontUI integration', () => {
         self_display_name: '我',
         other_display_name: '小李',
         source_format: 'qq_export_v5',
-        status: 'imported',
+        status: 'ready',
       },
     ]
     const messages: MessageRead[] = [
@@ -1016,7 +1026,7 @@ describe('App frontUI integration', () => {
         self_display_name: '我',
         other_display_name: '阿青',
         source_format: 'qq_export_v5',
-        status: 'queued',
+        status: 'imported',
       },
       job: {
         id: 31,
@@ -1106,13 +1116,133 @@ describe('App frontUI integration', () => {
     await flushAsyncWork(8)
 
     expect(mockedImportConversation).toHaveBeenCalledTimes(1)
+    expect(mockedImportConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        autoAnalyze: false,
+      }),
+    )
     expect(mockedListMessages).toHaveBeenCalledTimes(1)
     expect(container.textContent).not.toContain('终于显示出来了')
+    expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent === '分析')).toBe(false)
+    expect(container.textContent).toContain('开始分析')
 
     await advanceTimersAndFlush(1500, 8)
 
     expect(mockedListMessages).toHaveBeenCalledTimes(2)
     expect(container.textContent).toContain('终于显示出来了')
+  })
+
+  it('导入后手动开始分析，完成后切换为已分析状态', async () => {
+    vi.useFakeTimers()
+
+    const importedConversation: ConversationRead = {
+      id: 7,
+      title: '和小李的聊天',
+      chat_type: 'private',
+      self_display_name: '我',
+      other_display_name: '小李',
+      source_format: 'qq_export_v5',
+      status: 'imported',
+    }
+    const messages: MessageRead[] = [
+      {
+        id: 11,
+        sequence_no: 1,
+        speaker_name: '小李',
+        speaker_role: 'other',
+        timestamp: '2026-04-08T10:01:00',
+        content_text: '收到，稍后回你',
+        message_type: 'text',
+        resource_items: null,
+      },
+      {
+        id: 12,
+        sequence_no: 2,
+        speaker_name: '我',
+        speaker_role: 'self',
+        timestamp: '2026-04-08T10:02:00',
+        content_text: '那我们先这样吧',
+        message_type: 'text',
+        resource_items: null,
+      },
+    ]
+    const importOnlyJob: JobRead = {
+      id: 31,
+      status: 'completed',
+      current_stage: 'completed',
+      progress_percent: 100,
+      current_stage_percent: 100,
+      current_stage_total_units: 6,
+      current_stage_completed_units: 6,
+      overall_total_units: 6,
+      overall_completed_units: 6,
+      status_message: 'imported 6 messages',
+    }
+    const queuedAnalysisJob: JobRead = {
+      id: 32,
+      status: 'queued',
+      current_stage: 'created',
+      progress_percent: 0,
+      current_stage_percent: 0,
+      current_stage_total_units: 0,
+      current_stage_completed_units: 0,
+      overall_total_units: 0,
+      overall_completed_units: 0,
+      status_message: 'queued',
+    }
+    const completedAnalysisJob: JobRead = {
+      id: 32,
+      status: 'completed',
+      current_stage: 'completed',
+      progress_percent: 100,
+      current_stage_percent: 100,
+      current_stage_total_units: 1,
+      current_stage_completed_units: 1,
+      overall_total_units: 1,
+      overall_completed_units: 1,
+      status_message: 'completed 1/1 units',
+    }
+
+    mockedReadSettings.mockResolvedValue([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+    ])
+    mockedListConversations.mockResolvedValue([importedConversation])
+    mockedListMessages.mockResolvedValue([...messages].reverse())
+    mockedListConversationJobs.mockResolvedValue([importOnlyJob])
+    mockedStartAnalysis.mockResolvedValue(queuedAnalysisJob)
+    mockedReadJob.mockResolvedValue(completedAnalysisJob)
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(12)
+
+    expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent === '分析')).toBe(false)
+
+    const startAnalysisButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('开始分析') ?? false,
+    )
+    expect(startAnalysisButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (startAnalysisButton) {
+        getReactProps<{ onClick?: () => void }>(startAnalysisButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    expect(mockedStartAnalysis).toHaveBeenCalledWith(7)
+    expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent?.includes('开始分析') ?? false)).toBe(false)
+
+    await advanceTimersAndFlush(1500, 8)
+
+    const analysisButton = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '分析')
+    expect(analysisButton).not.toBeUndefined()
+    expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent?.includes('开始分析') ?? false)).toBe(false)
   })
 
   it('snapshot 标签在历史视图下直接走后端最新快照，不依赖消息时间戳', async () => {
@@ -1155,9 +1285,11 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(12)
 
-    const inspectorButton = Array.from(container.querySelectorAll('button')).find(
-      (element) => element.textContent?.includes('分析') ?? false,
-    )
+    const allButtons = Array.from(container.querySelectorAll('button'))
+    const analysisButtons = allButtons.filter((element) => element.textContent?.includes('分析') ?? false)
+
+    // Should find the "分析" button in the header (not "开始分析")
+    const inspectorButton = analysisButtons.find((btn) => btn.textContent === '分析')
     expect(inspectorButton).not.toBeUndefined()
 
     await act(async () => {
@@ -1165,10 +1297,12 @@ describe('App frontUI integration', () => {
         getReactProps<{ onClick?: () => void }>(inspectorButton).onClick?.()
       }
     })
-    await flushAsyncWork(6)
+    await act(async () => {
+      await flushAsyncWork(8)
+    })
 
     const snapshotTab = Array.from(container.querySelectorAll('button')).find(
-      (element) => element.textContent?.includes('Snapshot') ?? false,
+      (element) => element.textContent?.includes('快照') ?? false,
     )
     expect(snapshotTab).not.toBeUndefined()
 
@@ -1177,7 +1311,9 @@ describe('App frontUI integration', () => {
         getReactProps<{ onClick?: () => void }>(snapshotTab).onClick?.()
       }
     })
-    await flushAsyncWork(6)
+    await act(async () => {
+      await flushAsyncWork(8)
+    })
 
     expect(mockedReadSnapshot).toHaveBeenCalledWith(7, undefined)
     expect(container.textContent).toContain('稳定')

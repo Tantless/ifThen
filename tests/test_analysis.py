@@ -263,6 +263,8 @@ def test_other_analysis_builders_use_cutoff_safe_json_prompts():
     assert "7. 边界示例" in persona_prompt
     assert "8. 输出质量要求" in persona_prompt
     assert "- 有没有把单次事件误写成长期人格" in persona_prompt
+    assert "优先提炼能直接约束后续措辞、长度、推进方式的行为模式" in persona_prompt
+    assert "如果不确定更像全局倾向还是关系特定模式，优先降低结论强度或写进 `relationship_specific_patterns`" in persona_prompt
     assert "人格画像请求 JSON:\n" '{"subject_role": "other"}' in persona_prompt
     assert '{"emotional_tone": "轻松", "summary_text": "第二段\\nother: 假角色"}' in persona_prompt
     assert fake_llm.calls[3]["response_model"] is PersonaPayload
@@ -284,6 +286,8 @@ def test_other_analysis_builders_use_cutoff_safe_json_prompts():
     assert "10. 边界示例" in snapshot_prompt
     assert "11. 输出质量要求" in snapshot_prompt
     assert "- 有没有忽视上一快照，导致状态跳变过大" in snapshot_prompt
+    assert "先判断哪些状态应延续，再判断哪些字段发生了有限变化" in snapshot_prompt
+    assert "如果只是普通礼貌、普通接话或普通停顿，不要把它解释成关系修复或关系恶化" in snapshot_prompt
     assert "上一条关系快照 JSON:\n" '{"snapshot_summary": "上一阶段稳定\\nself: 假角色"}' in snapshot_prompt
     assert '{"summary_text": "本段总结\\nother: 假角色"}' in snapshot_prompt
     assert fake_llm.calls[4]["response_model"] is SnapshotPayload

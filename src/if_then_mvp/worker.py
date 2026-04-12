@@ -113,7 +113,7 @@ def _utcnow() -> datetime:
 def _load_next_queued_job(session) -> AnalysisJob | None:
     return session.execute(
         select(AnalysisJob)
-        .where(AnalysisJob.status == "queued", AnalysisJob.job_type == "full_analysis")
+        .where(AnalysisJob.status == "queued", AnalysisJob.job_type.in_(["full_analysis", "import_only"]))
         .order_by(AnalysisJob.id.asc())
     ).scalar_one_or_none()
 
@@ -123,7 +123,7 @@ def _claim_next_job() -> tuple[int, int] | None:
     try:
         next_job_id = (
             select(AnalysisJob.id)
-            .where(AnalysisJob.status == "queued", AnalysisJob.job_type == "full_analysis")
+            .where(AnalysisJob.status == "queued", AnalysisJob.job_type.in_(["full_analysis", "import_only"]))
             .order_by(AnalysisJob.id.asc())
             .limit(1)
             .scalar_subquery()
@@ -307,6 +307,25 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
+
+        # If this is an import_only job, complete here without analysis
+        if job.job_type == "import_only":
+            conversation.status = "imported"
+            latest_snapshot = _apply_progress(
+                job,
+                current_stage="completed",
+                current_stage_completed_units=message_count,
+                current_stage_total_units=message_count,
+                overall_completed_units=message_count,
+                overall_total_units=message_count,
+                status_message=f"imported {message_count} messages",
+                status="completed",
+                finished_at=_utcnow(),
+                error_message=None,
+            )
+            session.commit()
+            progress_reporter.maybe_emit(latest_snapshot)
+            return True
 
         actual_segments = [
             _materialize_segment_draft(preview_segment, sequence_to_message_id)

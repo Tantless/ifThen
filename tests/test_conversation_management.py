@@ -326,6 +326,58 @@ def test_rerun_analysis_queues_new_job_and_clears_stale_simulations(tmp_path, mo
         assert session.query(SimulationTurn).count() == 0
 
 
+def test_start_analysis_queues_new_full_analysis_job_for_imported_conversation(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="imported",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        session.add(
+            AnalysisJob(
+                conversation_id=conversation.id,
+                job_type="import_only",
+                status="completed",
+                current_stage="completed",
+                progress_percent=100,
+                retry_count=0,
+                payload_json={"import_id": batch.id},
+            )
+        )
+
+    with TestClient(create_app()) as client:
+        response = client.post("/conversations/1/start-analysis")
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "queued"
+    assert response.json()["current_stage"] == "created"
+
+    with session_scope() as session:
+        jobs = session.query(AnalysisJob).order_by(AnalysisJob.id.asc()).all()
+        assert [job.job_type for job in jobs] == ["import_only", "full_analysis"]
+        assert jobs[-1].payload_json["import_id"] == 1
+        assert session.get(Conversation, 1).status == "queued"
+
+
 def test_rerun_analysis_returns_409_when_job_is_already_active(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()
