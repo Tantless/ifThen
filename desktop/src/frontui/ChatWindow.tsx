@@ -566,26 +566,18 @@ export function FrontChatWindow({
                         ) : null}
                       </div>
                     ) : (
-                      <>
-                        {bubbleTone === 'rewrite-target' ? (
+                      <div
+                        data-chat-bubble-tone={bubbleTone}
+                        className={`relative break-words px-3 py-2 text-[14px] leading-relaxed shadow-sm ${bubbleClass}`}
+                        style={{ wordBreak: 'break-word' }}
+                      >
+                        {bubbleTone !== 'rewrite-target' ? (
                           <div
-                            data-chat-tail-style="integrated"
-                            className="pointer-events-none absolute bottom-[7px] right-[-8px] h-[15px] w-[18px] rotate-[22deg] rounded-r-[8px] rounded-bl-[12px] border border-[#8fd3ff]/80 bg-[linear-gradient(135deg,#dff6ff_0%,#eef4ff_48%,#fdfcff_100%)] shadow-[0_6px_14px_rgba(92,173,255,0.16)]"
+                            className={`absolute top-3 h-0 w-0 border-[8px] border-transparent ${bubbleArrowClass}`}
                           />
                         ) : null}
-                        <div
-                          data-chat-bubble-tone={bubbleTone}
-                          className={`relative z-10 break-words px-3 py-2 text-[14px] leading-relaxed shadow-sm ${bubbleClass}`}
-                          style={{ wordBreak: 'break-word' }}
-                        >
-                          {bubbleTone !== 'rewrite-target' ? (
-                            <div
-                              className={`absolute top-3 h-0 w-0 border-[8px] border-transparent ${bubbleArrowClass}`}
-                            />
-                          ) : null}
                         {message.text}
-                        </div>
-                      </>
+                      </div>
                     )}
                   </div>
 
