@@ -38,3 +38,6 @@ _tmp_qce_review/
 
 # Desktop local package artifacts
 desktop/*.tgz
+
+# claude
+.claude/
