@@ -28,14 +28,14 @@ export function ImportDialog({
 }: ImportDialogProps) {
   const [selectedPath, setSelectedPath] = useState<string>('')
   const [selfDisplayName, setSelfDisplayName] = useState('')
-  const [autoAnalyze, setAutoAnalyze] = useState(false)
+  const [importMode, setImportMode] = useState<'import_only' | 'import_and_analyze'>('import_only')
   const [otherAvatarUrl, setOtherAvatarUrl] = useState(DEFAULT_OTHER_AVATAR_URL)
 
   useEffect(() => {
     if (open) {
       setSelectedPath('')
       setSelfDisplayName('')
-      setAutoAnalyze(false)
+      setImportMode('import_only')
       setOtherAvatarUrl(DEFAULT_OTHER_AVATAR_URL)
     }
   }, [open])
@@ -70,7 +70,7 @@ export function ImportDialog({
             await onSubmit({
               filePath: selectedPath.trim(),
               selfDisplayName: selfDisplayName.trim(),
-              autoAnalyze,
+              autoAnalyze: importMode === 'import_and_analyze',
               otherAvatarUrl,
             })
           }}
@@ -107,17 +107,20 @@ export function ImportDialog({
 
           <AvatarPicker title="对方头像" selectedAvatarUrl={otherAvatarUrl} onChange={setOtherAvatarUrl} />
 
-          <label className="desktop-modal__field" style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
-            <input
-              type="checkbox"
-              checked={autoAnalyze}
-              onChange={(event) => setAutoAnalyze(event.target.checked)}
-            />
-            <span className="desktop-modal__label" style={{ margin: 0 }}>导入后立即开始分析</span>
+          <label className="desktop-modal__field">
+            <span className="desktop-modal__label">导入模式</span>
+            <select
+              className="desktop-modal__input"
+              value={importMode}
+              onChange={(event) => setImportMode(event.target.value as 'import_only' | 'import_and_analyze')}
+            >
+              <option value="import_only">只导入</option>
+              <option value="import_and_analyze">导入并分析</option>
+            </select>
           </label>
 
           <p className="desktop-modal__body desktop-modal__body--muted">
-            {autoAnalyze
+            {importMode === 'import_and_analyze'
               ? '导入后将自动进行分段、话题提取、人格分析等操作。'
               : '导入后仅展示聊天记录，你可以稍后手动触发分析。'}
           </p>

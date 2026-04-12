@@ -14,6 +14,7 @@ import { FrontChatList } from '../src/frontui/ChatList'
 import { FrontChatWindow } from '../src/frontui/ChatWindow'
 import { FrontSidebar } from '../src/frontui/Sidebar'
 import { WindowTitleBar, type WindowTitleBarProps } from '../src/frontui/WindowTitleBar'
+import { ImportDialog } from '../src/components/ImportDialog'
 import {
   closeDesktopWindow,
   getDesktopWindowState,
@@ -368,6 +369,16 @@ describe('frontUI shell markup', () => {
 
     expect(html).toContain('bg-[#f5f5f5]')
     expect(html).toContain('选择一段对话开始聊天')
+  })
+
+  it('renders import mode as a select with import-only as the default option', () => {
+    const html = renderToStaticMarkup(<ImportDialog open onClose={() => undefined} onSubmit={() => undefined} />)
+
+    expect(html).toContain('导入模式')
+    expect(html).toContain('<select')
+    expect(html).toContain('只导入')
+    expect(html).toContain('导入并分析')
+    expect(html).not.toContain('type="checkbox"')
   })
 
   it('wires sidebar and list callbacks to desktop-safe props', () => {

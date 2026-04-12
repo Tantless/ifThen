@@ -1540,6 +1540,122 @@ describe('App frontUI integration', () => {
     expect(container.textContent).toContain('终于显示出来了')
   })
 
+  it('切换到导入并分析后会把 autoAnalyze=true 传给导入接口', async () => {
+    installReadyDesktopBridge({
+      selectedImportPath: 'C:\\Users\\Tantless\\Desktop\\聊天记录.txt',
+      importFileName: '聊天记录.txt',
+      importFileContent: '第一行',
+    })
+
+    mockedReadSettings.mockResolvedValue([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+    ])
+    mockedListConversations.mockResolvedValue([])
+    mockedImportConversation.mockResolvedValue({
+      conversation: {
+        id: 100,
+        title: '导入并分析的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '阿青',
+        source_format: 'qq_export_v5',
+        status: 'queued',
+      },
+      job: {
+        id: 32,
+        status: 'queued',
+        current_stage: 'created',
+        progress_percent: 0,
+        current_stage_percent: 0,
+        current_stage_total_units: 0,
+        current_stage_completed_units: 0,
+        overall_total_units: 0,
+        overall_completed_units: 0,
+        status_message: 'queued',
+      },
+    })
+    mockedListMessages.mockResolvedValue([])
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(12)
+
+    const openImportButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('导入会话') ?? false,
+    )
+    expect(openImportButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (openImportButton) {
+        getReactProps<{ onClick?: () => void }>(openImportButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    const pathButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('选择文件') ?? false,
+    )
+    expect(pathButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (pathButton) {
+        getReactProps<{ onClick?: () => void }>(pathButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    const nameInput = container.querySelector('.desktop-modal__input') as HTMLInputElement | null
+    expect(nameInput).not.toBeNull()
+
+    await act(async () => {
+      if (nameInput) {
+        nameInput.value = '我'
+        getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(nameInput).onChange?.({
+          target: { value: '我' },
+        })
+      }
+    })
+    await flushAsyncWork(2)
+
+    const importModeSelect = container.querySelector('select') as HTMLSelectElement | null
+    expect(importModeSelect?.value).toBe('import_only')
+
+    await act(async () => {
+      if (importModeSelect) {
+        importModeSelect.value = 'import_and_analyze'
+        getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(importModeSelect).onChange?.({
+          target: { value: 'import_and_analyze' },
+        })
+      }
+    })
+    await flushAsyncWork(2)
+
+    const importForm = container.querySelector('.desktop-modal__form') as HTMLFormElement | null
+    expect(importForm).not.toBeNull()
+
+    await act(async () => {
+      if (importForm) {
+        await getReactProps<{
+          onSubmit?: (event: { preventDefault: () => void }) => Promise<void> | void
+        }>(importForm).onSubmit?.({
+          preventDefault: () => undefined,
+        })
+      }
+    })
+    await flushAsyncWork(8)
+
+    expect(mockedImportConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        autoAnalyze: true,
+      }),
+    )
+  })
+
   it('导入后手动开始分析，完成后切换为已分析状态', async () => {
     vi.useFakeTimers()
 
