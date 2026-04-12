@@ -115,4 +115,44 @@ describe('desktop modal chrome', () => {
     expect(html).not.toContain('data-chat-history-date="2026-04-01"')
     expect(html).toContain('定位到此位置')
   })
+
+  it('keeps chat-history grouping on the raw calendar day even when timestamps carry a UTC suffix', () => {
+    const html = renderToStaticMarkup(
+      <ChatHistoryDialog
+        open
+        conversationTitle="阿青"
+        keyword=""
+        dateValue="2026-03-02"
+        availableDates={[{ date: '2026-03-02', message_count: 1 }]}
+        results={[
+          {
+            id: 99,
+            sequence_no: 99,
+            speaker_name: '阿青',
+            speaker_role: 'other',
+            timestamp: '2026-03-02T20:18:03Z',
+            content_text: '这条消息的日期不能跳到 3 月 3 日',
+            message_type: 'text',
+            resource_items: null,
+          },
+        ]}
+        loading={false}
+        errorMessage={null}
+        hasMore={false}
+        activeTab="all"
+        locatePendingMessageId={null}
+        onClose={() => undefined}
+        onTabChange={() => undefined}
+        onKeywordChange={() => undefined}
+        onDateChange={() => undefined}
+        onLoadMore={() => undefined}
+        onLocate={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('3月2日')
+    expect(html).toContain('20:18')
+    expect(html).not.toContain('3月3日')
+    expect(html).not.toContain('04:18')
+  })
 })

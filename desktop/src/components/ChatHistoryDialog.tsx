@@ -41,21 +41,39 @@ type CalendarDay = {
   selected: boolean
 }
 
-function parseTimestamp(timestamp: string): Date | null {
-  const parsed = new Date(timestamp)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
+type ParsedTimestampParts = {
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+}
+
+function parseTimestampParts(timestamp: string): ParsedTimestampParts | null {
+  const match = timestamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/)
+  if (!match) {
+    return null
+  }
+
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+  }
 }
 
 function formatHistoryGroupLabel(timestamp: string): string {
-  const parsed = parseTimestamp(timestamp)
+  const parts = parseTimestampParts(timestamp)
 
-  if (!parsed) {
+  if (!parts) {
     return timestamp
   }
 
   const now = new Date()
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const startOfTarget = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime()
+  const startOfTarget = new Date(parts.year, parts.month - 1, parts.day).getTime()
   const dayDiff = Math.round((startOfToday - startOfTarget) / 86_400_000)
 
   if (dayDiff === 0) {
@@ -70,21 +88,21 @@ function formatHistoryGroupLabel(timestamp: string): string {
     return '前天'
   }
 
-  if (parsed.getFullYear() === now.getFullYear()) {
-    return `${parsed.getMonth() + 1}月${parsed.getDate()}日`
+  if (parts.year === now.getFullYear()) {
+    return `${parts.month}月${parts.day}日`
   }
 
-  return `${parsed.getFullYear()}年${parsed.getMonth() + 1}月${parsed.getDate()}日`
+  return `${parts.year}年${parts.month}月${parts.day}日`
 }
 
 function formatHistoryTimeLabel(timestamp: string): string {
-  const parsed = parseTimestamp(timestamp)
+  const parts = parseTimestampParts(timestamp)
 
-  if (!parsed) {
+  if (!parts) {
     return timestamp
   }
 
-  return `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`
+  return `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`
 }
 
 function parseIsoDate(value: string): Date {
