@@ -499,7 +499,7 @@ export function FrontChatWindow({
                       : 'rounded-[8px] bg-white text-black'
             const bubbleArrowClass =
               bubbleTone === 'rewrite-target'
-                ? 'right-[-12px] border-l-[#eef4ff]'
+                ? 'right-[-12px] border-l-[#d4e9ff] drop-shadow-[0_1px_1px_rgba(92,173,255,0.22)]'
                 : bubbleTone === 'simulation-self'
                   ? 'right-[-12px] border-l-[#d9ecff]'
                   : bubbleTone === 'simulation-other'
