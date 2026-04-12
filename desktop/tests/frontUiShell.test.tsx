@@ -304,7 +304,7 @@ describe('frontUI shell markup', () => {
     expect(html).toContain('min-h-0')
     expect(html).toContain('overflow-hidden')
     expect(html).toContain('custom-scrollbar')
-    expect(html).toContain('rounded-[14px]')
+    expect(html).toContain('rounded-[12px]')
     expect(html).not.toContain('rounded-tr-none')
     expect(html).not.toContain('rounded-tl-none')
     expect(html).toContain('发送(S)')
