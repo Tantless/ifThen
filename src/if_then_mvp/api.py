@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-from datetime import date as calendar_date, timedelta
 from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
@@ -247,16 +246,7 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             if keyword:
                 query = query.where(Message.content_text.contains(keyword))
             if message_date is not None:
-                try:
-                    day_start = calendar_date.fromisoformat(message_date)
-                except ValueError as exc:
-                    raise HTTPException(status_code=422, detail="Invalid date filter") from exc
-
-                next_day = day_start + timedelta(days=1)
-                query = query.where(
-                    Message.timestamp >= f"{day_start.isoformat()}T00:00:00",
-                    Message.timestamp < f"{next_day.isoformat()}T00:00:00",
-                )
+                query = query.where(func.substr(Message.timestamp, 1, 10) == message_date)
             order_clause = Message.sequence_no.asc() if order == "asc" else Message.sequence_no.desc()
             rows = session.execute(query.order_by(order_clause).limit(limit)).scalars().all()
             return [MessageRead.model_validate(item, from_attributes=True) for item in rows]
