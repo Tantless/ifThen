@@ -1838,6 +1838,7 @@ describe('App frontUI integration', () => {
         resource_items: null,
       },
     ]
+    const historyReset = [...historyDefault]
 
     mockedReadSettings.mockResolvedValue([
       { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
@@ -1859,6 +1860,7 @@ describe('App frontUI integration', () => {
       .mockResolvedValueOnce([...baseMessages].reverse())
       .mockResolvedValueOnce(historyDefault)
       .mockResolvedValueOnce(historyFiltered)
+      .mockResolvedValueOnce(historyReset)
     mockedListMessageDays.mockResolvedValue([
       { date: '2026-04-01', message_count: 2 },
       { date: '2026-04-03', message_count: 1 },
@@ -1934,6 +1936,22 @@ describe('App frontUI integration', () => {
     })
     expect(container.textContent).toContain('4月1日清晨消息')
     expect(container.textContent).toContain('4月1日晚间消息')
+
+    const allTab = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '全部')
+    expect(allTab).not.toBeUndefined()
+
+    await act(async () => {
+      if (allTab) {
+        getReactProps<{ onClick?: () => void }>(allTab).onClick?.()
+      }
+    })
+    await flushAsyncWork(8)
+
+    expect(mockedListMessages).toHaveBeenNthCalledWith(4, 7, {
+      order: 'desc',
+      limit: 20,
+    })
+    expect(container.textContent).toContain('默认结果 220')
   })
 
   it('从聊天记录结果定位时会补齐更早消息并滚动到目标位置', async () => {
@@ -2092,7 +2110,7 @@ describe('App frontUI integration', () => {
       ),
     ).toBe(true)
     expect(container.textContent).toContain('需要定位的目标消息')
-    expect(container.textContent).toContain('最近消息 120')
+    expect(container.textContent).not.toContain('聊天记录 - 阿青')
     expect(scrollTargets).toContain('message-10')
   })
 

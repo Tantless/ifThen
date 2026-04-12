@@ -2005,7 +2005,10 @@ export default function App() {
         selfAvatarUrl={selfAvatarUrl}
         otherAvatarUrl={selectedConversation ? resolveConversationAvatarUrl(selectedConversation.id) : FRONTUI_PLACEHOLDER_AVATAR}
         onClose={() => setShowChatHistoryDialog(false)}
-        onTabChange={setChatHistoryActiveTab}
+        onTabChange={() => {
+          setChatHistoryActiveTab('all')
+          setChatHistoryDate('')
+        }}
         onKeywordChange={setChatHistoryKeyword}
         onDateChange={setChatHistoryDate}
         onLoadMore={handleLoadMoreChatHistory}
