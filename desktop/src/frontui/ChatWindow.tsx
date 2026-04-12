@@ -232,6 +232,8 @@ export function FrontChatWindow({
     const previous = previousMessageStateRef.current
     const conversationChanged = previous.conversationKey !== conversationKey
     const appendedNewMessage = !conversationChanged && renderedMessages.length > previous.count && lastMessageId !== previous.lastMessageId
+    const initialConversationLoad = !conversationChanged && previous.count === 0 && renderedMessages.length > 0
+    const shouldScrollToBottom = conversationChanged || appendedNewMessage || initialConversationLoad
 
     if (olderMessageAnchorRef.current && scrollContainerRef.current) {
       const containerRect = scrollContainerRef.current.getBoundingClientRect()
@@ -245,8 +247,8 @@ export function FrontChatWindow({
       }
 
       olderMessageAnchorRef.current = null
-    } else if (conversationChanged || appendedNewMessage || (previous.count === 0 && renderedMessages.length > 0)) {
-      messagesEndRef.current?.scrollIntoView({ behavior: conversationChanged ? 'auto' : 'smooth' })
+    } else if (shouldScrollToBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: conversationChanged || initialConversationLoad ? 'auto' : 'smooth' })
     }
 
     previousMessageStateRef.current = {

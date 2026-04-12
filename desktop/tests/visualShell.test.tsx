@@ -1450,6 +1450,11 @@ describe('App frontUI integration', () => {
       ])
 
     const { root, container } = setupDom()
+    const scrollIntoViewSpy = vi.fn()
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: scrollIntoViewSpy,
+      configurable: true,
+    })
 
     await act(async () => {
       root.render(<App />)
@@ -1538,6 +1543,8 @@ describe('App frontUI integration', () => {
 
     expect(mockedListMessages).toHaveBeenCalledTimes(2)
     expect(container.textContent).toContain('终于显示出来了')
+    expect(scrollIntoViewSpy).toHaveBeenCalled()
+    expect(scrollIntoViewSpy).toHaveBeenLastCalledWith({ behavior: 'auto' })
   })
 
   it('切换到导入并分析后会把 autoAnalyze=true 传给导入接口', async () => {
