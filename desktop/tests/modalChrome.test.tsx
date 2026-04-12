@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -205,5 +207,12 @@ describe('desktop modal chrome', () => {
     expect(html).toContain('20:19')
     expect(html).not.toContain('2025-03-02 20:18:03')
     expect(html).not.toContain('2025-03-02 20:19:03')
+  })
+
+  it('keeps the sticky day separator aligned with its resting position instead of jumping upward on scroll', () => {
+    const stylesheet = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+
+    expect(stylesheet).toMatch(/\.chat-history-modal__results\s*\{[^}]*padding:\s*0 20px 20px;/s)
+    expect(stylesheet).toMatch(/\.chat-history-modal__group-label\s*\{[^}]*top:\s*0;/s)
   })
 })
