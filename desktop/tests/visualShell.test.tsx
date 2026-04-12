@@ -1914,6 +1914,16 @@ describe('App frontUI integration', () => {
     await flushAsyncWork(4)
 
     expect(container.querySelector('input[type="date"]')).toBeNull()
+    const dateTrigger = container.querySelector('button[aria-label="打开聊天记录日期选择"]') as HTMLButtonElement | null
+    expect(dateTrigger).not.toBeNull()
+
+    await act(async () => {
+      if (dateTrigger) {
+        getReactProps<{ onClick?: () => void }>(dateTrigger).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
     const unavailableDay = container.querySelector('[data-chat-history-date="2026-04-02"]') as HTMLButtonElement | null
     expect(unavailableDay).not.toBeNull()
     expect(unavailableDay?.disabled).toBe(true)
