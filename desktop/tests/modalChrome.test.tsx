@@ -2,6 +2,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
+import { ChatHistoryDialog } from '../src/components/ChatHistoryDialog'
 import { ImportDialog } from '../src/components/ImportDialog'
 import { SelfAvatarDialog } from '../src/components/SelfAvatarDialog'
 import { SettingsDrawer } from '../src/components/SettingsDrawer'
@@ -64,5 +65,43 @@ describe('desktop modal chrome', () => {
     expect(html).toContain('desktop-modal__panel')
     expect(html).toContain('更换头像')
     expect(html).toContain('我的头像')
+  })
+
+  it('renders the chat-history search modal inside the shared desktop modal shell', () => {
+    const html = renderToStaticMarkup(
+      <ChatHistoryDialog
+        open
+        conversationTitle="和阿青的聊天"
+        keyword="电影"
+        dateValue="2026-04-01"
+        results={[
+          {
+            id: 12,
+            sequence_no: 12,
+            speaker_name: '阿青',
+            speaker_role: 'other',
+            timestamp: '2026-04-01T20:18:03',
+            content_text: '今晚一起看电影吗',
+            message_type: 'text',
+            resource_items: null,
+          },
+        ]}
+        loading={false}
+        errorMessage={null}
+        hasMore
+        locatePendingMessageId={null}
+        onClose={() => undefined}
+        onKeywordChange={() => undefined}
+        onDateChange={() => undefined}
+        onLoadMore={() => undefined}
+        onLocate={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('desktop-modal__panel')
+    expect(html).toContain('聊天记录')
+    expect(html).toContain('搜索聊天记录')
+    expect(html).toContain('type="date"')
+    expect(html).toContain('定位到此位置')
   })
 })

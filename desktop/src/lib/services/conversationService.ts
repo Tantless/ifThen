@@ -14,6 +14,7 @@ type ListMessagesOptions = {
   before?: number
   after?: number
   keyword?: string
+  date?: string
   order?: 'asc' | 'desc'
 }
 
@@ -52,6 +53,7 @@ export function listMessages(conversationId: number, options: ListMessagesOption
       before: options.before,
       after: options.after,
       keyword: options.keyword,
+      date: options.date,
       order: options.order,
     }),
   )

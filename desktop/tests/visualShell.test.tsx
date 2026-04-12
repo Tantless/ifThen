@@ -1776,6 +1776,286 @@ describe('App frontUI integration', () => {
     expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent?.includes('开始分析') ?? false)).toBe(false)
   })
 
+  it('聊天记录弹窗默认倒序加载，并在日期筛选后改为正序结果', async () => {
+    const baseMessages: MessageRead[] = [
+      {
+        id: 101,
+        sequence_no: 101,
+        speaker_name: '阿青',
+        speaker_role: 'other',
+        timestamp: '2026-04-08T10:01:00',
+        content_text: '最近消息 101',
+        message_type: 'text',
+        resource_items: null,
+      },
+      {
+        id: 102,
+        sequence_no: 102,
+        speaker_name: '我',
+        speaker_role: 'self',
+        timestamp: '2026-04-08T10:02:00',
+        content_text: '最近消息 102',
+        message_type: 'text',
+        resource_items: null,
+      },
+    ]
+    const historyDefault: MessageRead[] = Array.from({ length: 20 }, (_, index) => {
+      const sequence = 220 - index
+      return {
+        id: sequence,
+        sequence_no: sequence,
+        speaker_name: sequence % 2 === 0 ? '我' : '阿青',
+        speaker_role: sequence % 2 === 0 ? 'self' : 'other',
+        timestamp: `2026-04-08T${String(10 + Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}:00`,
+        content_text: `默认结果 ${sequence}`,
+        message_type: 'text',
+        resource_items: null,
+      } satisfies MessageRead
+    })
+    const historyFiltered: MessageRead[] = [
+      {
+        id: 31,
+        sequence_no: 31,
+        speaker_name: '阿青',
+        speaker_role: 'other',
+        timestamp: '2026-04-01T08:10:00',
+        content_text: '4月1日清晨消息',
+        message_type: 'text',
+        resource_items: null,
+      },
+      {
+        id: 35,
+        sequence_no: 35,
+        speaker_name: '我',
+        speaker_role: 'self',
+        timestamp: '2026-04-01T22:40:00',
+        content_text: '4月1日晚间消息',
+        message_type: 'text',
+        resource_items: null,
+      },
+    ]
+
+    mockedReadSettings.mockResolvedValue([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+    ])
+    mockedListConversations.mockResolvedValue([
+      {
+        id: 7,
+        title: '和阿青的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '阿青',
+        source_format: 'qq_export_v5',
+        status: 'ready',
+      },
+    ])
+    mockedListMessages
+      .mockResolvedValueOnce([...baseMessages].reverse())
+      .mockResolvedValueOnce(historyDefault)
+      .mockResolvedValueOnce(historyFiltered)
+    mockedListConversationJobs.mockResolvedValue([
+      {
+        id: 19,
+        status: 'completed',
+        current_stage: 'completed',
+        progress_percent: 100,
+        current_stage_percent: 100,
+        current_stage_total_units: 1,
+        current_stage_completed_units: 1,
+        overall_total_units: 1,
+        overall_completed_units: 1,
+        status_message: null,
+      },
+    ])
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(12)
+
+    const historyButton = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '聊天记录')
+    expect(historyButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (historyButton) {
+        getReactProps<{ onClick?: () => void }>(historyButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(6)
+
+    expect(container.textContent).toContain('默认结果 220')
+    expect(mockedListMessages).toHaveBeenNthCalledWith(2, 7, { order: 'desc', limit: 20 })
+
+    const dateInput = container.querySelector('input[type="date"]') as HTMLInputElement | null
+    expect(dateInput).not.toBeNull()
+
+    await act(async () => {
+      if (dateInput) {
+        dateInput.value = '2026-04-01'
+        getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(dateInput).onChange?.({
+          target: { value: '2026-04-01' },
+        })
+      }
+    })
+    await flushAsyncWork(8)
+
+    expect(mockedListMessages).toHaveBeenNthCalledWith(3, 7, {
+      order: 'asc',
+      limit: 20,
+      date: '2026-04-01',
+    })
+    expect(container.textContent).toContain('4月1日清晨消息')
+    expect(container.textContent).toContain('4月1日晚间消息')
+  })
+
+  it('从聊天记录结果定位时会补齐更早消息并滚动到目标位置', async () => {
+    const scrollTargets: string[] = []
+
+    mockedReadSettings.mockResolvedValue([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+    ])
+    mockedListConversations.mockResolvedValue([
+      {
+        id: 7,
+        title: '和阿青的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '阿青',
+        source_format: 'qq_export_v5',
+        status: 'ready',
+      },
+    ])
+    mockedListConversationJobs.mockResolvedValue([
+      {
+        id: 19,
+        status: 'completed',
+        current_stage: 'completed',
+        progress_percent: 100,
+        current_stage_percent: 100,
+        current_stage_total_units: 1,
+        current_stage_completed_units: 1,
+        overall_total_units: 1,
+        overall_completed_units: 1,
+        status_message: null,
+      },
+    ])
+
+    const recentMessages: MessageRead[] = Array.from({ length: 80 }, (_, index) => {
+      const sequence = 120 - index
+      return {
+        id: sequence,
+        sequence_no: sequence,
+        speaker_name: sequence % 2 === 0 ? '我' : '阿青',
+        speaker_role: sequence % 2 === 0 ? 'self' : 'other',
+        timestamp: `2026-04-08T10:${String(index).padStart(2, '0')}:00`,
+        content_text: `最近消息 ${sequence}`,
+        message_type: 'text',
+        resource_items: null,
+      } satisfies MessageRead
+    })
+    const historyDefault: MessageRead[] = [
+      {
+        id: 120,
+        sequence_no: 120,
+        speaker_name: '我',
+        speaker_role: 'self',
+        timestamp: '2026-04-08T10:00:00',
+        content_text: '默认结果 120',
+        message_type: 'text',
+        resource_items: null,
+      },
+    ]
+    const locateTarget: MessageRead = {
+      id: 10,
+      sequence_no: 10,
+      speaker_name: '我',
+      speaker_role: 'self',
+      timestamp: '2026-04-07T09:10:00',
+      content_text: '需要定位的目标消息',
+      message_type: 'text',
+      resource_items: null,
+    }
+    const olderMessages: MessageRead[] = Array.from({ length: 40 }, (_, index) => {
+      const sequence = 40 - index
+      return {
+        id: sequence,
+        sequence_no: sequence,
+        speaker_name: sequence % 2 === 0 ? '我' : '阿青',
+        speaker_role: sequence % 2 === 0 ? 'self' : 'other',
+        timestamp: `2026-04-07T09:${String(index).padStart(2, '0')}:00`,
+        content_text: sequence === 10 ? '需要定位的目标消息' : `更早消息 ${sequence}`,
+        message_type: 'text',
+        resource_items: null,
+      } satisfies MessageRead
+    })
+
+    mockedListMessages
+      .mockResolvedValueOnce(recentMessages)
+      .mockResolvedValueOnce(historyDefault)
+      .mockResolvedValueOnce([locateTarget])
+      .mockResolvedValueOnce(olderMessages)
+
+    const { root, container } = setupDom()
+
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: function scrollIntoView() {
+        scrollTargets.push(this.getAttribute?.('data-chat-message-id') ?? 'other')
+      },
+      configurable: true,
+    })
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(12)
+
+    const historyButton = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '聊天记录')
+    expect(historyButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (historyButton) {
+        getReactProps<{ onClick?: () => void }>(historyButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(6)
+
+    const searchInput = container.querySelector('input[type="search"]') as HTMLInputElement | null
+    expect(searchInput).not.toBeNull()
+
+    await act(async () => {
+      if (searchInput) {
+        searchInput.value = '目标消息'
+        getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(searchInput).onChange?.({
+          target: { value: '目标消息' },
+        })
+      }
+    })
+    await flushAsyncWork(8)
+
+    const locateButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('定位到此位置') ?? false,
+    )
+    expect(locateButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (locateButton) {
+        await getReactProps<{ onClick?: () => Promise<void> | void }>(locateButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(12)
+
+    expect(mockedListMessages).toHaveBeenCalledWith(7, { before: 41, order: 'desc', limit: 50 })
+    expect(container.textContent).toContain('需要定位的目标消息')
+    expect(container.textContent).toContain('最近消息 120')
+    expect(scrollTargets).toContain('message-10')
+  })
+
   it('snapshot 标签在历史视图下直接走后端最新快照，不依赖消息时间戳', async () => {
     mockedReadSettings.mockResolvedValue([
       { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },

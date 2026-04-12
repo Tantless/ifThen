@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import date as calendar_date, timedelta
 from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
@@ -232,6 +233,7 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
         before: int | None = Query(default=None, ge=1),
         after: int | None = Query(default=None, ge=1),
         keyword: str | None = None,
+        message_date: str | None = Query(default=None, alias="date", pattern=r"^\d{4}-\d{2}-\d{2}$"),
         order: str = Query(default="asc", pattern="^(asc|desc)$"),
     ) -> list[MessageRead]:
         with session_scope() as session:
@@ -243,6 +245,17 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
                 query = query.where(Message.sequence_no > after)
             if keyword:
                 query = query.where(Message.content_text.contains(keyword))
+            if message_date is not None:
+                try:
+                    day_start = calendar_date.fromisoformat(message_date)
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail="Invalid date filter") from exc
+
+                next_day = day_start + timedelta(days=1)
+                query = query.where(
+                    Message.timestamp >= f"{day_start.isoformat()}T00:00:00",
+                    Message.timestamp < f"{next_day.isoformat()}T00:00:00",
+                )
             order_clause = Message.sequence_no.asc() if order == "asc" else Message.sequence_no.desc()
             rows = session.execute(query.order_by(order_clause).limit(limit)).scalars().all()
             return [MessageRead.model_validate(item, from_attributes=True) for item in rows]

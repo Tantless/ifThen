@@ -32,6 +32,8 @@ type FrontChatWindowProps = {
   conversationKey?: string
   showInspectorButton?: boolean
   onToggleInspector?: () => void
+  showChatHistoryButton?: boolean
+  onOpenChatHistory?: () => void
   rewriteState?: RewriteState
   onStartRewrite?: (messageId: number) => void
   onChangeRewriteDraft?: (value: string) => void
@@ -45,6 +47,10 @@ type FrontChatWindowProps = {
   showStartAnalysisButton?: boolean
   onStartAnalysis?: () => void
   startAnalysisPending?: boolean
+  jumpToMessageRequest?: {
+    messageId: number
+    requestKey: number
+  } | null
 }
 
 export function FrontChatWindow({
@@ -54,6 +60,8 @@ export function FrontChatWindow({
   conversationKey,
   showInspectorButton = false,
   onToggleInspector,
+  showChatHistoryButton = false,
+  onOpenChatHistory,
   rewriteState = null,
   onStartRewrite,
   onChangeRewriteDraft,
@@ -67,15 +75,18 @@ export function FrontChatWindow({
   showStartAnalysisButton = false,
   onStartAnalysis,
   startAnalysisPending = false,
+  jumpToMessageRequest = null,
 }: FrontChatWindowProps) {
   const [inputText, setInputText] = useState('')
   const [historyLoadHint, setHistoryLoadHint] = useState<'hidden' | 'loading' | 'loaded'>('hidden')
   const [contextMenu, setContextMenu] = useState<{ messageId: number; x: number; y: number } | null>(null)
   const [showCompletionMotion, setShowCompletionMotion] = useState(false)
+  const [jumpHighlightMessageId, setJumpHighlightMessageId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const inlineEditorRef = useRef<HTMLTextAreaElement>(null)
   const completionMotionTimerRef = useRef<number | null>(null)
+  const jumpHighlightTimerRef = useRef<number | null>(null)
   const previousRewriteStateRef = useRef<RewriteState>(null)
   const conversationMessages = state.mode === 'conversation' ? state.messages : []
   const previousMessageStateRef = useRef<{
@@ -103,6 +114,13 @@ export function FrontChatWindow({
     if (completionMotionTimerRef.current !== null) {
       window.clearTimeout(completionMotionTimerRef.current)
       completionMotionTimerRef.current = null
+    }
+  }
+
+  const clearJumpHighlightTimer = () => {
+    if (jumpHighlightTimerRef.current !== null) {
+      window.clearTimeout(jumpHighlightTimerRef.current)
+      jumpHighlightTimerRef.current = null
     }
   }
 
@@ -151,6 +169,7 @@ export function FrontChatWindow({
     return () => {
       clearHistoryLoadHintTimer()
       clearCompletionMotionTimer()
+      clearJumpHighlightTimer()
     }
   }, [])
 
@@ -162,6 +181,7 @@ export function FrontChatWindow({
     olderLoadArmedRef.current = true
     setContextMenu(null)
     setShowCompletionMotion(false)
+    setJumpHighlightMessageId(null)
     previousRewriteStateRef.current = null
   }, [conversationKey])
 
@@ -259,6 +279,27 @@ export function FrontChatWindow({
     }
   }, [conversationKey, renderedMessages, state.mode])
 
+  useLayoutEffect(() => {
+    if (!jumpToMessageRequest || state.mode !== 'conversation' || !scrollContainerRef.current) {
+      return
+    }
+
+    const messageDomId = `message-${jumpToMessageRequest.messageId}`
+    const targetElement = scrollContainerRef.current.querySelector<HTMLElement>(`[data-chat-message-id="${messageDomId}"]`)
+
+    if (!targetElement) {
+      return
+    }
+
+    targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    clearJumpHighlightTimer()
+    setJumpHighlightMessageId(messageDomId)
+    jumpHighlightTimerRef.current = window.setTimeout(() => {
+      setJumpHighlightMessageId((current) => (current === messageDomId ? null : current))
+      jumpHighlightTimerRef.current = null
+    }, 1800)
+  }, [jumpToMessageRequest?.requestKey, renderedMessages, state.mode])
+
   const handleScroll = async () => {
     const currentScrollTop = scrollContainerRef.current?.scrollTop ?? 0
 
@@ -340,6 +381,15 @@ export function FrontChatWindow({
         <div className="h-[60px] px-5 flex items-center justify-between">
           <h2 className="text-[20px] font-medium text-[#111]">{state.title}</h2>
           <div className="flex items-center gap-2">
+            {showChatHistoryButton && onOpenChatHistory ? (
+              <button
+                type="button"
+                className="rounded bg-white px-3 py-1.5 text-[13px] text-[#555] shadow-sm hover:bg-[#ececec]"
+                onClick={onOpenChatHistory}
+              >
+                聊天记录
+              </button>
+            ) : null}
             {showInspectorButton && onToggleInspector ? (
               <button
                 type="button"
@@ -512,7 +562,9 @@ export function FrontChatWindow({
                 data-chat-message-id={message.id}
                 className={`flex flex-col transition-opacity duration-200 ${
                   message.ghosted ? 'pointer-events-none opacity-28 saturate-0' : ''
-                } ${showCompletionMotion && rewriteState?.state === 'completed' && message.source === 'mock' ? 'rewrite-result-enter' : ''}`}
+                } ${showCompletionMotion && rewriteState?.state === 'completed' && message.source === 'mock' ? 'rewrite-result-enter' : ''} ${
+                  jumpHighlightMessageId === message.id ? 'chat-message-jump-highlight' : ''
+                }`}
               >
                 {showTime ? (
                   <div className="text-center my-2">

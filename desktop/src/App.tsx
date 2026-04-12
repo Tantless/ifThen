@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { BootScreen } from './components/BootScreen'
 import { WelcomeModal } from './components/WelcomeModal'
 import { SettingsDrawer } from './components/SettingsDrawer'
 import { ImportDialog } from './components/ImportDialog'
 import { SelfAvatarDialog } from './components/SelfAvatarDialog'
 import { AnalysisInspector, type AnalysisInspectorTab } from './components/AnalysisInspector'
+import { ChatHistoryDialog } from './components/ChatHistoryDialog'
 import { FrontAppShell } from './frontui/AppShell'
 import { FrontSidebar } from './frontui/Sidebar'
 import { FrontChatList } from './frontui/ChatList'
@@ -126,6 +127,8 @@ const MESSAGE_LOAD_RETRY_INTERVAL_MS = 1500
 const MESSAGE_LOAD_TIMEOUT_MS = 10_000
 const INITIAL_MESSAGE_PAGE_SIZE = 80
 const OLDER_MESSAGE_PAGE_SIZE = 50
+const CHAT_HISTORY_INITIAL_PAGE_SIZE = 20
+const CHAT_HISTORY_LOAD_MORE_PAGE_SIZE = 10
 
 type MessagePaginationState = {
   hasOlder: boolean
@@ -156,6 +159,7 @@ export default function App() {
   const [showSelfAvatarDialog, setShowSelfAvatarDialog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
+  const [showChatHistoryDialog, setShowChatHistoryDialog] = useState(false)
   const [selfAvatarSavePending, setSelfAvatarSavePending] = useState(false)
   const [selfAvatarError, setSelfAvatarError] = useState<string | null>(null)
   const [settingsSavePending, setSettingsSavePending] = useState(false)
@@ -172,11 +176,22 @@ export default function App() {
   const [messageLoadStateByConversation, setMessageLoadStateByConversation] = useState<Record<number, MessageLoadState>>({})
   const [messageLoadErrorByConversation, setMessageLoadErrorByConversation] = useState<Record<number, boolean>>({})
   const [mockMessagesByConversation, setMockMessagesByConversation] = useState<Record<number, FrontChatMessage[]>>({})
+  const [chatHistoryKeyword, setChatHistoryKeyword] = useState('')
+  const [chatHistoryDate, setChatHistoryDate] = useState('')
+  const [chatHistoryResults, setChatHistoryResults] = useState<MessageRead[]>([])
+  const [chatHistoryLoading, setChatHistoryLoading] = useState(false)
+  const [chatHistoryLoadingMore, setChatHistoryLoadingMore] = useState(false)
+  const [chatHistoryError, setChatHistoryError] = useState<string | null>(null)
+  const [chatHistoryHasMore, setChatHistoryHasMore] = useState(false)
+  const [chatHistoryLocatePendingId, setChatHistoryLocatePendingId] = useState<number | null>(null)
+  const [jumpToMessageRequest, setJumpToMessageRequest] = useState<{ messageId: number; requestKey: number } | null>(null)
   const rewriteRequestCounterRef = useRef(0)
   const activeRewriteRequestRef = useRef<RewriteRequestSnapshot | null>(null)
   const selectedConversationIdRef = useRef<number | null>(null)
   const rewriteDraftRef = useRef<RewriteDraft | null>(null)
   const windowStateRequestIdRef = useRef(0)
+  const deferredChatHistoryKeyword = useDeferredValue(chatHistoryKeyword.trim())
+  const deferredChatHistoryDate = useDeferredValue(chatHistoryDate)
 
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversationId
@@ -496,6 +511,7 @@ export default function App() {
     setRewriteDraft(null)
     activeRewriteRequestRef.current = null
     setChatViewState({ mode: 'history' })
+    setShowChatHistoryDialog(false)
   }, [activeTab])
 
   useEffect(() => {
@@ -509,6 +525,16 @@ export default function App() {
     setInspectorProfile([])
     setInspectorSnapshot(null)
     activeRewriteRequestRef.current = null
+    setShowChatHistoryDialog(false)
+    setChatHistoryKeyword('')
+    setChatHistoryDate('')
+    setChatHistoryResults([])
+    setChatHistoryError(null)
+    setChatHistoryLoading(false)
+    setChatHistoryLoadingMore(false)
+    setChatHistoryHasMore(false)
+    setChatHistoryLocatePendingId(null)
+    setJumpToMessageRequest(null)
   }, [selectedConversationId])
 
   useEffect(() => {
@@ -518,6 +544,21 @@ export default function App() {
       activeRewriteRequestRef.current = null
     }
   }, [analysisCompleted])
+
+  useEffect(() => {
+    if (showChatHistoryDialog) {
+      return
+    }
+
+    setChatHistoryKeyword('')
+    setChatHistoryDate('')
+    setChatHistoryResults([])
+    setChatHistoryError(null)
+    setChatHistoryLoading(false)
+    setChatHistoryLoadingMore(false)
+    setChatHistoryHasMore(false)
+    setChatHistoryLocatePendingId(null)
+  }, [showChatHistoryDialog])
 
   useEffect(() => {
     if (state.phase !== 'ready' || selectedConversationId === null) {
@@ -750,6 +791,65 @@ export default function App() {
     state.phase,
   ])
 
+  const chatHistoryUsesFilteredOrder = deferredChatHistoryKeyword.length > 0 || deferredChatHistoryDate.length > 0
+  const chatHistoryOrder: 'asc' | 'desc' = chatHistoryUsesFilteredOrder ? 'asc' : 'desc'
+
+  useEffect(() => {
+    if (state.phase !== 'ready' || activeTab !== 'chat' || selectedConversationId === null || !showChatHistoryDialog) {
+      return
+    }
+
+    let cancelled = false
+
+    const loadChatHistory = async () => {
+      setChatHistoryLoading(true)
+      setChatHistoryLoadingMore(false)
+      setChatHistoryError(null)
+
+      try {
+        const results = await listMessages(selectedConversationId, {
+          limit: CHAT_HISTORY_INITIAL_PAGE_SIZE,
+          order: chatHistoryOrder,
+          keyword: deferredChatHistoryKeyword || undefined,
+          date: deferredChatHistoryDate || undefined,
+        })
+
+        if (cancelled) {
+          return
+        }
+
+        setChatHistoryResults(results)
+        setChatHistoryHasMore(results.length === CHAT_HISTORY_INITIAL_PAGE_SIZE)
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+
+        setChatHistoryResults([])
+        setChatHistoryHasMore(false)
+        setChatHistoryError(error instanceof Error ? error.message : '加载聊天记录失败')
+      } finally {
+        if (!cancelled) {
+          setChatHistoryLoading(false)
+        }
+      }
+    }
+
+    void loadChatHistory()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeTab,
+    chatHistoryOrder,
+    deferredChatHistoryDate,
+    deferredChatHistoryKeyword,
+    selectedConversationId,
+    showChatHistoryDialog,
+    state.phase,
+  ])
+
   const handleLoadOlderMessages = async () => {
     if (state.phase !== 'ready' || selectedConversationId === null) {
       return
@@ -813,6 +913,142 @@ export default function App() {
           loadingOlder: false,
         },
       }))
+    }
+  }
+
+  const handleLoadMoreChatHistory = async () => {
+    if (
+      state.phase !== 'ready' ||
+      activeTab !== 'chat' ||
+      selectedConversationId === null ||
+      chatHistoryLoading ||
+      chatHistoryLoadingMore ||
+      !chatHistoryHasMore ||
+      chatHistoryResults.length === 0
+    ) {
+      return
+    }
+
+    const cursorSequence = chatHistoryResults[chatHistoryResults.length - 1]?.sequence_no
+    if (!cursorSequence) {
+      return
+    }
+
+    setChatHistoryLoadingMore(true)
+
+    try {
+      const nextResults = await listMessages(selectedConversationId, {
+        limit: CHAT_HISTORY_LOAD_MORE_PAGE_SIZE,
+        order: chatHistoryOrder,
+        keyword: deferredChatHistoryKeyword || undefined,
+        date: deferredChatHistoryDate || undefined,
+        ...(chatHistoryOrder === 'asc' ? { after: cursorSequence } : { before: cursorSequence }),
+      })
+
+      setChatHistoryResults((current) => {
+        const existingIds = new Set(current.map((message) => message.id))
+        const uniqueResults = nextResults.filter((message) => !existingIds.has(message.id))
+        return [...current, ...uniqueResults]
+      })
+      setChatHistoryHasMore(nextResults.length === CHAT_HISTORY_LOAD_MORE_PAGE_SIZE)
+    } catch (error) {
+      setChatHistoryError(error instanceof Error ? error.message : '加载更多聊天记录失败')
+    } finally {
+      setChatHistoryLoadingMore(false)
+    }
+  }
+
+  const handleLocateChatHistoryMessage = async (targetMessage: MessageRead) => {
+    if (state.phase !== 'ready' || selectedConversationId === null) {
+      return
+    }
+
+    const conversationId = selectedConversationId
+    setChatHistoryLocatePendingId(targetMessage.id)
+    setChatHistoryError(null)
+
+    try {
+      let loadedMessages = messagesByConversation[conversationId] ?? []
+
+      if (loadedMessages.length === 0) {
+        const latestMessages = await listMessages(conversationId, {
+          order: 'desc',
+          limit: INITIAL_MESSAGE_PAGE_SIZE,
+        })
+        loadedMessages = [...latestMessages].reverse()
+        setMessagesByConversation((current) => ({
+          ...current,
+          [conversationId]: loadedMessages,
+        }))
+        setMessagePaginationByConversation((current) => ({
+          ...current,
+          [conversationId]: {
+            hasOlder: latestMessages.length === INITIAL_MESSAGE_PAGE_SIZE,
+            loadingOlder: false,
+          },
+        }))
+      }
+
+      while (!loadedMessages.some((message) => message.id === targetMessage.id)) {
+        const oldestSequence = loadedMessages[0]?.sequence_no
+
+        if (!oldestSequence) {
+          break
+        }
+
+        const olderMessages = await listMessages(conversationId, {
+          before: oldestSequence,
+          order: 'desc',
+          limit: OLDER_MESSAGE_PAGE_SIZE,
+        })
+        const normalizedOlderMessages = [...olderMessages].reverse()
+
+        if (normalizedOlderMessages.length === 0) {
+          setMessagePaginationByConversation((current) => ({
+            ...current,
+            [conversationId]: {
+              hasOlder: false,
+              loadingOlder: false,
+            },
+          }))
+          break
+        }
+
+        const existingMessageIds = new Set(loadedMessages.map((message) => message.id))
+        const uniqueOlderMessages = normalizedOlderMessages.filter((message) => !existingMessageIds.has(message.id))
+        loadedMessages = [...uniqueOlderMessages, ...loadedMessages]
+
+        setMessagesByConversation((current) => ({
+          ...current,
+          [conversationId]: loadedMessages,
+        }))
+        setMessagePaginationByConversation((current) => ({
+          ...current,
+          [conversationId]: {
+            hasOlder: olderMessages.length === OLDER_MESSAGE_PAGE_SIZE,
+            loadingOlder: false,
+          },
+        }))
+
+        if (olderMessages.length < OLDER_MESSAGE_PAGE_SIZE) {
+          break
+        }
+      }
+
+      if (!loadedMessages.some((message) => message.id === targetMessage.id)) {
+        setChatHistoryError('未能定位到这条消息')
+        return
+      }
+
+      setShowChatHistoryDialog(false)
+      setJumpToMessageRequest((current) => ({
+        messageId: targetMessage.id,
+        requestKey: (current?.requestKey ?? 0) + 1,
+      }))
+    } catch (error) {
+      setChatHistoryError(error instanceof Error ? error.message : '定位消息失败')
+    } finally {
+      setChatHistoryLocatePendingId(null)
     }
   }
 
@@ -1625,6 +1861,8 @@ export default function App() {
             conversationKey={
               activeTab === 'chat' && selectedConversationId !== null ? `conversation-${selectedConversationId}` : activeTab
             }
+            showChatHistoryButton={activeTab === 'chat' && selectedMessageModels.mode === 'conversation'}
+            onOpenChatHistory={() => setShowChatHistoryDialog(true)}
             showInspectorButton={activeTab === 'chat' && analysisCompleted}
             onToggleInspector={() => setInspectorOpen((current) => !current)}
             showStartAnalysisButton={activeTab === 'chat' && selectedConversation?.status === 'imported'}
@@ -1654,6 +1892,7 @@ export default function App() {
             hasOlderMessages={activeTab === 'chat' && selectedMessageModels.mode === 'conversation' && !!selectedConversationPaginationState?.hasOlder}
             olderMessagesPending={activeTab === 'chat' && !!selectedConversationPaginationState?.loadingOlder}
             onLoadOlderMessages={handleLoadOlderMessages}
+            jumpToMessageRequest={activeTab === 'chat' ? jumpToMessageRequest : null}
           />
         }
       />
@@ -1705,6 +1944,23 @@ export default function App() {
         snapshot={inspectorSnapshot}
         onTabChange={setInspectorTab}
         onClose={() => setInspectorOpen(false)}
+      />
+      <ChatHistoryDialog
+        open={showChatHistoryDialog && activeTab === 'chat' && selectedConversation !== null}
+        conversationTitle={selectedMessageModels.mode === 'conversation' ? selectedMessageModels.title : '聊天记录'}
+        keyword={chatHistoryKeyword}
+        dateValue={chatHistoryDate}
+        results={chatHistoryResults}
+        loading={chatHistoryLoading}
+        loadingMore={chatHistoryLoadingMore}
+        errorMessage={chatHistoryError}
+        hasMore={chatHistoryHasMore}
+        locatePendingMessageId={chatHistoryLocatePendingId}
+        onClose={() => setShowChatHistoryDialog(false)}
+        onKeywordChange={setChatHistoryKeyword}
+        onDateChange={setChatHistoryDate}
+        onLoadMore={handleLoadMoreChatHistory}
+        onLocate={handleLocateChatHistoryMessage}
       />
     </>
   )

@@ -136,6 +136,14 @@ body {
   flex-direction: column;
 }
 
+.desktop-modal__panel--history {
+  width: min(760px, 100%);
+  max-height: 82vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .avatar-picker {
   display: grid;
   gap: 14px;
@@ -814,6 +822,98 @@ body {
 .rewrite-panel,
 .branch-view {
   color: #0f172a;
+}
+
+.chat-history__toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(180px, 0.9fr);
+  gap: 12px;
+}
+
+.chat-history__field {
+  margin: 0;
+}
+
+.chat-history__content {
+  min-height: 240px;
+}
+
+.chat-history__results {
+  display: grid;
+  gap: 12px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.chat-history__item {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 244, 239, 0.92));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
+}
+
+.chat-history__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #4b5563;
+  font-size: 0.85rem;
+}
+
+.chat-history__meta strong {
+  color: #171413;
+  font-size: 0.92rem;
+}
+
+.chat-history__text {
+  margin: 0;
+  color: #171413;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-history__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat-history__relative-time {
+  color: #6b7280;
+  font-size: 0.82rem;
+}
+
+.chat-history__load-state {
+  padding: 6px 0 2px;
+  color: #6b7280;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.chat-message-jump-highlight {
+  animation: chat-message-jump-highlight 1.6s ease-out;
+}
+
+@keyframes chat-message-jump-highlight {
+  0% {
+    transform: translateY(0);
+    filter: drop-shadow(0 0 0 rgba(7, 193, 96, 0));
+  }
+  22% {
+    transform: translateY(-1px);
+    filter: drop-shadow(0 0 20px rgba(7, 193, 96, 0.38));
+  }
+  100% {
+    transform: translateY(0);
+    filter: drop-shadow(0 0 0 rgba(7, 193, 96, 0));
+  }
 }
 
 .rewrite-panel {
