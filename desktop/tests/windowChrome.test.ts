@@ -23,6 +23,8 @@ const { BrowserWindow, loadFile, loadURL, show, setApplicationMenu, appOn, appWh
 
 vi.mock('electron', () => ({
   app: {
+    getPath: vi.fn(() => 'C:/Users/test/AppData/Roaming/if-then-desktop'),
+    isPackaged: false,
     whenReady: appWhenReady,
     on: appOn,
     quit: vi.fn(),

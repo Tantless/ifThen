@@ -6,8 +6,8 @@
 
 ## 收尾级别 (L1)
 
-### Windows 打包发布
-配置 Electron 打包、Python 运行时随包分发、数据目录策略、日志系统、发布测试。
+### Windows 打包发布（已完成 2026-04-12）
+已完成 Electron Windows 发布链路、PyInstaller 后端随包分发、发布态数据目录 / 日志目录策略、基础 smoke 验证，并产出可直接分发的 zip release。
 - 预计工作量：高
 
 ### 重构项目代码（已接取 2026-04-12）

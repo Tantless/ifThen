@@ -2,13 +2,45 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { buildPythonLaunchSpec, resolveDesktopRepoRoot } from '../electron/backend/paths'
+import {
+  buildPythonLaunchSpec,
+  getDesktopBackendPaths,
+  resolveDesktopRendererHtml,
+  resolveDesktopRepoRoot,
+} from '../electron/backend/paths'
 import { toManagedServiceState } from '../electron/backend/processManager'
 
 describe('buildPythonLaunchSpec', () => {
   it('points to scripts/run_api.py from the repo root', () => {
-    const spec = buildPythonLaunchSpec('api', 'D:/newProj')
+    const paths = getDesktopBackendPaths({
+      entryFile: 'D:/newProj/desktop/electron/main.ts',
+      isPackaged: false,
+      resourcesPath: 'D:/newProj/desktop/resources',
+      userDataDir: 'D:/newProj/.data/runtime',
+    })
+    const spec = buildPythonLaunchSpec('api', paths)
     expect(spec.args.at(-1)).toBe('scripts/run_api.py')
+  })
+
+  it('switches packaged windows launches to bundled backend executables and user data storage', () => {
+    const paths = getDesktopBackendPaths({
+      entryFile: 'C:/Program Files/If Then/resources/app.asar/dist-electron/electron/main.js',
+      isPackaged: true,
+      resourcesPath: 'C:/Program Files/If Then/resources',
+      userDataDir: 'C:/Users/test/AppData/Roaming/if-then-desktop',
+    })
+
+    const spec = buildPythonLaunchSpec('worker', paths)
+
+    expect(spec).toMatchObject({
+      command: path.normalize('C:/Program Files/If Then/resources/backend/worker/if-then-worker.exe'),
+      args: [],
+      cwd: path.normalize('C:/Program Files/If Then/resources/backend/worker'),
+      env: expect.objectContaining({
+        IF_THEN_DATA_DIR: path.normalize('C:/Users/test/AppData/Roaming/if-then-desktop/data'),
+        IF_THEN_DESKTOP_LOG_DIR: path.normalize('C:/Users/test/AppData/Roaming/if-then-desktop/data/logs'),
+      }),
+    })
   })
 })
 
@@ -21,6 +53,39 @@ describe('resolveDesktopRepoRoot', () => {
     expect(resolveDesktopRepoRoot('D:/newProj/desktop/dist-electron/electron/main.js')).toBe(
       path.normalize('D:/newProj'),
     )
+  })
+})
+
+describe('resolveDesktopRendererHtml', () => {
+  it('finds the renderer html beside the source electron entrypoint', () => {
+    expect(resolveDesktopRendererHtml('D:/newProj/desktop/electron/main.ts')).toBe(
+      path.normalize('D:/newProj/desktop/dist/index.html'),
+    )
+  })
+
+  it('finds the renderer html beside the built electron entrypoint', () => {
+    expect(resolveDesktopRendererHtml('D:/newProj/desktop/dist-electron/electron/main.js')).toBe(
+      path.normalize('D:/newProj/desktop/dist/index.html'),
+    )
+  })
+})
+
+describe('getDesktopBackendPaths', () => {
+  it('uses resources backend and per-user data directories in packaged mode', () => {
+    expect(
+      getDesktopBackendPaths({
+        entryFile: 'C:/Program Files/If Then/resources/app.asar/dist-electron/electron/main.js',
+        isPackaged: true,
+        resourcesPath: 'C:/Program Files/If Then/resources',
+        userDataDir: 'C:/Users/test/AppData/Roaming/if-then-desktop',
+      }),
+    ).toMatchObject({
+      rootDir: path.normalize('C:/Program Files/If Then/resources'),
+      backendDir: path.normalize('C:/Program Files/If Then/resources/backend'),
+      dataDir: path.normalize('C:/Users/test/AppData/Roaming/if-then-desktop/data'),
+      logsDir: path.normalize('C:/Users/test/AppData/Roaming/if-then-desktop/data/logs'),
+      rendererHtml: path.normalize('C:/Program Files/If Then/resources/app.asar/dist/index.html'),
+    })
   })
 })
 

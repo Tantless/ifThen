@@ -18,6 +18,8 @@ venv/
 node_modules/
 desktop/dist/
 desktop/dist-electron/
+desktop/.release/
+desktop/release/
 
 # Local runtime data
 .data/

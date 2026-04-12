@@ -1,0 +1,35 @@
+{
+  "appId": "com.ifthen.desktop",
+  "productName": "If Then",
+  "artifactName": "${productName}-${version}-${arch}-${ext}",
+  "electronDist": "node_modules/electron/dist",
+  "asar": true,
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": ".release/backend",
+      "to": "backend",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "win": {
+    "signAndEditExecutable": false,
+    "target": [
+      {
+        "target": "dir",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  }
+}

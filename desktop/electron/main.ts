@@ -1,16 +1,39 @@
 import { app, BrowserWindow, Menu } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { waitForHealth } from './backend/health.js'
-import { buildPythonLaunchSpec, getDesktopBackendPaths, resolveDesktopRepoRoot } from './backend/paths.js'
+import { buildPythonLaunchSpec, getDesktopBackendPaths } from './backend/paths.js'
 import { BackendProcessManager } from './backend/processManager.js'
 import { registerDesktopIpc } from './ipc.js'
 
-const processManager = new BackendProcessManager()
-const repoRoot = resolveDesktopRepoRoot(fileURLToPath(import.meta.url))
-const backendPaths = getDesktopBackendPaths(repoRoot)
+let cachedProcessManager: BackendProcessManager | null = null
+let cachedBackendPaths: ReturnType<typeof getDesktopBackendPaths> | null = null
+
+function getDesktopRuntime() {
+  if (cachedBackendPaths === null) {
+    const entryFile = fileURLToPath(import.meta.url)
+
+    cachedBackendPaths = getDesktopBackendPaths({
+      entryFile,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      userDataDir: app.getPath('userData'),
+      env: process.env,
+    })
+  }
+
+  if (cachedProcessManager === null) {
+    cachedProcessManager = new BackendProcessManager(cachedBackendPaths.logsDir)
+  }
+
+  return {
+    backendPaths: cachedBackendPaths,
+    processManager: cachedProcessManager,
+  }
+}
 
 async function bootstrapBackend() {
-  processManager.startApi(buildPythonLaunchSpec('api', repoRoot))
+  const { backendPaths, processManager } = getDesktopRuntime()
+  processManager.startApi(buildPythonLaunchSpec('api', backendPaths))
 
   const apiHealthy = await waitForHealth(backendPaths.healthUrl)
   processManager.markApiHealthy(
@@ -22,10 +45,11 @@ async function bootstrapBackend() {
     return
   }
 
-  processManager.startWorker(buildPythonLaunchSpec('worker', repoRoot))
+  processManager.startWorker(buildPythonLaunchSpec('worker', backendPaths))
 }
 
 export async function createWindow() {
+  const { backendPaths } = getDesktopRuntime()
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -55,13 +79,14 @@ export async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  const { processManager } = getDesktopRuntime()
   registerDesktopIpc(processManager)
   void bootstrapBackend()
   await createWindow()
 })
 
 app.on('before-quit', () => {
-  processManager.stopAll()
+  cachedProcessManager?.stopAll()
 })
 
 app.on('window-all-closed', () => {
