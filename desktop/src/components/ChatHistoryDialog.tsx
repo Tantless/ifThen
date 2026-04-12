@@ -50,7 +50,7 @@ type ParsedTimestampParts = {
 }
 
 function parseTimestampParts(timestamp: string): ParsedTimestampParts | null {
-  const match = timestamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/)
+  const match = timestamp.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/)
   if (!match) {
     return null
   }

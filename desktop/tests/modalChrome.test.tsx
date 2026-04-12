@@ -155,4 +155,55 @@ describe('desktop modal chrome', () => {
     expect(html).not.toContain('3月3日')
     expect(html).not.toContain('04:18')
   })
+
+  it('groups imported space-separated timestamps by day instead of treating each raw timestamp as a unique label', () => {
+    const html = renderToStaticMarkup(
+      <ChatHistoryDialog
+        open
+        conversationTitle="阿青"
+        keyword=""
+        dateValue=""
+        availableDates={[{ date: '2025-03-02', message_count: 2 }]}
+        results={[
+          {
+            id: 1,
+            sequence_no: 1,
+            speaker_name: '阿青',
+            speaker_role: 'other',
+            timestamp: '2025-03-02 20:18:03',
+            content_text: '第一条',
+            message_type: 'text',
+            resource_items: null,
+          },
+          {
+            id: 2,
+            sequence_no: 2,
+            speaker_name: '我',
+            speaker_role: 'self',
+            timestamp: '2025-03-02 20:19:03',
+            content_text: '第二条',
+            message_type: 'text',
+            resource_items: null,
+          },
+        ]}
+        loading={false}
+        errorMessage={null}
+        hasMore={false}
+        activeTab="all"
+        locatePendingMessageId={null}
+        onClose={() => undefined}
+        onTabChange={() => undefined}
+        onKeywordChange={() => undefined}
+        onDateChange={() => undefined}
+        onLoadMore={() => undefined}
+        onLocate={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('3月2日')
+    expect(html).toContain('20:18')
+    expect(html).toContain('20:19')
+    expect(html).not.toContain('2025-03-02 20:18:03')
+    expect(html).not.toContain('2025-03-02 20:19:03')
+  })
 })
