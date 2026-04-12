@@ -29,9 +29,9 @@ python -m pytest -q
 cd desktop && npm test && npm run typecheck
 ```
 
-**当前验证基线**（2026-04-11）：
-- Python 测试：71 passed
-- Desktop 测试：12 files / 72 tests passed
+**当前验证基线**（2026-04-12）：
+- Python 测试：83 passed
+- Desktop 测试：13 files / 104 tests passed
 - TypeScript 类型检查：通过
 - Desktop 构建：通过
 
@@ -404,6 +404,6 @@ git worktree remove .worktrees/feature-name
 
 ---
 
-**最后更新**：2026-04-11  
+**最后更新**：2026-04-12  
 **维护者**：项目协作 agents  
 **版本**：1.1
