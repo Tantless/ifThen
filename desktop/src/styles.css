@@ -1106,12 +1106,12 @@ body {
 
 .chat-history-modal__group-label {
   position: sticky;
-  top: -1px;
+  top: -8px;
   z-index: 10;
   text-align: center;
-  padding: 4px 0;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(4px);
+  padding: 0 0 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.92) 68%, rgba(255, 255, 255, 0) 100%);
+  backdrop-filter: blur(6px);
 }
 
 .chat-history-modal__group-label span {
