@@ -886,8 +886,8 @@ describe('frontUI shell markup', () => {
 
     expect(html).toContain('data-chat-bubble-tone="rewrite-target"')
     expect(html).toContain('rewrite-target')
-    expect(html).toContain('right-[-12px] border-l-[#d4e9ff]')
-    expect(html).toContain('drop-shadow-[0_1px_1px_rgba(92,173,255,0.22)]')
+    expect(html).toContain('data-chat-tail-style="integrated"')
+    expect(html).not.toContain('right-[-12px] border-l-[#d4e9ff]')
   })
 
   it('renders the rewrite pending progress as a floating overlay instead of a chat-stream item', () => {
