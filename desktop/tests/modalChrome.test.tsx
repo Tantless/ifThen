@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { ImportDialog } from '../src/components/ImportDialog'
+import { SelfAvatarDialog } from '../src/components/SelfAvatarDialog'
 import { SettingsDrawer } from '../src/components/SettingsDrawer'
 import { WelcomeModal } from '../src/components/WelcomeModal'
 
@@ -37,5 +38,21 @@ describe('desktop modal chrome', () => {
 
     expect(html).toContain('desktop-drawer')
     expect(html).toContain('desktop-drawer__header')
+    expect(html).not.toContain('我的头像')
+  })
+
+  it('renders the self-avatar picker inside a shared desktop modal shell', () => {
+    const html = renderToStaticMarkup(
+      <SelfAvatarDialog
+        open
+        initialAvatarUrl="data:image/svg+xml;base64,self-avatar"
+        onClose={() => undefined}
+        onSave={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('desktop-modal__panel')
+    expect(html).toContain('更换头像')
+    expect(html).toContain('我的头像')
   })
 })

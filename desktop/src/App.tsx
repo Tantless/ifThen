@@ -4,6 +4,7 @@ import { BootScreen } from './components/BootScreen'
 import { WelcomeModal } from './components/WelcomeModal'
 import { SettingsDrawer } from './components/SettingsDrawer'
 import { ImportDialog } from './components/ImportDialog'
+import { SelfAvatarDialog } from './components/SelfAvatarDialog'
 import { AnalysisInspector, type AnalysisInspectorTab } from './components/AnalysisInspector'
 import { FrontAppShell } from './frontui/AppShell'
 import { FrontSidebar } from './frontui/Sidebar'
@@ -147,8 +148,11 @@ export default function App() {
   const [conversations, setConversations] = useState<ConversationRead[] | null>(null)
   const [shellLoadError, setShellLoadError] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
+  const [showSelfAvatarDialog, setShowSelfAvatarDialog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
+  const [selfAvatarSavePending, setSelfAvatarSavePending] = useState(false)
+  const [selfAvatarError, setSelfAvatarError] = useState<string | null>(null)
   const [settingsSavePending, setSettingsSavePending] = useState(false)
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [importPending, setImportPending] = useState(false)
@@ -1107,11 +1111,6 @@ export default function App() {
           setting_value: String(formState.simulationTurnCount),
           is_secret: false,
         }),
-        writeSetting({
-          setting_key: 'profile.self_avatar_url',
-          setting_value: formState.selfAvatarUrl.trim(),
-          is_secret: false,
-        }),
       ])
 
       setSettings((current) => upsertSettings(current ?? [], updates))
@@ -1495,6 +1494,20 @@ export default function App() {
     return <BootScreen label={label} detail={state.detail} />
   }
 
+  const handleSaveSelfAvatar = async (avatarUrl: string) => {
+    setSelfAvatarSavePending(true)
+    setSelfAvatarError(null)
+
+    try {
+      await persistSelfAvatarSetting(avatarUrl)
+      setShowSelfAvatarDialog(false)
+    } catch (error) {
+      setSelfAvatarError(error instanceof Error ? error.message : '保存头像失败')
+    } finally {
+      setSelfAvatarSavePending(false)
+    }
+  }
+
   return (
     <>
       <FrontAppShell
@@ -1517,12 +1530,12 @@ export default function App() {
           <FrontSidebar
             activeTab={activeTab}
             selfAvatarUrl={selfAvatarUrl}
+            onOpenAvatarDialog={() => {
+              setSelfAvatarError(null)
+              setShowSelfAvatarDialog(true)
+            }}
             onTabChange={setActiveTab}
             onOpenSettings={() => setShowSettings(true)}
-            onOpenImport={() => {
-              setImportError(null)
-              setShowImportDialog(true)
-            }}
           />
         }
         list={
@@ -1599,6 +1612,14 @@ export default function App() {
         errorMessage={settingsError}
         onClose={() => setShowSettings(false)}
         onSave={handleSaveSettings}
+      />
+      <SelfAvatarDialog
+        open={showSelfAvatarDialog}
+        initialAvatarUrl={selfAvatarUrl}
+        pending={selfAvatarSavePending}
+        errorMessage={selfAvatarError}
+        onClose={() => setShowSelfAvatarDialog(false)}
+        onSave={handleSaveSelfAvatar}
       />
       <ImportDialog
         open={showImportDialog}

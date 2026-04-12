@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 
 import type { SettingsFormState } from '../lib/adapters'
-import { AvatarPicker } from './AvatarPicker'
 
 type SettingsDrawerProps = {
   open: boolean
@@ -128,12 +127,6 @@ export function SettingsDrawer({
             }
           />
         </label>
-
-        <AvatarPicker
-          title="我的头像"
-          selectedAvatarUrl={formState.selfAvatarUrl}
-          onChange={(value) => setFormState((current) => ({ ...current, selfAvatarUrl: value }))}
-        />
 
         {errorMessage ? (
           <p role="alert" className="desktop-drawer__error">

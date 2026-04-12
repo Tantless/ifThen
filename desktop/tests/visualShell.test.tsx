@@ -131,11 +131,14 @@ function setupDom() {
   Object.assign(globalThis, {
     window,
     document: window.document,
-    navigator: window.navigator,
     HTMLElement: window.HTMLElement,
     Event: window.Event,
     MouseEvent: window.MouseEvent,
     IS_REACT_ACT_ENVIRONMENT: true,
+  })
+  Object.defineProperty(globalThis, 'navigator', {
+    value: window.navigator,
+    configurable: true,
   })
 
   Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
@@ -378,6 +381,21 @@ describe('App frontUI integration', () => {
 
     expect(container.querySelector('.desktop-drawer')).not.toBeNull()
     expect(container.textContent).toContain('模型配置')
+    expect(container.textContent).not.toContain('我的头像')
+
+    const selfAvatarButton = container.querySelector('button[aria-label="打开头像设置"]')
+    expect(selfAvatarButton).not.toBeNull()
+
+    await act(async () => {
+      if (selfAvatarButton) {
+        getReactProps<{ onClick?: () => void }>(selfAvatarButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(2)
+
+    expect(container.querySelector('.desktop-modal__panel')).not.toBeNull()
+    expect(container.textContent).toContain('更换头像')
+    expect(container.textContent).toContain('我的头像')
   })
 
   it('聊天窗口首次只加载最近 80 条，并在滚动到顶部时继续加载更早 50 条消息', async () => {
@@ -1068,7 +1086,7 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(6)
 
-    expect(mockedWriteSetting).toHaveBeenCalledTimes(8)
+    expect(mockedWriteSetting).toHaveBeenCalledTimes(7)
     expect(mockedWriteSetting).toHaveBeenCalledWith({
       setting_key: 'simulation.default_mode',
       setting_value: 'short_thread',
@@ -1147,6 +1165,87 @@ describe('App frontUI integration', () => {
       setting_value: AVATAR_PRESETS[1].url,
       is_secret: false,
     })
+  })
+
+  it('点击左上角头像后可在独立弹窗里更换并持久化自己的头像', async () => {
+    mockedReadSettings.mockResolvedValue([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+      { setting_key: 'profile.self_avatar_url', setting_value: AVATAR_PRESETS[0].url, is_secret: false },
+    ])
+    mockedListConversations.mockResolvedValue([
+      {
+        id: 7,
+        title: '和小李的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '小李',
+        source_format: 'qq_export_v5',
+        status: 'ready',
+      },
+    ])
+    mockedListMessages.mockResolvedValue([
+      {
+        id: 11,
+        sequence_no: 1,
+        speaker_name: '小李',
+        speaker_role: 'other',
+        timestamp: '2026-04-08T10:01:00',
+        content_text: '收到，稍后回你',
+        message_type: 'text',
+        resource_items: null,
+      },
+    ])
+    mockedListConversationJobs.mockResolvedValue([])
+    mockedWriteSetting.mockImplementation(async (payload) => payload)
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(10)
+
+    const selfAvatarButton = container.querySelector('button[aria-label="打开头像设置"]')
+    expect(selfAvatarButton).not.toBeNull()
+
+    await act(async () => {
+      if (selfAvatarButton) {
+        getReactProps<{ onClick?: () => void }>(selfAvatarButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(2)
+
+    const avatarPresetButton = container.querySelector('[data-testid="avatar-preset-avatar-preset-4"]')
+    expect(avatarPresetButton).not.toBeNull()
+
+    await act(async () => {
+      if (avatarPresetButton) {
+        getReactProps<{ onClick?: () => void }>(avatarPresetButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(2)
+
+    const saveButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('保存头像') ?? false,
+    )
+    expect(saveButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (saveButton) {
+        await getReactProps<{ onClick?: () => Promise<void> | void }>(saveButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    expect(mockedWriteSetting).toHaveBeenCalledWith({
+      setting_key: 'profile.self_avatar_url',
+      setting_value: AVATAR_PRESETS[3].url,
+      is_secret: false,
+    })
+    expect(container.querySelector('.desktop-modal__panel')).toBeNull()
+    expect((container.querySelector('img[alt="当前用户头像"]') as HTMLImageElement | null)?.src).toBe(AVATAR_PRESETS[3].url)
   })
 
   it('导入新会话后会在消息尚未落库时重试加载，直到聊天记录可渲染', async () => {

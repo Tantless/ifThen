@@ -5,15 +5,15 @@ import type { FrontSidebarTab } from './types'
 type FrontSidebarProps = {
   activeTab: FrontSidebarTab
   selfAvatarUrl: string
+  onOpenAvatarDialog: () => void
   onTabChange: (tab: FrontSidebarTab) => void
   onOpenSettings: () => void
-  onOpenImport: () => void
 }
 
-export function FrontSidebar({ activeTab, selfAvatarUrl, onTabChange, onOpenSettings }: FrontSidebarProps) {
+export function FrontSidebar({ activeTab, selfAvatarUrl, onOpenAvatarDialog, onTabChange, onOpenSettings }: FrontSidebarProps) {
   return (
     <div className="w-[60px] h-full bg-[#2e2e2e] flex flex-col items-center py-6 select-none flex-shrink-0">
-      <button type="button" className="mb-6 cursor-pointer" onClick={() => onTabChange('chat')} aria-label="返回聊天列表">
+      <button type="button" className="mb-6 cursor-pointer" onClick={onOpenAvatarDialog} aria-label="打开头像设置">
         <img src={selfAvatarUrl} alt="当前用户头像" className="w-10 h-10 rounded-md object-cover" />
       </button>
 
