@@ -165,6 +165,7 @@ describe('buildFrontChatMessage', () => {
           resource_items: null,
         },
         selfAvatarUrl: 'data:image/svg+xml;base64,self-avatar',
+        now: '2026-04-07T20:00:00+08:00',
       }),
     ).toEqual({
       id: 'message-21',
@@ -174,11 +175,102 @@ describe('buildFrontChatMessage', () => {
       speakerName: '我',
       avatarUrl: 'data:image/svg+xml;base64,self-avatar',
       text: '那我们先这样吧',
-      timestampLabel: '10:00',
+      timestampLabel: '18:00',
       timestampRaw: '2026-04-07T10:00:00.000Z',
       canRewrite: true,
       source: 'real',
     })
+  })
+
+  it('formats same-day timestamps as HH:mm', () => {
+    expect(
+      buildFrontChatMessage({
+        message: {
+          id: 31,
+          sequence_no: 1,
+          speaker_name: '我',
+          speaker_role: 'self',
+          timestamp: '2026-04-12T13:17:00+08:00',
+          content_text: '今天消息',
+          message_type: 'text',
+          resource_items: null,
+        },
+        selfAvatarUrl: 'data:image/svg+xml;base64,self-avatar',
+        now: '2026-04-12T18:00:00+08:00',
+      }).timestampLabel,
+    ).toBe('13:17')
+  })
+
+  it('formats yesterday / the day before / same-year / cross-year timestamps like WeChat', () => {
+    const now = '2026-04-12T18:00:00+08:00'
+
+    expect(
+      buildFrontChatMessage({
+        message: {
+          id: 32,
+          sequence_no: 2,
+          speaker_name: '阿青',
+          speaker_role: 'other',
+          timestamp: '2026-04-11T13:17:00+08:00',
+          content_text: '昨天消息',
+          message_type: 'text',
+          resource_items: null,
+        },
+        otherAvatarUrl: 'data:image/svg+xml;base64,other-avatar',
+        now,
+      }).timestampLabel,
+    ).toBe('昨天 13:17')
+
+    expect(
+      buildFrontChatMessage({
+        message: {
+          id: 33,
+          sequence_no: 3,
+          speaker_name: '阿青',
+          speaker_role: 'other',
+          timestamp: '2026-04-10T13:17:00+08:00',
+          content_text: '前天消息',
+          message_type: 'text',
+          resource_items: null,
+        },
+        otherAvatarUrl: 'data:image/svg+xml;base64,other-avatar',
+        now,
+      }).timestampLabel,
+    ).toBe('前天 13:17')
+
+    expect(
+      buildFrontChatMessage({
+        message: {
+          id: 34,
+          sequence_no: 4,
+          speaker_name: '阿青',
+          speaker_role: 'other',
+          timestamp: '2026-03-01T13:17:00+08:00',
+          content_text: '本年消息',
+          message_type: 'text',
+          resource_items: null,
+        },
+        otherAvatarUrl: 'data:image/svg+xml;base64,other-avatar',
+        now,
+      }).timestampLabel,
+    ).toBe('3月1日 13:17')
+
+    expect(
+      buildFrontChatMessage({
+        message: {
+          id: 35,
+          sequence_no: 5,
+          speaker_name: '阿青',
+          speaker_role: 'other',
+          timestamp: '2025-03-01T13:17:00+08:00',
+          content_text: '往年消息',
+          message_type: 'text',
+          resource_items: null,
+        },
+        otherAvatarUrl: 'data:image/svg+xml;base64,other-avatar',
+        now,
+      }).timestampLabel,
+    ).toBe('2025年3月1日 13:17')
   })
 })
 
@@ -213,6 +305,7 @@ describe('buildFrontChatWindowState', () => {
             resource_items: null,
           },
         ],
+        now: '2026-04-07T20:00:00+08:00',
       }),
     ).toEqual({
       mode: 'conversation',
@@ -226,7 +319,7 @@ describe('buildFrontChatWindowState', () => {
           speakerName: '老王',
           avatarUrl: 'data:image/svg+xml;base64,other-avatar',
           text: '收到，稍后回你',
-          timestampLabel: '10:01',
+          timestampLabel: '18:01',
           timestampRaw: '2026-04-07T10:01:00.000Z',
           canRewrite: false,
           source: 'real',
@@ -270,6 +363,7 @@ describe('buildFrontChatMessagesFromSimulation', () => {
         selfAvatarUrl: 'data:image/svg+xml;base64,self-avatar',
         otherAvatarUrl: 'data:image/svg+xml;base64,other-avatar',
         timestampRaw: '2026-04-08T10:02:00',
+        now: '2026-04-08T18:00:00',
       }),
     ).toEqual([
       {
@@ -356,6 +450,7 @@ describe('buildFrontChatMessagesFromSimulation', () => {
         selfAvatarUrl: 'data:image/svg+xml;base64,self-avatar',
         otherAvatarUrl: 'data:image/svg+xml;base64,other-avatar',
         timestampRaw: '2026-04-08T10:02:00',
+        now: '2026-04-08T18:00:00',
       }),
     ).toEqual([
       {

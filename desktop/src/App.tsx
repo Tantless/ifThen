@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { format } from 'date-fns'
 import { BootScreen } from './components/BootScreen'
 import { WelcomeModal } from './components/WelcomeModal'
 import { SettingsDrawer } from './components/SettingsDrawer'
@@ -37,7 +36,12 @@ import {
   type SettingsFormState,
 } from './lib/adapters'
 import { resolveJobProgress } from './lib/analysisProgress'
-import { buildFrontChatItem, buildFrontChatMessagesFromSimulation, buildFrontChatWindowState } from './lib/frontUiAdapters'
+import {
+  buildFrontChatItem,
+  buildFrontChatMessagesFromSimulation,
+  buildFrontChatWindowState,
+  formatChatTimestampLabel,
+} from './lib/frontUiAdapters'
 import { resolveSimulationPendingStageLabel } from './lib/simulationPending'
 import {
   deleteConversation,
@@ -429,6 +433,7 @@ export default function App() {
         messages[targetIndex] = {
           ...messages[targetIndex],
           text: rewriteDraft.replacementContent,
+          bubbleTone: 'rewrite-target',
         }
 
         if (rewriteDraft.status === 'pending' || rewriteDraft.status === 'completed') {
@@ -1522,6 +1527,7 @@ export default function App() {
     }
 
     const speakerName = selectedConversation?.self_display_name.trim() || '我'
+    const now = new Date()
     const localMessage: FrontChatMessage = {
       id: `mock-local-${Date.now()}`,
       messageId: null,
@@ -1529,8 +1535,8 @@ export default function App() {
       speakerName,
       avatarUrl: selfAvatarUrl,
       text,
-      timestampLabel: format(new Date(), 'HH:mm'),
-      timestampRaw: new Date().toISOString(),
+      timestampLabel: formatChatTimestampLabel(now.toISOString(), now),
+      timestampRaw: now.toISOString(),
       canRewrite: false,
       source: 'mock',
     }

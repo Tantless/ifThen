@@ -303,7 +303,9 @@ describe('frontUI shell markup', () => {
     expect(html).toContain('min-h-0')
     expect(html).toContain('overflow-hidden')
     expect(html).toContain('custom-scrollbar')
-    expect(html).toContain('rounded-lg rounded-tr-none')
+    expect(html).toContain('rounded-[18px]')
+    expect(html).not.toContain('rounded-tr-none')
+    expect(html).not.toContain('rounded-tl-none')
     expect(html).toContain('发送(S)')
     expect(html).toContain('摘要生成 42%')
     expect(html).toContain('front-progress')
@@ -841,6 +843,36 @@ describe('frontUI shell markup', () => {
 
     expect(onResetRewriteView).toHaveBeenCalledTimes(1)
     expect(onContinueRewrite).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders the active rewrite target with a dedicated material distinct from simulation bubbles', () => {
+    const html = renderToStaticMarkup(
+      <FrontChatWindow
+        state={{
+          mode: 'conversation',
+          title: '和小李的聊天',
+          messages: [
+            {
+              id: 'message-12',
+              messageId: 12,
+              align: 'right',
+              speakerName: '我',
+              avatarUrl: 'https://example.test/self.png',
+              text: '改写后的消息',
+              timestampLabel: '13:17',
+              timestampRaw: '2026-04-12T13:17:00+08:00',
+              canRewrite: true,
+              source: 'real',
+              bubbleTone: 'rewrite-target',
+            },
+          ],
+        }}
+        onSendMessage={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('data-chat-bubble-tone="rewrite-target"')
+    expect(html).toContain('rewrite-target')
   })
 
   it('renders the rewrite pending progress as a floating overlay instead of a chat-stream item', () => {

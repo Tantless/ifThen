@@ -59,23 +59,43 @@ function resolveJobTimestampLabel(job: JobRead | null | undefined): string {
   return resolveJobStageProgressLabel(job)
 }
 
-function resolveTimestampLabel(timestamp: string): string {
+function startOfDay(value: Date): number {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime()
+}
+
+export function formatChatTimestampLabel(timestamp: string, nowInput?: string | Date): string {
   const trimmed = trimText(timestamp)
   if (!trimmed) {
     return ''
   }
 
-  const timeMatch = trimmed.match(/(?:T|\s)(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?/)
-  if (timeMatch?.[1]) {
-    return timeMatch[1]
+  const target = new Date(trimmed)
+  if (Number.isNaN(target.getTime())) {
+    return trimmed
   }
 
-  const hhmmMatch = trimmed.match(/\b\d{2}:\d{2}\b/)
-  if (hhmmMatch) {
-    return hhmmMatch[0]
+  const now = nowInput ? new Date(nowInput) : new Date()
+  const resolvedNow = Number.isNaN(now.getTime()) ? new Date() : now
+  const dayDiff = Math.round((startOfDay(resolvedNow) - startOfDay(target)) / 86_400_000)
+  const hhmm = `${String(target.getHours()).padStart(2, '0')}:${String(target.getMinutes()).padStart(2, '0')}`
+
+  if (dayDiff === 0) {
+    return hhmm
   }
 
-  return trimmed
+  if (dayDiff === 1) {
+    return `昨天 ${hhmm}`
+  }
+
+  if (dayDiff === 2) {
+    return `前天 ${hhmm}`
+  }
+
+  if (target.getFullYear() === resolvedNow.getFullYear()) {
+    return `${target.getMonth() + 1}月${target.getDate()}日 ${hhmm}`
+  }
+
+  return `${target.getFullYear()}年${target.getMonth() + 1}月${target.getDate()}日 ${hhmm}`
 }
 
 function resolveMessageAvatar(message: MessageRead): string {
@@ -108,8 +128,9 @@ export function buildFrontChatMessage(input: {
   message: MessageRead
   selfAvatarUrl?: string
   otherAvatarUrl?: string
+  now?: string | Date
 }): FrontChatMessage {
-  const { message, selfAvatarUrl, otherAvatarUrl } = input
+  const { message, selfAvatarUrl, otherAvatarUrl, now } = input
   const isSelf = message.speaker_role === 'self'
 
   return {
@@ -120,7 +141,7 @@ export function buildFrontChatMessage(input: {
     speakerName: trimText(message.speaker_name) || (isSelf ? '我' : '对方'),
     avatarUrl: isSelf ? selfAvatarUrl || FRONTUI_SELF_AVATAR : otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR,
     text: message.content_text,
-    timestampLabel: resolveTimestampLabel(message.timestamp),
+    timestampLabel: formatChatTimestampLabel(message.timestamp, now),
     timestampRaw: message.timestamp,
     canRewrite: isSelf && message.message_type === 'text',
     source: 'real',
@@ -132,8 +153,9 @@ export function buildFrontChatWindowState(input: {
   selfAvatarUrl?: string
   otherAvatarUrl?: string
   messages: MessageRead[]
+  now?: string | Date
 }): FrontChatWindowState {
-  const { selectedConversation, selfAvatarUrl, otherAvatarUrl, messages } = input
+  const { selectedConversation, selfAvatarUrl, otherAvatarUrl, messages, now } = input
 
   if (!selectedConversation) {
     return { mode: 'placeholder' }
@@ -142,7 +164,7 @@ export function buildFrontChatWindowState(input: {
   return {
     mode: 'conversation',
     title: resolveConversationDisplayName(selectedConversation),
-    messages: messages.map((message) => buildFrontChatMessage({ message, selfAvatarUrl, otherAvatarUrl })),
+    messages: messages.map((message) => buildFrontChatMessage({ message, selfAvatarUrl, otherAvatarUrl, now })),
   }
 }
 
@@ -153,6 +175,7 @@ export function buildFrontChatMessagesFromSimulation(input: {
   selfAvatarUrl?: string
   otherAvatarUrl?: string
   timestampRaw: string
+  now?: string | Date
 }): FrontChatMessage[] {
   const {
     simulation,
@@ -161,6 +184,7 @@ export function buildFrontChatMessagesFromSimulation(input: {
     selfAvatarUrl,
     otherAvatarUrl,
     timestampRaw,
+    now,
   } = input
   const normalizedTimestamp = trimText(timestampRaw) || new Date().toISOString()
 
@@ -175,7 +199,7 @@ export function buildFrontChatMessagesFromSimulation(input: {
         speakerName: isSelf ? selfDisplayName : otherDisplayName,
         avatarUrl: isSelf ? selfAvatarUrl || FRONTUI_SELF_AVATAR : otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR,
         text,
-        timestampLabel: resolveTimestampLabel(normalizedTimestamp),
+        timestampLabel: formatChatTimestampLabel(normalizedTimestamp, now),
         timestampRaw: normalizedTimestamp,
         canRewrite: false,
         source: 'mock',
@@ -192,7 +216,7 @@ export function buildFrontChatMessagesFromSimulation(input: {
       speakerName: otherDisplayName,
       avatarUrl: otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR,
       text,
-      timestampLabel: resolveTimestampLabel(normalizedTimestamp),
+      timestampLabel: formatChatTimestampLabel(normalizedTimestamp, now),
       timestampRaw: normalizedTimestamp,
       canRewrite: false,
       source: 'mock',
