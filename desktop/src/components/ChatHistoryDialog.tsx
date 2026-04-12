@@ -1,4 +1,4 @@
-import { Calendar, ChevronDown, ChevronLeft, ChevronRight, FileText, Search, X } from 'lucide-react'
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 
 import { FRONTUI_PLACEHOLDER_AVATAR, FRONTUI_SELF_AVATAR } from '../frontui/mockState'
@@ -7,7 +7,7 @@ import type { MessageDayRead, MessageRead } from '../types/api'
 const LOAD_MORE_TRIGGER_PX = 24
 const LOAD_MORE_REARM_PX = 72
 
-export type ChatHistoryTab = 'all' | 'files' | 'date'
+export type ChatHistoryTab = 'all'
 
 type ChatHistoryDialogProps = {
   open: boolean
@@ -208,12 +208,6 @@ export function ChatHistoryDialog({
     setVisibleMonth(resolveInitialVisibleMonth(dateValue, availableDates))
   }, [availableDates, dateValue, open])
 
-  useEffect(() => {
-    if (activeTab !== 'date') {
-      setShowDatePicker(false)
-    }
-  }, [activeTab])
-
   if (!open) {
     return null
   }
@@ -245,79 +239,77 @@ export function ChatHistoryDialog({
             <h2 id="chat-history-dialog-title" className="chat-history-modal__title">
               聊天记录 - {conversationTitle}
             </h2>
-            {activeTab === 'date' ? (
-              <div className="chat-history-modal__date-anchor">
-                <button
-                  type="button"
-                  className="chat-history-modal__date-trigger"
-                  aria-label="打开聊天记录日期选择"
-                  onClick={() => setShowDatePicker((current) => !current)}
-                >
-                  <Calendar size={14} />
-                  <span>{formatDateTriggerLabel(dateValue)}</span>
-                  <ChevronDown size={14} />
-                </button>
-                {showDatePicker ? (
-                  <div className="chat-history-modal__date-popover">
-                    <div className="chat-history-modal__calendar-header">
-                      <button
-                        type="button"
-                        className="chat-history-modal__calendar-nav"
-                        aria-label="上一月"
-                        onClick={() => setVisibleMonth((current) => shiftMonth(current, -1))}
-                      >
-                        <ChevronLeft size={16} />
-                      </button>
-                      <span className="chat-history-modal__calendar-label">{monthLabel}</span>
-                      <button
-                        type="button"
-                        className="chat-history-modal__calendar-nav"
-                        aria-label="下一月"
-                        onClick={() => setVisibleMonth((current) => shiftMonth(current, 1))}
-                      >
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-
-                    <div className="chat-history-modal__calendar-weekdays">
-                      {['日', '一', '二', '三', '四', '五', '六'].map((weekday) => (
-                        <span key={weekday}>{weekday}</span>
-                      ))}
-                    </div>
-
-                    <div className="chat-history-modal__calendar-grid">
-                      {calendarDays.map((day) => {
-                        if (!day.inMonth) {
-                          return <span key={day.key} className="chat-history-modal__calendar-blank" aria-hidden="true" />
-                        }
-
-                        return (
-                          <button
-                            key={day.key}
-                            type="button"
-                            data-chat-history-date={day.isoDate ?? undefined}
-                            className={`chat-history-modal__calendar-day${
-                              day.available ? '' : ' chat-history-modal__calendar-day--disabled'
-                            }${day.selected ? ' chat-history-modal__calendar-day--selected' : ''}`}
-                            disabled={!day.available}
-                            onClick={() => {
-                              if (!day.isoDate) {
-                                return
-                              }
-
-                              onDateChange(day.isoDate)
-                              setShowDatePicker(false)
-                            }}
-                          >
-                            {day.label}
-                          </button>
-                        )
-                      })}
-                    </div>
+            <div className="chat-history-modal__date-anchor">
+              <button
+                type="button"
+                className="chat-history-modal__date-trigger"
+                aria-label="打开聊天记录日期选择"
+                onClick={() => setShowDatePicker((current) => !current)}
+              >
+                <Calendar size={14} />
+                <span>{formatDateTriggerLabel(dateValue)}</span>
+                <ChevronDown size={14} />
+              </button>
+              {showDatePicker ? (
+                <div className="chat-history-modal__date-popover">
+                  <div className="chat-history-modal__calendar-header">
+                    <button
+                      type="button"
+                      className="chat-history-modal__calendar-nav"
+                      aria-label="上一月"
+                      onClick={() => setVisibleMonth((current) => shiftMonth(current, -1))}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="chat-history-modal__calendar-label">{monthLabel}</span>
+                    <button
+                      type="button"
+                      className="chat-history-modal__calendar-nav"
+                      aria-label="下一月"
+                      onClick={() => setVisibleMonth((current) => shiftMonth(current, 1))}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
                   </div>
-                ) : null}
-              </div>
-            ) : null}
+
+                  <div className="chat-history-modal__calendar-weekdays">
+                    {['日', '一', '二', '三', '四', '五', '六'].map((weekday) => (
+                      <span key={weekday}>{weekday}</span>
+                    ))}
+                  </div>
+
+                  <div className="chat-history-modal__calendar-grid">
+                    {calendarDays.map((day) => {
+                      if (!day.inMonth) {
+                        return <span key={day.key} className="chat-history-modal__calendar-blank" aria-hidden="true" />
+                      }
+
+                      return (
+                        <button
+                          key={day.key}
+                          type="button"
+                          data-chat-history-date={day.isoDate ?? undefined}
+                          className={`chat-history-modal__calendar-day${
+                            day.available ? '' : ' chat-history-modal__calendar-day--disabled'
+                          }${day.selected ? ' chat-history-modal__calendar-day--selected' : ''}`}
+                          disabled={!day.available}
+                          onClick={() => {
+                            if (!day.isoDate) {
+                              return
+                            }
+
+                            onDateChange(day.isoDate)
+                            setShowDatePicker(false)
+                          }}
+                        >
+                          {day.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <button type="button" className="chat-history-modal__close" aria-label="关闭聊天记录" onClick={onClose}>
@@ -344,28 +336,10 @@ export function ChatHistoryDialog({
                   type="button"
                   role="tab"
                   aria-selected={activeTab === 'all'}
-                  className={`chat-history-modal__tab${activeTab === 'all' ? ' chat-history-modal__tab--active' : ''}`}
+                  className="chat-history-modal__tab chat-history-modal__tab--active"
                   onClick={() => onTabChange('all')}
                 >
                   全部
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === 'files'}
-                  className={`chat-history-modal__tab${activeTab === 'files' ? ' chat-history-modal__tab--active' : ''}`}
-                  onClick={() => onTabChange('files')}
-                >
-                  文件
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === 'date'}
-                  className={`chat-history-modal__tab${activeTab === 'date' ? ' chat-history-modal__tab--active' : ''}`}
-                  onClick={() => onTabChange('date')}
-                >
-                  日期
                 </button>
               </div>
             </div>
@@ -378,24 +352,17 @@ export function ChatHistoryDialog({
                 </p>
               ) : null}
 
-              {!loading && !errorMessage && activeTab === 'files' ? (
-                <div className="chat-history-modal__empty">
-                  <FileText size={18} />
-                  <span>文件聊天记录暂未接入</span>
-                </div>
-              ) : null}
-
-              {!loading && !errorMessage && activeTab === 'date' && availableDates.length === 0 ? (
+              {!loading && !errorMessage && availableDates.length === 0 ? (
                 <div className="chat-history-modal__empty">
                   <Calendar size={18} />
                   <span>这个会话还没有可筛选的日期</span>
                 </div>
               ) : null}
 
-              {!loading && !errorMessage && activeTab !== 'files' && !(activeTab === 'date' && availableDates.length === 0) ? (
+              {!loading && !errorMessage && availableDates.length > 0 ? (
                 groupedResults.length === 0 ? (
                   <div className="chat-history-modal__empty">
-                    <span>{activeTab === 'date' && !dateValue ? '点击标题旁日期查看当天聊天记录' : '没有找到相关消息'}</span>
+                    <span>{!dateValue ? '点击标题旁选择日期即可筛选聊天记录' : '没有找到相关消息'}</span>
                   </div>
                 ) : (
                   <>

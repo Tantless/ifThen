@@ -800,7 +800,7 @@ export default function App() {
     state.phase,
   ])
 
-  const effectiveChatHistoryDate = chatHistoryActiveTab === 'date' ? normalizedChatHistoryDate : ''
+  const effectiveChatHistoryDate = normalizedChatHistoryDate
   const chatHistoryUsesFilteredOrder = normalizedChatHistoryKeyword.length > 0 || effectiveChatHistoryDate.length > 0
   const chatHistoryOrder: 'asc' | 'desc' = chatHistoryUsesFilteredOrder ? 'asc' : 'desc'
 
@@ -834,24 +834,6 @@ export default function App() {
 
   useEffect(() => {
     if (state.phase !== 'ready' || activeTab !== 'chat' || selectedConversationId === null || !showChatHistoryDialog) {
-      return
-    }
-
-    if (chatHistoryActiveTab === 'files') {
-      setChatHistoryLoading(false)
-      setChatHistoryLoadingMore(false)
-      setChatHistoryError(null)
-      setChatHistoryResults([])
-      setChatHistoryHasMore(false)
-      return
-    }
-
-    if (chatHistoryActiveTab === 'date' && !effectiveChatHistoryDate && normalizedChatHistoryKeyword.length === 0) {
-      setChatHistoryLoading(false)
-      setChatHistoryLoadingMore(false)
-      setChatHistoryError(null)
-      setChatHistoryResults([])
-      setChatHistoryHasMore(false)
       return
     }
 
@@ -898,7 +880,6 @@ export default function App() {
     }
   }, [
     activeTab,
-    chatHistoryActiveTab,
     chatHistoryOrder,
     effectiveChatHistoryDate,
     normalizedChatHistoryKeyword,

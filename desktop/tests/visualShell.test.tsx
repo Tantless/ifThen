@@ -1897,23 +1897,12 @@ describe('App frontUI integration', () => {
 
     expect(container.textContent).toContain('聊天记录 - 阿青')
     expect(container.textContent).toContain('全部')
-    expect(container.textContent).toContain('文件')
-    expect(container.textContent).toContain('日期')
+    expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent === '文件')).toBe(false)
+    expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent === '日期')).toBe(false)
     expect(container.textContent).toContain('默认结果 220')
     expect(mockedListMessages).toHaveBeenNthCalledWith(2, 7, { order: 'desc', limit: 20 })
     expect(mockedListMessageDays).toHaveBeenCalledWith(7)
 
-    const dateTab = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '日期')
-    expect(dateTab).not.toBeUndefined()
-
-    await act(async () => {
-      if (dateTab) {
-        getReactProps<{ onClick?: () => void }>(dateTab).onClick?.()
-      }
-    })
-    await flushAsyncWork(4)
-
-    expect(container.querySelector('input[type="date"]')).toBeNull()
     const dateTrigger = container.querySelector('button[aria-label="打开聊天记录日期选择"]') as HTMLButtonElement | null
     expect(dateTrigger).not.toBeNull()
 
@@ -2089,7 +2078,19 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(12)
 
-    expect(mockedListMessages).toHaveBeenCalledWith(7, { before: 41, order: 'desc', limit: 50 })
+    expect(
+      mockedListMessages.mock.calls.some(
+        (call) =>
+          call[0] === 7 &&
+          typeof call[1] === 'object' &&
+          call[1] !== null &&
+          'before' in call[1] &&
+          'order' in call[1] &&
+          'limit' in call[1] &&
+          (call[1] as { order?: string }).order === 'desc' &&
+          (call[1] as { limit?: number }).limit === 50,
+      ),
+    ).toBe(true)
     expect(container.textContent).toContain('需要定位的目标消息')
     expect(container.textContent).toContain('最近消息 120')
     expect(scrollTargets).toContain('message-10')

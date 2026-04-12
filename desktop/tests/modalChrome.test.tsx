@@ -93,7 +93,7 @@ describe('desktop modal chrome', () => {
         loading={false}
         errorMessage={null}
         hasMore
-        activeTab="date"
+        activeTab="all"
         locatePendingMessageId={null}
         onClose={() => undefined}
         onTabChange={() => undefined}
@@ -108,13 +108,11 @@ describe('desktop modal chrome', () => {
     expect(html).toContain('聊天记录 - 阿青')
     expect(html).toContain('placeholder="搜索"')
     expect(html).toContain('全部')
-    expect(html).toContain('文件')
-    expect(html).toContain('日期')
+    expect(html).not.toContain('>文件<')
+    expect(html).not.toContain('>日期<')
     expect(html).not.toContain('默认按时间倒序展示')
-    expect(html).not.toContain('type="date"')
     expect(html).toContain('打开聊天记录日期选择')
     expect(html).not.toContain('data-chat-history-date="2026-04-01"')
-    expect(html).not.toContain('chat-history-modal__calendar-day--disabled')
     expect(html).toContain('定位到此位置')
   })
 })
