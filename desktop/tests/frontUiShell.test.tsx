@@ -412,6 +412,20 @@ describe('frontUI shell markup', () => {
     expect(events).toEqual(['tab:chat', 'settings', 'search:阿青', 'list-import', 'select:7'])
   })
 
+  it('keeps the sidebar focused on chat list and settings entry points only', () => {
+    const sidebarTree = FrontSidebar({
+      activeTab: 'chat',
+      onTabChange: () => undefined,
+      onOpenSettings: () => undefined,
+      onOpenImport: () => undefined,
+    })
+
+    const sidebarButtons = collectElements(sidebarTree).filter((element) => element.type === 'button')
+    const labels = sidebarButtons.map((button) => String(button.props['aria-label'] ?? ''))
+
+    expect(labels).toEqual(['返回聊天列表', '聊天', '设置'])
+  })
+
   it('clears the composer draft when the runtime conversation key changes', () => {
     activeDom = new JSDOM('<!doctype html><html><body></body></html>')
     const { window } = activeDom
