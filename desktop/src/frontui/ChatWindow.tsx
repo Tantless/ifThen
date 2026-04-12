@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react'
-import { Folder, MessageSquare, MoreHorizontal, Phone, Scissors, Smile } from 'lucide-react'
+import { Folder, History, MessageSquare, MoreHorizontal, Phone, Scissors, Smile } from 'lucide-react'
 
 import type { FrontAnalysisProgress, FrontChatMessage, FrontChatWindowState } from './types'
 
@@ -381,15 +381,6 @@ export function FrontChatWindow({
         <div className="h-[60px] px-5 flex items-center justify-between">
           <h2 className="text-[20px] font-medium text-[#111]">{state.title}</h2>
           <div className="flex items-center gap-2">
-            {showChatHistoryButton && onOpenChatHistory ? (
-              <button
-                type="button"
-                className="rounded bg-white px-3 py-1.5 text-[13px] text-[#555] shadow-sm hover:bg-[#ececec]"
-                onClick={onOpenChatHistory}
-              >
-                聊天记录
-              </button>
-            ) : null}
             {showInspectorButton && onToggleInspector ? (
               <button
                 type="button"
@@ -646,22 +637,35 @@ export function FrontChatWindow({
       </div>
 
       <div className="h-[160px] border-t border-[#e5e5e5] bg-[#f5f5f5] flex flex-col flex-shrink-0">
-        <div className="h-10 px-4 flex items-center gap-4 text-[#666]">
-          <button type="button" className="hover:text-[#333] transition-colors" aria-label="表情">
-            <Smile size={20} />
-          </button>
-          <button type="button" className="hover:text-[#333] transition-colors" aria-label="文件">
-            <Folder size={20} />
-          </button>
-          <button type="button" className="hover:text-[#333] transition-colors" aria-label="截图">
-            <Scissors size={20} />
-          </button>
-          <button type="button" className="hover:text-[#333] transition-colors" aria-label="消息">
-            <MessageSquare size={20} />
-          </button>
-          <button type="button" className="hover:text-[#333] transition-colors" aria-label="通话">
-            <Phone size={20} />
-          </button>
+        <div className="h-10 px-4 flex items-center justify-between text-[#666]">
+          <div className="flex items-center gap-4">
+            <button type="button" className="hover:text-[#333] transition-colors" aria-label="表情">
+              <Smile size={20} />
+            </button>
+            <button type="button" className="hover:text-[#333] transition-colors" aria-label="文件">
+              <Folder size={20} />
+            </button>
+            <button type="button" className="hover:text-[#333] transition-colors" aria-label="截图">
+              <Scissors size={20} />
+            </button>
+            <button type="button" className="hover:text-[#333] transition-colors" aria-label="消息">
+              <MessageSquare size={20} />
+            </button>
+            <button type="button" className="hover:text-[#333] transition-colors" aria-label="通话">
+              <Phone size={20} />
+            </button>
+          </div>
+          {showChatHistoryButton && onOpenChatHistory ? (
+            <button
+              type="button"
+              className="hover:text-[#333] transition-colors"
+              aria-label="聊天记录"
+              title="聊天记录"
+              onClick={onOpenChatHistory}
+            >
+              <History size={18} />
+            </button>
+          ) : null}
         </div>
 
         <div className="flex-1 px-4">

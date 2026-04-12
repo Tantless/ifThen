@@ -71,7 +71,7 @@ describe('desktop modal chrome', () => {
     const html = renderToStaticMarkup(
       <ChatHistoryDialog
         open
-        conversationTitle="和阿青的聊天"
+        conversationTitle="阿青"
         keyword="电影"
         dateValue="2026-04-01"
         results={[
@@ -89,8 +89,10 @@ describe('desktop modal chrome', () => {
         loading={false}
         errorMessage={null}
         hasMore
+        activeTab="all"
         locatePendingMessageId={null}
         onClose={() => undefined}
+        onTabChange={() => undefined}
         onKeywordChange={() => undefined}
         onDateChange={() => undefined}
         onLoadMore={() => undefined}
@@ -99,9 +101,13 @@ describe('desktop modal chrome', () => {
     )
 
     expect(html).toContain('desktop-modal__panel')
-    expect(html).toContain('聊天记录')
-    expect(html).toContain('搜索聊天记录')
-    expect(html).toContain('type="date"')
+    expect(html).toContain('聊天记录 - 阿青')
+    expect(html).toContain('placeholder="搜索"')
+    expect(html).toContain('全部')
+    expect(html).toContain('文件')
+    expect(html).toContain('日期')
+    expect(html).not.toContain('默认按时间倒序展示')
+    expect(html).not.toContain('type="date"')
     expect(html).toContain('定位到此位置')
   })
 })

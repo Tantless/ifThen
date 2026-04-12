@@ -1877,18 +1877,32 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(12)
 
-    const historyButton = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '聊天记录')
-    expect(historyButton).not.toBeUndefined()
+    const historyButton = container.querySelector('button[aria-label="聊天记录"]')
+    expect(historyButton).not.toBeNull()
 
     await act(async () => {
       if (historyButton) {
-        getReactProps<{ onClick?: () => void }>(historyButton).onClick?.()
+        getReactProps<{ onClick?: () => void }>(historyButton as Element).onClick?.()
       }
     })
     await flushAsyncWork(6)
 
+    expect(container.textContent).toContain('聊天记录 - 阿青')
+    expect(container.textContent).toContain('全部')
+    expect(container.textContent).toContain('文件')
+    expect(container.textContent).toContain('日期')
     expect(container.textContent).toContain('默认结果 220')
     expect(mockedListMessages).toHaveBeenNthCalledWith(2, 7, { order: 'desc', limit: 20 })
+
+    const dateTab = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '日期')
+    expect(dateTab).not.toBeUndefined()
+
+    await act(async () => {
+      if (dateTab) {
+        getReactProps<{ onClick?: () => void }>(dateTab).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
 
     const dateInput = container.querySelector('input[type="date"]') as HTMLInputElement | null
     expect(dateInput).not.toBeNull()
@@ -2015,17 +2029,17 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(12)
 
-    const historyButton = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '聊天记录')
-    expect(historyButton).not.toBeUndefined()
+    const historyButton = container.querySelector('button[aria-label="聊天记录"]')
+    expect(historyButton).not.toBeNull()
 
     await act(async () => {
       if (historyButton) {
-        getReactProps<{ onClick?: () => void }>(historyButton).onClick?.()
+        getReactProps<{ onClick?: () => void }>(historyButton as Element).onClick?.()
       }
     })
     await flushAsyncWork(6)
 
-    const searchInput = container.querySelector('input[type="search"]') as HTMLInputElement | null
+    const searchInput = container.querySelector('.chat-history-modal__search input') as HTMLInputElement | null
     expect(searchInput).not.toBeNull()
 
     await act(async () => {

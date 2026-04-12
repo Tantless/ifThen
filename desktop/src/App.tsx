@@ -1,11 +1,11 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { BootScreen } from './components/BootScreen'
 import { WelcomeModal } from './components/WelcomeModal'
 import { SettingsDrawer } from './components/SettingsDrawer'
 import { ImportDialog } from './components/ImportDialog'
 import { SelfAvatarDialog } from './components/SelfAvatarDialog'
 import { AnalysisInspector, type AnalysisInspectorTab } from './components/AnalysisInspector'
-import { ChatHistoryDialog } from './components/ChatHistoryDialog'
+import { ChatHistoryDialog, type ChatHistoryTab } from './components/ChatHistoryDialog'
 import { FrontAppShell } from './frontui/AppShell'
 import { FrontSidebar } from './frontui/Sidebar'
 import { FrontChatList } from './frontui/ChatList'
@@ -160,6 +160,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [showChatHistoryDialog, setShowChatHistoryDialog] = useState(false)
+  const [chatHistoryActiveTab, setChatHistoryActiveTab] = useState<ChatHistoryTab>('all')
   const [selfAvatarSavePending, setSelfAvatarSavePending] = useState(false)
   const [selfAvatarError, setSelfAvatarError] = useState<string | null>(null)
   const [settingsSavePending, setSettingsSavePending] = useState(false)
@@ -190,8 +191,8 @@ export default function App() {
   const selectedConversationIdRef = useRef<number | null>(null)
   const rewriteDraftRef = useRef<RewriteDraft | null>(null)
   const windowStateRequestIdRef = useRef(0)
-  const deferredChatHistoryKeyword = useDeferredValue(chatHistoryKeyword.trim())
-  const deferredChatHistoryDate = useDeferredValue(chatHistoryDate)
+  const normalizedChatHistoryKeyword = chatHistoryKeyword.trim()
+  const normalizedChatHistoryDate = chatHistoryDate
 
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversationId
@@ -512,6 +513,7 @@ export default function App() {
     activeRewriteRequestRef.current = null
     setChatViewState({ mode: 'history' })
     setShowChatHistoryDialog(false)
+    setChatHistoryActiveTab('all')
   }, [activeTab])
 
   useEffect(() => {
@@ -526,6 +528,7 @@ export default function App() {
     setInspectorSnapshot(null)
     activeRewriteRequestRef.current = null
     setShowChatHistoryDialog(false)
+    setChatHistoryActiveTab('all')
     setChatHistoryKeyword('')
     setChatHistoryDate('')
     setChatHistoryResults([])
@@ -550,6 +553,7 @@ export default function App() {
       return
     }
 
+    setChatHistoryActiveTab('all')
     setChatHistoryKeyword('')
     setChatHistoryDate('')
     setChatHistoryResults([])
@@ -791,11 +795,30 @@ export default function App() {
     state.phase,
   ])
 
-  const chatHistoryUsesFilteredOrder = deferredChatHistoryKeyword.length > 0 || deferredChatHistoryDate.length > 0
+  const effectiveChatHistoryDate = chatHistoryActiveTab === 'date' ? normalizedChatHistoryDate : ''
+  const chatHistoryUsesFilteredOrder = normalizedChatHistoryKeyword.length > 0 || effectiveChatHistoryDate.length > 0
   const chatHistoryOrder: 'asc' | 'desc' = chatHistoryUsesFilteredOrder ? 'asc' : 'desc'
 
   useEffect(() => {
     if (state.phase !== 'ready' || activeTab !== 'chat' || selectedConversationId === null || !showChatHistoryDialog) {
+      return
+    }
+
+    if (chatHistoryActiveTab === 'files') {
+      setChatHistoryLoading(false)
+      setChatHistoryLoadingMore(false)
+      setChatHistoryError(null)
+      setChatHistoryResults([])
+      setChatHistoryHasMore(false)
+      return
+    }
+
+    if (chatHistoryActiveTab === 'date' && !effectiveChatHistoryDate && normalizedChatHistoryKeyword.length === 0) {
+      setChatHistoryLoading(false)
+      setChatHistoryLoadingMore(false)
+      setChatHistoryError(null)
+      setChatHistoryResults([])
+      setChatHistoryHasMore(false)
       return
     }
 
@@ -810,8 +833,8 @@ export default function App() {
         const results = await listMessages(selectedConversationId, {
           limit: CHAT_HISTORY_INITIAL_PAGE_SIZE,
           order: chatHistoryOrder,
-          keyword: deferredChatHistoryKeyword || undefined,
-          date: deferredChatHistoryDate || undefined,
+          keyword: normalizedChatHistoryKeyword || undefined,
+          date: effectiveChatHistoryDate || undefined,
         })
 
         if (cancelled) {
@@ -842,9 +865,10 @@ export default function App() {
     }
   }, [
     activeTab,
+    chatHistoryActiveTab,
     chatHistoryOrder,
-    deferredChatHistoryDate,
-    deferredChatHistoryKeyword,
+    effectiveChatHistoryDate,
+    normalizedChatHistoryKeyword,
     selectedConversationId,
     showChatHistoryDialog,
     state.phase,
@@ -940,8 +964,8 @@ export default function App() {
       const nextResults = await listMessages(selectedConversationId, {
         limit: CHAT_HISTORY_LOAD_MORE_PAGE_SIZE,
         order: chatHistoryOrder,
-        keyword: deferredChatHistoryKeyword || undefined,
-        date: deferredChatHistoryDate || undefined,
+        keyword: normalizedChatHistoryKeyword || undefined,
+        date: effectiveChatHistoryDate || undefined,
         ...(chatHistoryOrder === 'asc' ? { after: cursorSequence } : { before: cursorSequence }),
       })
 
@@ -1862,7 +1886,10 @@ export default function App() {
               activeTab === 'chat' && selectedConversationId !== null ? `conversation-${selectedConversationId}` : activeTab
             }
             showChatHistoryButton={activeTab === 'chat' && selectedMessageModels.mode === 'conversation'}
-            onOpenChatHistory={() => setShowChatHistoryDialog(true)}
+            onOpenChatHistory={() => {
+              setChatHistoryActiveTab('all')
+              setShowChatHistoryDialog(true)
+            }}
             showInspectorButton={activeTab === 'chat' && analysisCompleted}
             onToggleInspector={() => setInspectorOpen((current) => !current)}
             showStartAnalysisButton={activeTab === 'chat' && selectedConversation?.status === 'imported'}
@@ -1947,7 +1974,11 @@ export default function App() {
       />
       <ChatHistoryDialog
         open={showChatHistoryDialog && activeTab === 'chat' && selectedConversation !== null}
-        conversationTitle={selectedMessageModels.mode === 'conversation' ? selectedMessageModels.title : '聊天记录'}
+        conversationTitle={
+          selectedConversation?.other_display_name?.trim() ||
+          (selectedMessageModels.mode === 'conversation' ? selectedMessageModels.title : '聊天记录')
+        }
+        activeTab={chatHistoryActiveTab}
         keyword={chatHistoryKeyword}
         dateValue={chatHistoryDate}
         results={chatHistoryResults}
@@ -1956,7 +1987,10 @@ export default function App() {
         errorMessage={chatHistoryError}
         hasMore={chatHistoryHasMore}
         locatePendingMessageId={chatHistoryLocatePendingId}
+        selfAvatarUrl={selfAvatarUrl}
+        otherAvatarUrl={selectedConversation ? resolveConversationAvatarUrl(selectedConversation.id) : FRONTUI_PLACEHOLDER_AVATAR}
         onClose={() => setShowChatHistoryDialog(false)}
+        onTabChange={setChatHistoryActiveTab}
         onKeywordChange={setChatHistoryKeyword}
         onDateChange={setChatHistoryDate}
         onLoadMore={handleLoadMoreChatHistory}
