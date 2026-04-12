@@ -499,14 +499,14 @@ export function FrontChatWindow({
                       : 'rounded-[8px] bg-white text-black'
             const bubbleArrowClass =
               bubbleTone === 'rewrite-target'
-                ? 'right-[-10px] border-l-[#eef4ff]'
+                ? 'right-[-12px] border-l-[#eef4ff]'
                 : bubbleTone === 'simulation-self'
-                  ? 'right-[-10px] border-l-[#d9ecff]'
+                  ? 'right-[-12px] border-l-[#d9ecff]'
                   : bubbleTone === 'simulation-other'
-                    ? 'left-[-10px] border-r-[#f8dce6]'
+                    ? 'left-[-12px] border-r-[#f8dce6]'
                     : isSelf
-                      ? 'right-[-10px] border-l-[#95ec69]'
-                      : 'left-[-10px] border-r-white'
+                      ? 'right-[-12px] border-l-[#95ec69]'
+                      : 'left-[-12px] border-r-white'
 
             return (
               <div
@@ -574,7 +574,7 @@ export function FrontChatWindow({
                         style={{ wordBreak: 'break-word' }}
                       >
                         <div
-                          className={`absolute top-3 h-0 w-0 border-[6px] border-transparent ${bubbleArrowClass}`}
+                          className={`absolute top-3 h-0 w-0 border-[8px] border-transparent ${bubbleArrowClass}`}
                         />
                         {message.text}
                       </div>

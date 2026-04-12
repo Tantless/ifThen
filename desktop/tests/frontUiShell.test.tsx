@@ -307,6 +307,8 @@ describe('frontUI shell markup', () => {
     expect(html).toContain('rounded-[8px]')
     expect(html).not.toContain('rounded-tr-none')
     expect(html).not.toContain('rounded-tl-none')
+    expect(html).toContain('border-[8px]')
+    expect(html).toContain('right-[-12px]')
     expect(html).toContain('发送(S)')
     expect(html).toContain('摘要生成 42%')
     expect(html).toContain('front-progress')
