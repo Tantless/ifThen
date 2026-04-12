@@ -170,6 +170,7 @@ describe('buildFrontChatMessage', () => {
       id: 'message-21',
       messageId: 21,
       align: 'right',
+      bubbleTone: 'default',
       speakerName: '我',
       avatarUrl: 'data:image/svg+xml;base64,self-avatar',
       text: '那我们先这样吧',
@@ -221,6 +222,7 @@ describe('buildFrontChatWindowState', () => {
           id: 'message-101',
           messageId: 101,
           align: 'left',
+          bubbleTone: 'default',
           speakerName: '老王',
           avatarUrl: 'data:image/svg+xml;base64,other-avatar',
           text: '收到，稍后回你',
@@ -281,6 +283,7 @@ describe('buildFrontChatMessagesFromSimulation', () => {
         timestampRaw: '2026-04-08T10:02:00',
         canRewrite: false,
         source: 'mock',
+        bubbleTone: 'simulation-other',
       },
       {
         id: 'simulation-88-turn-2-1',
@@ -293,6 +296,7 @@ describe('buildFrontChatMessagesFromSimulation', () => {
         timestampRaw: '2026-04-08T10:02:00',
         canRewrite: false,
         source: 'mock',
+        bubbleTone: 'simulation-self',
       },
     ])
   })

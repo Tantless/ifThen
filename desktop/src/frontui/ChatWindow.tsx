@@ -480,10 +480,27 @@ export function FrontChatWindow({
           {renderedMessages.map((message, index) => {
             const showTime = index === 0 || message.timestampLabel !== renderedMessages[index - 1]?.timestampLabel
             const isSelf = message.align === 'right'
+            const bubbleTone = message.bubbleTone ?? 'default'
             const isRewriteTarget =
               rewriteState !== null &&
               rewriteState.targetMessageId === message.messageId &&
               (rewriteState.state === 'editing' || rewriteState.state === 'pending' || rewriteState.state === 'completed')
+            const bubbleClass =
+              bubbleTone === 'simulation-self'
+                ? 'rounded-lg rounded-tr-none bg-[#d9ecff] text-black'
+                : bubbleTone === 'simulation-other'
+                  ? 'rounded-lg rounded-tl-none bg-[#f8dce6] text-black'
+                  : isSelf
+                    ? 'rounded-lg rounded-tr-none bg-[#95ec69] text-black'
+                    : 'rounded-lg rounded-tl-none bg-white text-black'
+            const bubbleArrowClass =
+              bubbleTone === 'simulation-self'
+                ? 'right-[-10px] border-l-[#d9ecff]'
+                : bubbleTone === 'simulation-other'
+                  ? 'left-[-10px] border-r-[#f8dce6]'
+                  : isSelf
+                    ? 'right-[-10px] border-l-[#95ec69]'
+                    : 'left-[-10px] border-r-white'
 
             return (
               <div
@@ -546,15 +563,12 @@ export function FrontChatWindow({
                       </div>
                     ) : (
                       <div
-                        className={`relative break-words px-3 py-2 text-[14px] leading-relaxed shadow-sm ${
-                          isSelf ? 'rounded-lg rounded-tr-none bg-[#95ec69] text-black' : 'rounded-lg rounded-tl-none bg-white text-black'
-                        }`}
+                        data-chat-bubble-tone={bubbleTone}
+                        className={`relative break-words px-3 py-2 text-[14px] leading-relaxed shadow-sm ${bubbleClass}`}
                         style={{ wordBreak: 'break-word' }}
                       >
                         <div
-                          className={`absolute top-3 h-0 w-0 border-[6px] border-transparent ${
-                            isSelf ? 'right-[-10px] border-l-[#95ec69]' : 'left-[-10px] border-r-white'
-                          }`}
+                          className={`absolute top-3 h-0 w-0 border-[6px] border-transparent ${bubbleArrowClass}`}
                         />
                         {message.text}
                       </div>

@@ -433,11 +433,14 @@ describe('frontUI shell markup', () => {
     Object.assign(globalThis, {
       window,
       document: window.document,
-      navigator: window.navigator,
       HTMLElement: window.HTMLElement,
       Event: window.Event,
       MouseEvent: window.MouseEvent,
       IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
     })
     Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
       value: () => undefined,
@@ -501,11 +504,14 @@ describe('frontUI shell markup', () => {
     Object.assign(globalThis, {
       window,
       document: window.document,
-      navigator: window.navigator,
       HTMLElement: window.HTMLElement,
       Event: window.Event,
       MouseEvent: window.MouseEvent,
       IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
     })
     Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
       value: () => undefined,
@@ -590,11 +596,14 @@ describe('frontUI shell markup', () => {
     Object.assign(globalThis, {
       window,
       document: window.document,
-      navigator: window.navigator,
       HTMLElement: window.HTMLElement,
       Event: window.Event,
       MouseEvent: window.MouseEvent,
       IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
     })
     Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
       value: () => undefined,
@@ -659,6 +668,20 @@ describe('frontUI shell markup', () => {
                 timestampRaw: '2026-04-08T10:03:00',
                 canRewrite: false,
                 source: 'mock',
+                bubbleTone: 'simulation-other',
+              },
+              {
+                id: 'simulation-2',
+                messageId: null,
+                align: 'right',
+                speakerName: '我',
+                avatarUrl: 'https://example.test/self.png',
+                text: '等我缓一下，晚上再回你。',
+                timestampLabel: '10:04',
+                timestampRaw: '2026-04-08T10:04:00',
+                canRewrite: false,
+                source: 'mock',
+                bubbleTone: 'simulation-self',
               },
             ],
           }}
@@ -672,6 +695,18 @@ describe('frontUI shell markup', () => {
     expect(container.textContent).toContain('正在查看推演结果')
     expect(container.textContent).toContain('原始历史已保留，可随时切回')
     expect(container.textContent).toContain('好，那你先休息。')
+    expect(container.textContent).toContain('等我缓一下，晚上再回你。')
+
+    const otherSimulationBubble = container.querySelector('[data-chat-message-id="simulation-1"] [data-chat-bubble-tone]')
+    const selfSimulationBubble = container.querySelector('[data-chat-message-id="simulation-2"] [data-chat-bubble-tone]')
+    const originalBubble = container.querySelector('[data-chat-message-id="message-13"] [data-chat-bubble-tone]')
+
+    expect(otherSimulationBubble?.getAttribute('data-chat-bubble-tone')).toBe('simulation-other')
+    expect(otherSimulationBubble?.className).toContain('bg-[#f8dce6]')
+    expect(selfSimulationBubble?.getAttribute('data-chat-bubble-tone')).toBe('simulation-self')
+    expect(selfSimulationBubble?.className).toContain('bg-[#d9ecff]')
+    expect(originalBubble?.getAttribute('data-chat-bubble-tone')).toBe('default')
+    expect(originalBubble?.className).toContain('bg-white')
 
     const buttons = Array.from(container.querySelectorAll('button'))
     const resetButton = buttons.find((element) => element.textContent?.includes('返回原始历史') ?? false)
@@ -699,11 +734,14 @@ describe('frontUI shell markup', () => {
     Object.assign(globalThis, {
       window,
       document: window.document,
-      navigator: window.navigator,
       HTMLElement: window.HTMLElement,
       Event: window.Event,
       MouseEvent: window.MouseEvent,
       IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
     })
     Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
       value: () => undefined,
@@ -779,11 +817,14 @@ describe('frontUI shell markup', () => {
     Object.assign(globalThis, {
       window,
       document: window.document,
-      navigator: window.navigator,
       HTMLElement: window.HTMLElement,
       Event: window.Event,
       MouseEvent: window.MouseEvent,
       IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
     })
     Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
       value: () => undefined,
@@ -956,11 +997,14 @@ describe('frontUI shell markup', () => {
     Object.assign(globalThis, {
       window,
       document: window.document,
-      navigator: window.navigator,
       HTMLElement: window.HTMLElement,
       Event: window.Event,
       MouseEvent: window.MouseEvent,
       IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
     })
     Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
       value: () => undefined,

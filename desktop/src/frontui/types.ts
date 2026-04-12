@@ -23,6 +23,7 @@ export type FrontChatMessage = {
   id: string
   messageId: number | null
   align: 'left' | 'right'
+  bubbleTone?: 'default' | 'simulation-self' | 'simulation-other'
   speakerName: string
   avatarUrl: string
   text: string
