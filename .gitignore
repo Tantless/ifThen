@@ -26,6 +26,7 @@ desktop/dist-electron/
 
 # Local/private config
 local_llm_config.py
+/CLAUDE.md
 
 # Local temp / reference directories
 _tmp_qce_review/
