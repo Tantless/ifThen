@@ -77,7 +77,7 @@ def test_list_self_text_supports_keywords_and_limit(monkeypatch, capsys):
     ]
 
 
-def test_simulate_posts_payload_and_prints_result(monkeypatch, capsys):
+def test_simulate_posts_payload_and_prints_job_metadata(monkeypatch, capsys):
     recorded = {}
 
     def fake_post_json(*, base_url, path, payload):
@@ -85,12 +85,16 @@ def test_simulate_posts_payload_and_prints_result(monkeypatch, capsys):
         recorded["path"] = path
         recorded["payload"] = payload
         return {
-            "first_reply_text": "好呀，我们慢慢聊。",
-            "impact_summary": "新说法更柔和，降低了推进压力。",
-            "simulated_turns": [
-                {"turn_index": 1, "speaker_role": "other", "message_text": "好呀，我们慢慢聊。"},
-                {"turn_index": 2, "speaker_role": "self", "message_text": "好，那我慢慢说。"},
-            ],
+            "id": 42,
+            "conversation_id": 5,
+            "target_message_id": 13,
+            "mode": "short_thread",
+            "turn_count": 4,
+            "status": "queued",
+            "current_stage": "queued",
+            "progress_percent": 0,
+            "status_message": "等待 worker 处理",
+            "result_simulation_id": None,
         }
 
     monkeypatch.setattr("if_then_mvp.sim_cli.post_json", fake_post_json)
@@ -124,13 +128,10 @@ def test_simulate_posts_payload_and_prints_result(monkeypatch, capsys):
         },
     }
     assert capsys.readouterr().out.splitlines() == [
-        "first_reply_text:",
-        "好呀，我们慢慢聊。",
-        "",
-        "impact_summary:",
-        "新说法更柔和，降低了推进压力。",
-        "",
-        "simulated_turns:",
-        "[1] other: 好呀，我们慢慢聊。",
-        "[2] self: 好，那我慢慢说。",
+        "id=42 conversation_id=5",
+        "target_message_id=13 mode=short_thread",
+        "turn_count=4 status=queued",
+        "current_stage=queued progress_percent=0",
+        "status_message=等待 worker 处理",
+        "result_simulation_id=None",
     ]

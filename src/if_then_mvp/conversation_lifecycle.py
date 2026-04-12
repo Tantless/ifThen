@@ -12,6 +12,7 @@ from if_then_mvp.models import (
     Segment,
     SegmentSummary,
     Simulation,
+    SimulationJob,
     SimulationTurn,
     Topic,
     TopicLink,
@@ -86,6 +87,10 @@ def delete_conversation_tree(session, *, conversation_id: int) -> list[Path]:
         .where(Simulation.conversation_id == conversation_id)
     ).scalars():
         session.delete(turn)
+    for simulation_job in session.execute(
+        select(SimulationJob).where(SimulationJob.conversation_id == conversation_id)
+    ).scalars():
+        session.delete(simulation_job)
     for simulation in session.execute(
         select(Simulation).where(Simulation.conversation_id == conversation_id)
     ).scalars():

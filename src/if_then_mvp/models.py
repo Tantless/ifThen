@@ -198,6 +198,26 @@ class SimulationTurn(TimestampMixin, Base):
     generation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class SimulationJob(TimestampMixin, Base):
+    __tablename__ = "simulation_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), index=True, nullable=False)
+    target_message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), index=True, nullable=False)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    turn_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    replacement_content: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    current_stage: Mapped[str] = mapped_column(String(64), nullable=False)
+    progress_percent: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    result_simulation_id: Mapped[int | None] = mapped_column(ForeignKey("simulations.id"), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class AppSetting(Base):
     __tablename__ = "app_settings"
 

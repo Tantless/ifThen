@@ -11,10 +11,15 @@ from if_then_mvp.models import (
     RelationshipSnapshot,
     Segment,
     SegmentSummary,
+    Simulation,
+    SimulationJob,
+    SimulationTurn,
     Topic,
     TopicLink,
 )
 from if_then_mvp.worker import ConsoleProgressReporter, ProgressSnapshot, _claim_next_job, run_next_job
+from if_then_mvp.worker import run_next_simulation_job
+from if_then_mvp.simulation import BranchAssessmentPayload, FirstReplyPayload, NextTurnPayload, TurnStatePayload
 
 
 class FakeLLM:
@@ -331,6 +336,31 @@ class MergeReviewLLM:
 
 class SpyLLM(FakeLLM):
     pass
+
+
+class FakeSimulationLLM:
+    def __init__(self, responses):
+        self._responses = responses
+
+    def chat_json(self, *, system_prompt, user_prompt, response_model):
+        response = self._responses.pop(0)
+        assert isinstance(response, response_model)
+        return response
+
+
+class FailingSimulationLLM:
+    def __init__(self, responses, *, fail_on_call_index: int):
+        self._responses = responses
+        self._call_index = 0
+        self._fail_on_call_index = fail_on_call_index
+
+    def chat_json(self, *, system_prompt, user_prompt, response_model):
+        if self._call_index == self._fail_on_call_index:
+            raise RuntimeError("simulated first_reply failure")
+        response = self._responses[self._call_index]
+        self._call_index += 1
+        assert isinstance(response, response_model)
+        return response
 
 
 def _seed_job(*, fixture_path: Path, job_type: str = "full_analysis", conversation_status: str = "queued"):
@@ -728,3 +758,294 @@ def test_run_next_job_emits_timeout_heartbeat_during_slow_summaries(tmp_path, mo
     assert processed is True
     summarizing_lines = [line for line in lines if "stage=summarizing" in line]
     assert any("summarizing 1/3 summaries" in line for line in summarizing_lines)
+
+
+def test_run_next_simulation_job_persists_final_result_and_links_job(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=2,
+        )
+        session.add(batch)
+        session.flush()
+
+        session.add_all(
+            [
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=1,
+                    speaker_name="梣ゥ",
+                    speaker_role="other",
+                    timestamp="2025-03-02T20:18:03",
+                    content_text="在吗",
+                    message_type="text",
+                ),
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=2,
+                    speaker_name="Tantless",
+                    speaker_role="self",
+                    timestamp="2025-03-02T20:18:04",
+                    content_text="在的",
+                    message_type="text",
+                ),
+            ]
+        )
+        session.flush()
+
+        session.add(
+            Segment(
+                conversation_id=conversation.id,
+                start_message_id=1,
+                end_message_id=2,
+                start_time="2025-03-02T20:18:03",
+                end_time="2025-03-02T20:18:04",
+                message_count=2,
+                self_message_count=1,
+                other_message_count=1,
+                segment_kind="normal",
+                source_message_ids=[1, 2],
+            )
+        )
+        session.add(
+            RelationshipSnapshot(
+                conversation_id=conversation.id,
+                as_of_message_id=1,
+                as_of_time="2025-03-02T20:18:03",
+                relationship_temperature="warm",
+                tension_level="low",
+                openness_level="medium",
+                initiative_balance="balanced",
+                defensiveness_level="low",
+                unresolved_conflict_flags=[],
+                relationship_phase="warming",
+                snapshot_summary="轻松的开场互动",
+            )
+        )
+        session.add(
+            SimulationJob(
+                conversation_id=conversation.id,
+                target_message_id=2,
+                mode="short_thread",
+                turn_count=3,
+                replacement_content="如果你不忙，我们慢慢说也可以",
+                status="queued",
+                current_stage="queued",
+                progress_percent=0,
+                payload_json={
+                    "progress": {
+                        "current_stage_total_units": 4,
+                        "current_stage_completed_units": 0,
+                        "overall_total_units": 4,
+                        "overall_completed_units": 0,
+                        "status_message": "queued 0/4 steps",
+                    }
+                },
+            )
+        )
+
+    processed = run_next_simulation_job(
+        llm_client=FakeSimulationLLM(
+            [
+                BranchAssessmentPayload(
+                    branch_direction="closer",
+                    state_shift_summary="新说法缓和了互动压力。",
+                    other_immediate_feeling="更放松",
+                    reply_strategy="light_follow_up",
+                    risk_flags=[],
+                    confidence=0.8,
+                ),
+                FirstReplyPayload(
+                    first_reply_text="好，那晚点聊也没事。",
+                    strategy_used="light_follow_up",
+                    first_reply_style_notes="先低压力接住。",
+                    state_after_turn=TurnStatePayload(
+                        relationship_temperature="warm",
+                        tension_level="low",
+                        openness_level="medium",
+                        initiative_balance="balanced",
+                        defensiveness_level="low",
+                        relationship_phase="warming",
+                        active_sensitive_topics=[],
+                        state_rationale="轻微缓和。",
+                    ),
+                ),
+                NextTurnPayload(
+                    message_text="好，那我晚点再说。",
+                    strategy_used="self_follow_up",
+                    state_after_turn=TurnStatePayload(
+                        relationship_temperature="warm",
+                        tension_level="low",
+                        openness_level="medium",
+                        initiative_balance="balanced",
+                        defensiveness_level="low",
+                        relationship_phase="warming",
+                        active_sensitive_topics=[],
+                        state_rationale="继续低压力推进。",
+                    ),
+                    generation_notes="我方顺着继续。",
+                    should_stop=False,
+                    stopping_reason=None,
+                ),
+            ]
+        )
+    )
+
+    assert processed is True
+
+    with session_scope() as session:
+        job = session.query(SimulationJob).one()
+        assert job.status == "completed"
+        assert job.result_simulation_id is not None
+        assert session.query(Simulation).count() == 1
+        assert session.query(SimulationTurn).count() == 2
+        assert [turn.turn_index for turn in session.query(SimulationTurn).order_by(SimulationTurn.turn_index.asc()).all()] == [1, 2]
+
+
+def test_run_next_simulation_job_marks_failed_and_rolls_back_partial_rows(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=2,
+        )
+        session.add(batch)
+        session.flush()
+
+        session.add_all(
+            [
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=1,
+                    speaker_name="梣ゥ",
+                    speaker_role="other",
+                    timestamp="2025-03-02T20:18:03",
+                    content_text="在吗",
+                    message_type="text",
+                ),
+                Message(
+                    conversation_id=conversation.id,
+                    import_id=batch.id,
+                    sequence_no=2,
+                    speaker_name="Tantless",
+                    speaker_role="self",
+                    timestamp="2025-03-02T20:18:04",
+                    content_text="在的",
+                    message_type="text",
+                ),
+            ]
+        )
+        session.flush()
+
+        session.add(
+            Segment(
+                conversation_id=conversation.id,
+                start_message_id=1,
+                end_message_id=2,
+                start_time="2025-03-02T20:18:03",
+                end_time="2025-03-02T20:18:04",
+                message_count=2,
+                self_message_count=1,
+                other_message_count=1,
+                segment_kind="normal",
+                source_message_ids=[1, 2],
+            )
+        )
+        session.add(
+            RelationshipSnapshot(
+                conversation_id=conversation.id,
+                as_of_message_id=1,
+                as_of_time="2025-03-02T20:18:03",
+                relationship_temperature="warm",
+                tension_level="low",
+                openness_level="medium",
+                initiative_balance="balanced",
+                defensiveness_level="low",
+                unresolved_conflict_flags=[],
+                relationship_phase="warming",
+                snapshot_summary="轻松的开场互动",
+            )
+        )
+        session.add(
+            SimulationJob(
+                conversation_id=conversation.id,
+                target_message_id=2,
+                mode="single_reply",
+                turn_count=1,
+                replacement_content="如果你不忙，我们慢慢说也可以",
+                status="queued",
+                current_stage="queued",
+                progress_percent=0,
+                payload_json={
+                    "progress": {
+                        "current_stage_total_units": 2,
+                        "current_stage_completed_units": 0,
+                        "overall_total_units": 2,
+                        "overall_completed_units": 0,
+                        "status_message": "queued 0/2 steps",
+                    }
+                },
+            )
+        )
+
+    processed = run_next_simulation_job(
+        llm_client=FailingSimulationLLM(
+            [
+                BranchAssessmentPayload(
+                    branch_direction="closer",
+                    state_shift_summary="新说法缓和了互动压力。",
+                    other_immediate_feeling="更放松",
+                    reply_strategy="light_follow_up",
+                    risk_flags=[],
+                    confidence=0.8,
+                ),
+            ],
+            fail_on_call_index=1,
+        )
+    )
+
+    assert processed is True
+
+    with session_scope() as session:
+        job = session.query(SimulationJob).one()
+        assert job.status == "failed"
+        assert job.result_simulation_id is None
+        assert job.error_message == "simulated first_reply failure"
+        assert session.query(Simulation).count() == 0
+        assert session.query(SimulationTurn).count() == 0

@@ -49,7 +49,7 @@ import {
 } from './lib/services/conversationService'
 import { listConversationJobs, readJob } from './lib/services/jobService'
 import { readSettings, writeSetting } from './lib/services/settingsService'
-import { createSimulation } from './lib/services/simulationService'
+import { createSimulation, listConversationSimulationJobs, readSimulation } from './lib/services/simulationService'
 import {
   isRewriteRequestCurrent,
   resolveInspectorSnapshotAt,
@@ -66,6 +66,7 @@ import type {
   PersonaProfileRead,
   SettingRead,
   SnapshotRead,
+  SimulationJobRead,
   SimulationRead,
   TopicRead,
 } from './types/api'
@@ -76,6 +77,7 @@ type RewriteDraft = {
   originalMessage: string
   targetMessageTimestamp: string
   replacementContent: string
+  simulationJobId: number | null
   status: 'editing' | 'pending' | 'completed'
   simulation: SimulationRead | null
   errorMessage: string | null
@@ -83,6 +85,10 @@ type RewriteDraft = {
 }
 
 function isPollingJob(job: JobRead | null | undefined): job is JobRead {
+  return job?.status === 'running' || job?.status === 'queued'
+}
+
+function isPollingSimulationJob(job: SimulationJobRead | null | undefined): boolean {
   return job?.status === 'running' || job?.status === 'queued'
 }
 
@@ -842,6 +848,134 @@ export default function App() {
   }, [selectedConversationId, selectedJob?.id, selectedJob?.status, state.phase])
 
   useEffect(() => {
+    if (
+      state.phase !== 'ready' ||
+      selectedConversationId === null ||
+      !rewriteDraft ||
+      rewriteDraft.status !== 'pending' ||
+      rewriteDraft.conversationId !== selectedConversationId ||
+      rewriteDraft.simulationJobId === null
+    ) {
+      return
+    }
+
+    let cancelled = false
+    let timeoutId: number | null = null
+    const conversationId = selectedConversationId
+    const simulationJobId = rewriteDraft.simulationJobId
+
+    const scheduleRetry = () => {
+      timeoutId = window.setTimeout(() => {
+        void pollSimulationJob()
+      }, 1500)
+    }
+
+    const pollSimulationJob = async () => {
+      try {
+        const jobs = await listConversationSimulationJobs(conversationId, 10)
+        if (cancelled) {
+          return
+        }
+
+        const currentDraft = rewriteDraftRef.current
+        if (
+          !currentDraft ||
+          currentDraft.status !== 'pending' ||
+          currentDraft.conversationId !== conversationId ||
+          currentDraft.simulationJobId !== simulationJobId
+        ) {
+          return
+        }
+
+        const simulationJob = jobs.find((job) => job.id === simulationJobId)
+        if (!simulationJob) {
+          scheduleRetry()
+          return
+        }
+
+        setRewriteDraft((current) =>
+          current && current.simulationJobId === simulationJob.id
+            ? simulationJob.status_message && simulationJob.status_message !== current.pendingStageLabel
+              ? {
+                  ...current,
+                  pendingStageLabel: simulationJob.status_message,
+                }
+              : current
+            : current,
+        )
+
+        if (isPollingSimulationJob(simulationJob)) {
+          scheduleRetry()
+          return
+        }
+
+        if (simulationJob.status === 'completed' && simulationJob.result_simulation_id !== null) {
+          const simulation = await readSimulation(simulationJob.result_simulation_id)
+          if (cancelled) {
+            return
+          }
+
+          const nextDraft = rewriteDraftRef.current
+          if (
+            !nextDraft ||
+            nextDraft.status !== 'pending' ||
+            nextDraft.conversationId !== conversationId ||
+            nextDraft.simulationJobId !== simulationJob.id
+          ) {
+            return
+          }
+
+          setChatViewState({ mode: 'history' })
+          setRewriteDraft((current) =>
+            current && current.simulationJobId === simulationJob.id
+              ? {
+                  ...current,
+                  simulationJobId: null,
+                  status: 'completed',
+                  simulation,
+                  errorMessage: null,
+                  pendingStageLabel: null,
+                }
+              : current,
+          )
+          return
+        }
+
+        if (simulationJob.status === 'failed') {
+          setRewriteDraft((current) =>
+            current && current.simulationJobId === simulationJob.id
+              ? {
+                  ...current,
+                  simulationJobId: null,
+                  status: 'editing',
+                  simulation: null,
+                  errorMessage: simulationJob.error_message ?? '推演失败',
+                  pendingStageLabel: null,
+                }
+              : current,
+          )
+          return
+        }
+
+        scheduleRetry()
+      } catch {
+        if (!cancelled) {
+          scheduleRetry()
+        }
+      }
+    }
+
+    void pollSimulationJob()
+
+    return () => {
+      cancelled = true
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [rewriteDraft?.conversationId, rewriteDraft?.simulationJobId, rewriteDraft?.status, selectedConversationId, state.phase])
+
+  useEffect(() => {
     if (!inspectorOpen || !analysisCompleted || state.phase !== 'ready' || selectedConversationId === null) {
       return
     }
@@ -1072,6 +1206,7 @@ export default function App() {
       originalMessage: targetMessage.content_text,
       targetMessageTimestamp: targetMessage.timestamp,
       replacementContent: targetMessage.content_text,
+      simulationJobId: null,
       status: 'editing',
       simulation: null,
       errorMessage: null,
@@ -1107,6 +1242,7 @@ export default function App() {
         ? {
             ...current,
             status: 'editing',
+            simulationJobId: null,
             simulation: null,
             errorMessage: null,
             pendingStageLabel: null,
@@ -1146,6 +1282,7 @@ export default function App() {
         ? {
             ...current,
             replacementContent: trimmedReplacementContent,
+            simulationJobId: null,
             status: 'pending',
             simulation: null,
             errorMessage: null,
@@ -1158,7 +1295,7 @@ export default function App() {
     )
 
     try {
-      const simulation = await createSimulation({
+      const simulationJob = await createSimulation({
         conversation_id: selectedConversationId,
         target_message_id: rewriteDraft.targetMessageId,
         replacement_content: trimmedReplacementContent,
@@ -1182,15 +1319,16 @@ export default function App() {
         return
       }
 
-      setChatViewState({ mode: 'history' })
       setRewriteDraft((current) =>
         current
           ? {
               ...current,
               replacementContent: trimmedReplacementContent,
-              status: 'completed',
-              simulation,
+              simulationJobId: simulationJob.id,
+              status: 'pending',
+              simulation: null,
               errorMessage: null,
+              pendingStageLabel: simulationJob.status_message ?? current.pendingStageLabel,
             }
           : current,
       )
@@ -1217,6 +1355,7 @@ export default function App() {
           ? {
               ...current,
               replacementContent: trimmedReplacementContent,
+              simulationJobId: null,
               status: 'editing',
               simulation: null,
               errorMessage: error instanceof Error ? error.message : '推演失败',

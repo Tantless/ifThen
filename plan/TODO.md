@@ -75,3 +75,9 @@
 - 已实现联系人 Tab，从会话数据中提取联系人列表，支持点击跳转到对应会话。
 - 文件 Tab 使用 mock 数据占位，等待后端 API 支持。
 - 预计工作量：低
+
+### 将 /simulations 切换为队列任务（已完成）
+- 完成时间：2026年4月12日
+- `POST /simulations` 现在返回 queued 的 `SimulationJob`，worker 会异步产出最终 `Simulation` 结果。
+- 已补充 `simulation-jobs` 列表、`GET /simulations/{id}` 结果读取、CLI 输出和桌面端 pending/完成态回归测试。
+- 预计工作量：低

@@ -16,7 +16,7 @@ import {
   startAnalysis,
 } from '../src/lib/services/conversationService'
 import { listConversationJobs, readJob } from '../src/lib/services/jobService'
-import { createSimulation } from '../src/lib/services/simulationService'
+import { createSimulation, listConversationSimulationJobs, readSimulation } from '../src/lib/services/simulationService'
 import { readSettings, writeSetting } from '../src/lib/services/settingsService'
 import type { ConversationRead, JobRead, MessageRead, SettingRead } from '../src/types/api'
 
@@ -42,6 +42,8 @@ vi.mock('../src/lib/services/settingsService', () => ({
 
 vi.mock('../src/lib/services/simulationService', () => ({
   createSimulation: vi.fn(),
+  listConversationSimulationJobs: vi.fn(),
+  readSimulation: vi.fn(),
 }))
 
 const mockedReadSettings = vi.mocked(readSettings)
@@ -56,6 +58,8 @@ const mockedStartAnalysis = vi.mocked(startAnalysis)
 const mockedListConversationJobs = vi.mocked(listConversationJobs)
 const mockedReadJob = vi.mocked(readJob)
 const mockedCreateSimulation = vi.mocked(createSimulation)
+const mockedListConversationSimulationJobs = vi.mocked(listConversationSimulationJobs)
+const mockedReadSimulation = vi.mocked(readSimulation)
 
 const mountedRoots: Array<{ root: ReturnType<typeof createRoot>; container: HTMLDivElement }> = []
 let activeDom: JSDOM | null = null
@@ -215,7 +219,27 @@ beforeEach(() => {
     overall_completed_units: 1,
     status_message: null,
   })
+  mockedListConversationSimulationJobs.mockResolvedValue([])
   mockedCreateSimulation.mockResolvedValue({
+    id: 88,
+    conversation_id: 7,
+    target_message_id: 12,
+    mode: 'single_reply',
+    turn_count: 1,
+    replacement_content: '那我们先这样吧',
+    status: 'queued',
+    current_stage: 'queued',
+    progress_percent: 0,
+    current_stage_percent: 0,
+    current_stage_total_units: 0,
+    current_stage_completed_units: 0,
+    overall_total_units: 0,
+    overall_completed_units: 0,
+    status_message: '等待 worker 处理',
+    result_simulation_id: null,
+    error_message: null,
+  })
+  mockedReadSimulation.mockResolvedValue({
     id: 88,
     mode: 'single_reply',
     replacement_content: '那我们先这样吧',
@@ -604,8 +628,67 @@ describe('App frontUI integration', () => {
     mockedListMessages.mockResolvedValue([...messages].reverse())
     mockedListConversationJobs.mockResolvedValue([completedJob])
     mockedReadJob.mockResolvedValue(completedJob)
-    const deferredSimulation = createDeferred<Awaited<ReturnType<typeof createSimulation>>>()
-    mockedCreateSimulation.mockReturnValueOnce(deferredSimulation.promise)
+    const queuedSimulationJob = {
+      id: 88,
+      conversation_id: 7,
+      target_message_id: 12,
+      mode: 'short_thread',
+      turn_count: 3,
+      replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
+      status: 'queued',
+      current_stage: 'queued',
+      progress_percent: 0,
+      current_stage_percent: 0,
+      current_stage_total_units: 0,
+      current_stage_completed_units: 0,
+      overall_total_units: 0,
+      overall_completed_units: 0,
+      status_message: '等待 worker 处理',
+      result_simulation_id: null,
+      error_message: null,
+    } as Awaited<ReturnType<typeof createSimulation>>
+    const completedSimulationJob = {
+      ...queuedSimulationJob,
+      status: 'completed',
+      current_stage: 'completed',
+      progress_percent: 100,
+      current_stage_percent: 100,
+      current_stage_total_units: 1,
+      current_stage_completed_units: 1,
+      overall_total_units: 1,
+      overall_completed_units: 1,
+      status_message: '推演完成',
+      result_simulation_id: 188,
+    }
+    const finalSimulation = {
+      id: 188,
+      mode: 'short_thread',
+      replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
+      first_reply_text: '好，那你先休息。',
+      impact_summary: '冲突被降温。',
+      simulated_turns: [
+        {
+          turn_index: 1,
+          speaker_role: 'other',
+          message_text: '好，那你先休息。',
+          strategy_used: 'de-escalate',
+          state_after_turn: {},
+          generation_notes: null,
+        },
+        {
+          turn_index: 2,
+          speaker_role: 'self',
+          message_text: '谢谢理解，我们晚点再聊。',
+          strategy_used: 'repair',
+          state_after_turn: {},
+          generation_notes: null,
+        },
+      ],
+    }
+    const deferredSimulationJobs = createDeferred<Awaited<ReturnType<typeof listConversationSimulationJobs>>>()
+    mockedCreateSimulation.mockResolvedValueOnce(queuedSimulationJob)
+    mockedListConversationSimulationJobs.mockReturnValueOnce(deferredSimulationJobs.promise)
+    mockedReadSimulation.mockResolvedValueOnce(finalSimulation)
 
     const { root, container } = setupDom()
 
@@ -688,38 +771,14 @@ describe('App frontUI integration', () => {
     expect(pendingOverlay).not.toBeNull()
     expect(pendingOverlay?.className).toContain('absolute')
     expect(container.textContent).toContain('正在推演')
-    expect(container.textContent).toContain('先判断改写影响，再生成首轮回复，最多续写 2 轮')
+    expect(container.textContent).toContain('等待 worker 处理')
     expect(container.textContent).toContain('我想先冷静一下，晚点继续聊可以吗？')
 
     const ghostedMessage = container.querySelector('[data-chat-message-id="message-13"]')
     expect(ghostedMessage?.className).toContain('opacity-28')
 
     await act(async () => {
-      deferredSimulation.resolve({
-        id: 88,
-        mode: 'short_thread',
-        replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
-        first_reply_text: '好，那你先休息。',
-        impact_summary: '冲突被降温。',
-        simulated_turns: [
-          {
-            turn_index: 1,
-            speaker_role: 'other',
-            message_text: '好，那你先休息。',
-            strategy_used: 'de-escalate',
-            state_after_turn: {},
-            generation_notes: null,
-          },
-          {
-            turn_index: 2,
-            speaker_role: 'self',
-            message_text: '谢谢理解，我们晚点再聊。',
-            strategy_used: 'repair',
-            state_after_turn: {},
-            generation_notes: null,
-          },
-        ],
-      })
+      deferredSimulationJobs.resolve([completedSimulationJob])
     })
     await flushAsyncWork(8)
 
@@ -811,8 +870,50 @@ describe('App frontUI integration', () => {
     mockedListMessages.mockResolvedValue([...messages].reverse())
     mockedListConversationJobs.mockResolvedValue([completedJob])
     mockedReadJob.mockResolvedValue(completedJob)
-    const deferredSimulation = createDeferred<Awaited<ReturnType<typeof createSimulation>>>()
-    mockedCreateSimulation.mockReturnValueOnce(deferredSimulation.promise)
+    const queuedSimulationJob = {
+      id: 90,
+      conversation_id: 7,
+      target_message_id: 12,
+      mode: 'single_reply',
+      turn_count: 1,
+      replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
+      status: 'queued',
+      current_stage: 'queued',
+      progress_percent: 0,
+      current_stage_percent: 0,
+      current_stage_total_units: 0,
+      current_stage_completed_units: 0,
+      overall_total_units: 0,
+      overall_completed_units: 0,
+      status_message: '等待 worker 处理',
+      result_simulation_id: null,
+      error_message: null,
+    } as Awaited<ReturnType<typeof createSimulation>>
+    const completedSimulationJob = {
+      ...queuedSimulationJob,
+      status: 'completed',
+      current_stage: 'completed',
+      progress_percent: 100,
+      current_stage_percent: 100,
+      current_stage_total_units: 1,
+      current_stage_completed_units: 1,
+      overall_total_units: 1,
+      overall_completed_units: 1,
+      status_message: '推演完成',
+      result_simulation_id: 190,
+    }
+    const finalSimulation = {
+      id: 190,
+      mode: 'single_reply',
+      replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
+      first_reply_text: '好，那你先休息。',
+      impact_summary: '冲突被降温。',
+      simulated_turns: [],
+    }
+    const deferredSimulationJobs = createDeferred<Awaited<ReturnType<typeof listConversationSimulationJobs>>>()
+    mockedCreateSimulation.mockResolvedValueOnce(queuedSimulationJob)
+    mockedListConversationSimulationJobs.mockReturnValueOnce(deferredSimulationJobs.promise)
+    mockedReadSimulation.mockResolvedValueOnce(finalSimulation)
 
     const { root, container } = setupDom()
 
@@ -859,17 +960,10 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(8)
 
-    expect(container.textContent).toContain('先判断改写影响，再生成对方首轮回复')
+    expect(container.textContent).toContain('等待 worker 处理')
 
     await act(async () => {
-      deferredSimulation.resolve({
-        id: 90,
-        mode: 'single_reply',
-        replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
-        first_reply_text: '好，那你先休息。',
-        impact_summary: '冲突被降温。',
-        simulated_turns: [],
-      })
+      deferredSimulationJobs.resolve([completedSimulationJob])
     })
     await flushAsyncWork(8)
 

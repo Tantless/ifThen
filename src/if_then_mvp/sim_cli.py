@@ -41,15 +41,12 @@ def main(argv: list[str] | None = None) -> int:
                 "turn_count": args.turn_count,
             },
         )
-        print("first_reply_text:")
-        print(result.get("first_reply_text"))
-        print()
-        print("impact_summary:")
-        print(result.get("impact_summary"))
-        print()
-        print("simulated_turns:")
-        for turn in result.get("simulated_turns", []):
-            print(f'[{turn["turn_index"]}] {turn["speaker_role"]}: {turn["message_text"]}')
+        print(f'id={result.get("id")} conversation_id={result.get("conversation_id")}')
+        print(f'target_message_id={result.get("target_message_id")} mode={result.get("mode")}')
+        print(f'turn_count={result.get("turn_count")} status={result.get("status")}')
+        print(f'current_stage={result.get("current_stage")} progress_percent={result.get("progress_percent")}')
+        print(f'status_message={result.get("status_message")}')
+        print(f'result_simulation_id={result.get("result_simulation_id")}')
         return 0
 
     parser.error(f"unknown command: {args.command}")

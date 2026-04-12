@@ -106,6 +106,26 @@ class SimulationCreate(BaseModel):
     turn_count: int = Field(default=4, ge=0, le=8)
 
 
+class SimulationJobRead(BaseModel):
+    id: int
+    conversation_id: int
+    target_message_id: int
+    mode: str
+    turn_count: int
+    replacement_content: str
+    status: str
+    current_stage: str
+    progress_percent: int
+    current_stage_percent: int
+    current_stage_total_units: int
+    current_stage_completed_units: int
+    overall_total_units: int
+    overall_completed_units: int
+    status_message: str | None = None
+    result_simulation_id: int | None = None
+    error_message: str | None = None
+
+
 class SimulationTurnRead(BaseModel):
     turn_index: int
     speaker_role: str

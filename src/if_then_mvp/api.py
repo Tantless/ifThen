@@ -13,7 +13,7 @@ from if_then_mvp.conversation_lifecycle import (
     queue_rerun_analysis,
 )
 from if_then_mvp.db import init_db, session_scope
-from if_then_mvp.llm import ChatJSONClient, LLMClient, LLMClientError
+from if_then_mvp.llm import ChatJSONClient
 from if_then_mvp.models import (
     AnalysisJob,
     AppSetting,
@@ -30,7 +30,6 @@ from if_then_mvp.models import (
     TopicLink,
 )
 from if_then_mvp.parser import parse_qq_export
-from if_then_mvp.retrieval import build_context_pack
 from if_then_mvp.runtime_llm import build_runtime_llm_client, load_runtime_settings_map
 from if_then_mvp.schemas import (
     ConversationRead,
@@ -43,12 +42,17 @@ from if_then_mvp.schemas import (
     SettingRead,
     SettingWrite,
     SimulationCreate,
+    SimulationJobRead,
     SimulationRead,
     SimulationTurnRead,
     SnapshotRead,
     TopicRead,
 )
-from if_then_mvp.simulation import assess_branch, generate_first_reply, simulate_short_thread
+from if_then_mvp.simulation_jobs import (
+    list_simulation_jobs_for_conversation,
+    queue_simulation_job,
+    simulation_job_to_read,
+)
 
 INVALID_TEXT_DETAIL = "Uploaded file must be valid UTF-8 text"
 INVALID_EXPORT_DETAIL = "Uploaded file must be a valid QQ private chat export"
@@ -117,7 +121,6 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
         with session_scope() as session:
             conversation = _require_conversation(session, conversation_id)
 
-            # Check if there's already a queued or running job
             existing_job = session.execute(
                 select(AnalysisJob)
                 .where(
@@ -130,7 +133,6 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             if existing_job is not None:
                 raise HTTPException(status_code=409, detail="Analysis already queued or running")
 
-            # Get the import batch
             batch = session.execute(
                 select(ImportBatch)
                 .where(ImportBatch.conversation_id == conversation_id)
@@ -140,7 +142,6 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             if batch is None:
                 raise HTTPException(status_code=400, detail="No import batch found for this conversation")
 
-            # Create a new analysis job
             job = AnalysisJob(
                 conversation_id=conversation_id,
                 job_type="full_analysis",
@@ -186,6 +187,43 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
                 .all()
             )
             return [_job_to_read(item) for item in rows]
+
+    @app.get("/conversations/{conversation_id}/simulation-jobs", response_model=list[SimulationJobRead])
+    def list_conversation_simulation_jobs(
+        conversation_id: int,
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> list[SimulationJobRead]:
+        with session_scope() as session:
+            _require_conversation(session, conversation_id)
+            rows = list_simulation_jobs_for_conversation(session, conversation_id=conversation_id, limit=limit)
+            return [simulation_job_to_read(item) for item in rows]
+
+    @app.get("/simulations/{simulation_id}", response_model=SimulationRead)
+    def get_simulation(simulation_id: int) -> SimulationRead:
+        with session_scope() as session:
+            simulation = session.get(Simulation, simulation_id)
+            if simulation is None:
+                raise HTTPException(status_code=404, detail="Simulation not found")
+            turns = (
+                session.execute(
+                    select(SimulationTurn)
+                    .where(SimulationTurn.simulation_id == simulation_id)
+                    .order_by(SimulationTurn.turn_index.asc(), SimulationTurn.id.asc())
+                )
+                .scalars()
+                .all()
+            )
+            return SimulationRead(
+                id=simulation.id,
+                mode=simulation.mode,
+                replacement_content=simulation.replacement_content,
+                first_reply_text=simulation.first_reply_text,
+                impact_summary=simulation.impact_summary,
+                simulated_turns=[
+                    SimulationTurnRead.model_validate(turn, from_attributes=True)
+                    for turn in turns
+                ],
+            )
 
     @app.get("/conversations/{conversation_id}/messages", response_model=list[MessageRead])
     def list_messages(
@@ -336,133 +374,23 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             session.flush()
             return SettingRead.model_validate(row, from_attributes=True)
 
-    @app.post("/simulations", response_model=SimulationRead, status_code=201)
-    def create_simulation(payload: SimulationCreate) -> SimulationRead:
+    @app.post("/simulations", response_model=SimulationJobRead, status_code=202)
+    def create_simulation(payload: SimulationCreate) -> SimulationJobRead:
         with session_scope() as session:
             _require_conversation(session, payload.conversation_id)
 
             target_message = session.get(Message, payload.target_message_id)
             if target_message is None or target_message.conversation_id != payload.conversation_id:
                 raise HTTPException(status_code=404, detail="Target message not found")
-
-            messages = (
-                session.execute(
-                    select(Message)
-                    .where(Message.conversation_id == payload.conversation_id)
-                    .order_by(Message.timestamp.asc(), Message.sequence_no.asc(), Message.id.asc())
-                )
-                .scalars()
-                .all()
-            )
-            segments = (
-                session.execute(
-                    select(Segment)
-                    .where(Segment.conversation_id == payload.conversation_id)
-                    .order_by(Segment.start_time.asc(), Segment.id.asc())
-                )
-                .scalars()
-                .all()
-            )
-            snapshot = (
-                session.execute(
-                    select(RelationshipSnapshot)
-                    .join(Message, RelationshipSnapshot.as_of_message_id == Message.id)
-                    .where(
-                        RelationshipSnapshot.conversation_id == payload.conversation_id,
-                        (
-                            (RelationshipSnapshot.as_of_time < target_message.timestamp)
-                            | (
-                                (RelationshipSnapshot.as_of_time == target_message.timestamp)
-                                & (Message.sequence_no < target_message.sequence_no)
-                            )
-                        ),
-                    )
-                    .order_by(RelationshipSnapshot.as_of_time.desc(), Message.sequence_no.desc())
-                )
-                .scalars()
-                .first()
-            )
-            related_topic_digests = _load_related_topic_digests(
-                session=session,
-                conversation_id=payload.conversation_id,
-                target_message=target_message,
-            )
-            personas = (
-                session.execute(
-                    select(PersonaProfile).where(PersonaProfile.conversation_id == payload.conversation_id)
-                )
-                .scalars()
-                .all()
-            )
-            persona_self = next((item for item in personas if item.subject_role == "self"), None)
-            persona_other = next((item for item in personas if item.subject_role == "other"), None)
-
-            try:
-                context_pack = build_context_pack(
-                    messages=[_message_to_context_dict(item) for item in messages],
-                    segments=[_segment_to_context_dict(item) for item in segments],
-                    target_message_id=payload.target_message_id,
-                    replacement_content=payload.replacement_content,
-                    related_topic_digests=related_topic_digests,
-                    base_relationship_snapshot=_snapshot_to_context_dict(snapshot),
-                    persona_self=_persona_to_context_dict(persona_self),
-                    persona_other=_persona_to_context_dict(persona_other),
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            simulation_llm = llm_client or _build_runtime_llm_client(session)
-            try:
-                assessment = assess_branch(llm_client=simulation_llm, context_pack=context_pack)
-                first_reply = generate_first_reply(
-                    llm_client=simulation_llm,
-                    context_pack=context_pack,
-                    assessment=assessment,
-                )
-                turns = (
-                    simulate_short_thread(
-                        llm_client=simulation_llm,
-                        context_pack=context_pack,
-                        assessment=assessment,
-                        first_reply=first_reply,
-                        turn_count=payload.turn_count,
-                    )
-                    if payload.mode == "short_thread"
-                    else []
-                )
-            except LLMClientError as exc:
-                raise HTTPException(status_code=502, detail="Simulation LLM request failed") from exc
-
-            simulation = Simulation(
+            job = queue_simulation_job(
+                session,
                 conversation_id=payload.conversation_id,
                 target_message_id=payload.target_message_id,
                 mode=payload.mode,
+                turn_count=payload.turn_count,
                 replacement_content=payload.replacement_content,
-                context_pack_snapshot=context_pack,
-                branch_assessment=assessment,
-                first_reply_text=first_reply.first_reply_text,
-                impact_summary=assessment["state_shift_summary"],
-                status="completed",
             )
-            session.add(simulation)
-            session.flush()
-
-            turn_rows = []
-            for turn in turns:
-                turn_row = SimulationTurn(simulation_id=simulation.id, **turn)
-                session.add(turn_row)
-                turn_rows.append(turn_row)
-            session.flush()
-
-            return SimulationRead(
-                id=simulation.id,
-                mode=simulation.mode,
-                replacement_content=simulation.replacement_content,
-                first_reply_text=simulation.first_reply_text,
-                impact_summary=simulation.impact_summary,
-                simulated_turns=[
-                    SimulationTurnRead.model_validate(item, from_attributes=True) for item in turn_rows
-                ],
-            )
+            return simulation_job_to_read(job)
 
     @app.post("/imports/qq-text", response_model=ImportResponse, status_code=201)
     async def import_qq_text(
@@ -515,10 +443,9 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
                 session.add(batch)
                 session.flush()
 
-                job_type = "full_analysis" if auto_analyze else "import_only"
                 job = AnalysisJob(
                     conversation_id=conversation.id,
-                    job_type=job_type,
+                    job_type="full_analysis" if auto_analyze else "import_only",
                     status="queued",
                     current_stage="created",
                     progress_percent=0,

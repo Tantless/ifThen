@@ -87,6 +87,26 @@ export type SimulationCreate = {
   turn_count: number
 }
 
+export type SimulationJobRead = {
+  id: number
+  conversation_id: number
+  target_message_id: number
+  mode: string
+  turn_count: number
+  replacement_content: string
+  status: string
+  current_stage: string
+  progress_percent: number
+  current_stage_percent: number
+  current_stage_total_units: number
+  current_stage_completed_units: number
+  overall_total_units: number
+  overall_completed_units: number
+  status_message: string | null
+  result_simulation_id: number | null
+  error_message: string | null
+}
+
 export type SimulationTurnRead = {
   turn_index: number
   speaker_role: string

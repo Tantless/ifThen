@@ -12,6 +12,7 @@ from if_then_mvp.models import (
     Segment,
     SegmentSummary,
     Simulation,
+    SimulationJob,
     SimulationTurn,
     Topic,
     TopicLink,
@@ -158,6 +159,29 @@ def test_delete_conversation_removes_rows_and_upload_file(tmp_path, monkeypatch)
         session.add(simulation)
         session.flush()
         session.add(
+            SimulationJob(
+                conversation_id=conversation.id,
+                target_message_id=message.id,
+                mode="short_thread",
+                turn_count=4,
+                replacement_content="如果你不忙，我们慢慢说也可以",
+                status="queued",
+                current_stage="queued",
+                progress_percent=0,
+                payload_json={
+                    "queued_at": "2025-03-02T20:18:04Z",
+                    "request": {
+                        "conversation_id": conversation.id,
+                        "target_message_id": message.id,
+                        "mode": "short_thread",
+                        "turn_count": 4,
+                        "replacement_content": "如果你不忙，我们慢慢说也可以",
+                    },
+                },
+                result_simulation_id=None,
+            )
+        )
+        session.add(
             SimulationTurn(
                 simulation_id=simulation.id,
                 turn_index=1,
@@ -186,6 +210,7 @@ def test_delete_conversation_removes_rows_and_upload_file(tmp_path, monkeypatch)
         assert session.query(PersonaProfile).count() == 0
         assert session.query(RelationshipSnapshot).count() == 0
         assert session.query(AnalysisJob).count() == 0
+        assert session.query(SimulationJob).count() == 0
         assert session.query(Simulation).count() == 0
         assert session.query(SimulationTurn).count() == 0
 
