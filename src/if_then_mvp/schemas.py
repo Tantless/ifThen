@@ -35,6 +35,11 @@ class MessageRead(BaseModel):
     resource_items: list[dict] | None = None
 
 
+class MessageDayRead(BaseModel):
+    date: str
+    message_count: int
+
+
 class MessageContextRead(BaseModel):
     target: MessageRead
     before: list[MessageRead] = Field(default_factory=list)

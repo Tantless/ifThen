@@ -1,8 +1,8 @@
-import { Calendar, FileText, Search, X } from 'lucide-react'
-import { useMemo, useRef, type UIEvent } from 'react'
+import { Calendar, ChevronLeft, ChevronRight, FileText, Search, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 
 import { FRONTUI_PLACEHOLDER_AVATAR, FRONTUI_SELF_AVATAR } from '../frontui/mockState'
-import type { MessageRead } from '../types/api'
+import type { MessageDayRead, MessageRead } from '../types/api'
 
 const LOAD_MORE_TRIGGER_PX = 24
 const LOAD_MORE_REARM_PX = 72
@@ -15,6 +15,7 @@ type ChatHistoryDialogProps = {
   activeTab: ChatHistoryTab
   keyword: string
   dateValue: string
+  availableDates: MessageDayRead[]
   results: MessageRead[]
   loading: boolean
   loadingMore?: boolean
@@ -29,6 +30,15 @@ type ChatHistoryDialogProps = {
   onDateChange: (value: string) => void
   onLoadMore: () => Promise<void> | void
   onLocate: (message: MessageRead) => Promise<void> | void
+}
+
+type CalendarDay = {
+  key: string
+  isoDate: string | null
+  label: string
+  inMonth: boolean
+  available: boolean
+  selected: boolean
 }
 
 function parseTimestamp(timestamp: string): Date | null {
@@ -105,12 +115,65 @@ function buildMessageGroups(results: MessageRead[]): Array<{ label: string; mess
   return groups
 }
 
+function parseIsoDate(value: string): Date {
+  const [year, month, day] = value.split('-').map((item) => Number(item))
+  return new Date(year, month - 1, day)
+}
+
+function formatIsoDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function shiftMonth(date: Date, delta: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + delta, 1)
+}
+
+function resolveInitialVisibleMonth(dateValue: string, availableDates: MessageDayRead[]): Date {
+  if (dateValue) {
+    return startOfMonth(parseIsoDate(dateValue))
+  }
+
+  const latestDate = availableDates[availableDates.length - 1]?.date
+  if (latestDate) {
+    return startOfMonth(parseIsoDate(latestDate))
+  }
+
+  return startOfMonth(new Date())
+}
+
+function buildCalendarDays(visibleMonth: Date, availableDateSet: Set<string>, selectedDate: string): CalendarDay[] {
+  const firstDay = startOfMonth(visibleMonth)
+  const startWeekDay = firstDay.getDay()
+  const calendarStart = new Date(firstDay)
+  calendarStart.setDate(firstDay.getDate() - startWeekDay)
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const current = new Date(calendarStart)
+    current.setDate(calendarStart.getDate() + index)
+    const isoDate = formatIsoDate(current)
+
+    return {
+      key: isoDate,
+      isoDate,
+      label: String(current.getDate()),
+      inMonth: current.getMonth() === visibleMonth.getMonth(),
+      available: availableDateSet.has(isoDate),
+      selected: isoDate === selectedDate,
+    }
+  })
+}
+
 export function ChatHistoryDialog({
   open,
   conversationTitle,
   activeTab,
   keyword,
   dateValue,
+  availableDates,
   results,
   loading,
   loadingMore = false,
@@ -128,6 +191,12 @@ export function ChatHistoryDialog({
 }: ChatHistoryDialogProps) {
   const loadMoreArmedRef = useRef(true)
   const groupedResults = useMemo(() => buildMessageGroups(results), [results])
+  const availableDateSet = useMemo(() => new Set(availableDates.map((item) => item.date)), [availableDates])
+  const [visibleMonth, setVisibleMonth] = useState<Date>(() => resolveInitialVisibleMonth(dateValue, availableDates))
+
+  useEffect(() => {
+    setVisibleMonth(resolveInitialVisibleMonth(dateValue, availableDates))
+  }, [availableDates, dateValue, open])
 
   if (!open) {
     return null
@@ -148,6 +217,9 @@ export function ChatHistoryDialog({
     loadMoreArmedRef.current = false
     await onLoadMore()
   }
+
+  const calendarDays = buildCalendarDays(visibleMonth, availableDateSet, dateValue)
+  const monthLabel = `${visibleMonth.getFullYear()}年${visibleMonth.getMonth() + 1}月`
 
   return (
     <div className="desktop-modal chat-history-modal__overlay" role="dialog" aria-modal="true" aria-labelledby="chat-history-dialog-title">
@@ -204,21 +276,62 @@ export function ChatHistoryDialog({
                   日期
                 </button>
               </div>
+
+              {activeTab === 'date' ? (
+                <div className="chat-history-modal__calendar">
+                  <div className="chat-history-modal__calendar-header">
+                    <button
+                      type="button"
+                      className="chat-history-modal__calendar-nav"
+                      aria-label="上一月"
+                      onClick={() => setVisibleMonth((current) => shiftMonth(current, -1))}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="chat-history-modal__calendar-label">{monthLabel}</span>
+                    <button
+                      type="button"
+                      className="chat-history-modal__calendar-nav"
+                      aria-label="下一月"
+                      onClick={() => setVisibleMonth((current) => shiftMonth(current, 1))}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+
+                  <div className="chat-history-modal__calendar-weekdays">
+                    {['日', '一', '二', '三', '四', '五', '六'].map((weekday) => (
+                      <span key={weekday}>{weekday}</span>
+                    ))}
+                  </div>
+
+                  <div className="chat-history-modal__calendar-grid">
+                    {calendarDays.map((day) => {
+                      if (!day.inMonth) {
+                        return <span key={day.key} className="chat-history-modal__calendar-blank" aria-hidden="true" />
+                      }
+
+                      return (
+                        <button
+                          key={day.key}
+                          type="button"
+                          data-chat-history-date={day.isoDate ?? undefined}
+                          className={`chat-history-modal__calendar-day${
+                            day.available ? '' : ' chat-history-modal__calendar-day--disabled'
+                          }${day.selected ? ' chat-history-modal__calendar-day--selected' : ''}`}
+                          disabled={!day.available}
+                          onClick={() => day.isoDate && onDateChange(day.isoDate)}
+                        >
+                          {day.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="chat-history-modal__results custom-scrollbar" data-testid="chat-history-results" onScroll={(event) => void handleResultsScroll(event)}>
-              {activeTab === 'date' ? (
-                <div className="chat-history-modal__date-picker">
-                  <Calendar size={16} className="text-[#8c8c8c]" />
-                  <input
-                    type="date"
-                    className="chat-history-modal__date-input"
-                    value={dateValue}
-                    onChange={(event) => onDateChange(event.target.value)}
-                  />
-                </div>
-              ) : null}
-
               {loading ? <p className="chat-history-modal__state">正在加载聊天记录…</p> : null}
               {errorMessage ? (
                 <p className="chat-history-modal__state chat-history-modal__state--error" role="alert">
@@ -233,17 +346,17 @@ export function ChatHistoryDialog({
                 </div>
               ) : null}
 
-              {!loading && !errorMessage && activeTab !== 'files' && activeTab === 'date' && !dateValue && results.length === 0 ? (
+              {!loading && !errorMessage && activeTab === 'date' && availableDates.length === 0 ? (
                 <div className="chat-history-modal__empty">
                   <Calendar size={18} />
-                  <span>选择日期后查看当天聊天记录</span>
+                  <span>这个会话还没有可筛选的日期</span>
                 </div>
               ) : null}
 
-              {!loading && !errorMessage && activeTab !== 'files' && !(activeTab === 'date' && !dateValue && results.length === 0) ? (
+              {!loading && !errorMessage && activeTab !== 'files' && !(activeTab === 'date' && availableDates.length === 0) ? (
                 groupedResults.length === 0 ? (
                   <div className="chat-history-modal__empty">
-                    <span>没有找到相关消息</span>
+                    <span>{activeTab === 'date' && !dateValue ? '请选择上方有聊天记录的日期' : '没有找到相关消息'}</span>
                   </div>
                 ) : (
                   <>

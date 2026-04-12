@@ -9,6 +9,7 @@ import App from '../src/App'
 import {
   deleteConversation,
   importConversation,
+  listMessageDays,
   listConversations,
   listMessages,
   listTopics,
@@ -25,6 +26,7 @@ import { AVATAR_PRESETS } from '../src/lib/avatarPresets'
 vi.mock('../src/lib/services/conversationService', () => ({
   listConversations: vi.fn(),
   listMessages: vi.fn(),
+  listMessageDays: vi.fn(),
   listTopics: vi.fn(),
   readProfile: vi.fn(),
   readSnapshot: vi.fn(),
@@ -53,6 +55,7 @@ const mockedReadSettings = vi.mocked(readSettings)
 const mockedWriteSetting = vi.mocked(writeSetting)
 const mockedListConversations = vi.mocked(listConversations)
 const mockedListMessages = vi.mocked(listMessages)
+const mockedListMessageDays = vi.mocked(listMessageDays)
 const mockedListTopics = vi.mocked(listTopics)
 const mockedReadProfile = vi.mocked(readProfile)
 const mockedReadSnapshot = vi.mocked(readSnapshot)
@@ -196,6 +199,7 @@ beforeEach(() => {
   })
   mockedListConversations.mockResolvedValue([])
   mockedListMessages.mockResolvedValue([])
+  mockedListMessageDays.mockResolvedValue([])
   mockedListTopics.mockResolvedValue([])
   mockedReadProfile.mockResolvedValue([])
   mockedReadSnapshot.mockResolvedValue({
@@ -1855,6 +1859,10 @@ describe('App frontUI integration', () => {
       .mockResolvedValueOnce([...baseMessages].reverse())
       .mockResolvedValueOnce(historyDefault)
       .mockResolvedValueOnce(historyFiltered)
+    mockedListMessageDays.mockResolvedValue([
+      { date: '2026-04-01', message_count: 2 },
+      { date: '2026-04-03', message_count: 1 },
+    ])
     mockedListConversationJobs.mockResolvedValue([
       {
         id: 19,
@@ -1893,6 +1901,7 @@ describe('App frontUI integration', () => {
     expect(container.textContent).toContain('日期')
     expect(container.textContent).toContain('默认结果 220')
     expect(mockedListMessages).toHaveBeenNthCalledWith(2, 7, { order: 'desc', limit: 20 })
+    expect(mockedListMessageDays).toHaveBeenCalledWith(7)
 
     const dateTab = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '日期')
     expect(dateTab).not.toBeUndefined()
@@ -1904,15 +1913,17 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(4)
 
-    const dateInput = container.querySelector('input[type="date"]') as HTMLInputElement | null
-    expect(dateInput).not.toBeNull()
+    expect(container.querySelector('input[type="date"]')).toBeNull()
+    const unavailableDay = container.querySelector('[data-chat-history-date="2026-04-02"]') as HTMLButtonElement | null
+    expect(unavailableDay).not.toBeNull()
+    expect(unavailableDay?.disabled).toBe(true)
+    const availableDay = container.querySelector('[data-chat-history-date="2026-04-01"]') as HTMLButtonElement | null
+    expect(availableDay).not.toBeNull()
+    expect(availableDay?.disabled).toBe(false)
 
     await act(async () => {
-      if (dateInput) {
-        dateInput.value = '2026-04-01'
-        getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(dateInput).onChange?.({
-          target: { value: '2026-04-01' },
-        })
+      if (availableDay) {
+        getReactProps<{ onClick?: () => void }>(availableDay).onClick?.()
       }
     })
     await flushAsyncWork(8)
@@ -1958,6 +1969,10 @@ describe('App frontUI integration', () => {
         overall_completed_units: 1,
         status_message: null,
       },
+    ])
+    mockedListMessageDays.mockResolvedValue([
+      { date: '2026-04-07', message_count: 12 },
+      { date: '2026-04-08', message_count: 80 },
     ])
 
     const recentMessages: MessageRead[] = Array.from({ length: 80 }, (_, index) => {

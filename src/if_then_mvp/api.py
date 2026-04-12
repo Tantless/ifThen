@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from if_then_mvp.config import get_settings
 from if_then_mvp.conversation_lifecycle import (
@@ -36,6 +36,7 @@ from if_then_mvp.schemas import (
     ConversationRead,
     ImportResponse,
     JobRead,
+    MessageDayRead,
     MessageContextRead,
     MessageRead,
     PersonaProfileRead,
@@ -259,6 +260,29 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             order_clause = Message.sequence_no.asc() if order == "asc" else Message.sequence_no.desc()
             rows = session.execute(query.order_by(order_clause).limit(limit)).scalars().all()
             return [MessageRead.model_validate(item, from_attributes=True) for item in rows]
+
+    @app.get("/conversations/{conversation_id}/message-days", response_model=list[MessageDayRead])
+    def list_message_days(conversation_id: int) -> list[MessageDayRead]:
+        with session_scope() as session:
+            _require_conversation(session, conversation_id)
+            date_expr = func.substr(Message.timestamp, 1, 10)
+            rows = session.execute(
+                select(
+                    date_expr.label("date"),
+                    func.count(Message.id).label("message_count"),
+                )
+                .where(Message.conversation_id == conversation_id)
+                .group_by(date_expr)
+                .order_by(date_expr.asc())
+            ).all()
+
+            return [
+                MessageDayRead(
+                    date=str(row.date),
+                    message_count=int(row.message_count),
+                )
+                for row in rows
+            ]
 
     @app.get("/messages/{message_id}", response_model=MessageRead)
     def get_message(message_id: int) -> MessageRead:

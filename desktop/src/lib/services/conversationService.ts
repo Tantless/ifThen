@@ -3,6 +3,7 @@ import type {
   ConversationRead,
   ImportResponse,
   JobRead,
+  MessageDayRead,
   MessageRead,
   PersonaProfileRead,
   SnapshotRead,
@@ -57,6 +58,10 @@ export function listMessages(conversationId: number, options: ListMessagesOption
       order: options.order,
     }),
   )
+}
+
+export function listMessageDays(conversationId: number): Promise<MessageDayRead[]> {
+  return apiClient.get<MessageDayRead[]>(`/conversations/${conversationId}/message-days`)
 }
 
 export function listTopics(conversationId: number): Promise<TopicRead[]> {

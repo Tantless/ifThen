@@ -47,6 +47,7 @@ import { resolveSimulationPendingStageLabel } from './lib/simulationPending'
 import {
   deleteConversation,
   importConversation,
+  listMessageDays,
   listConversations,
   listMessages,
   listTopics,
@@ -69,6 +70,7 @@ import {
 import type {
   ConversationRead,
   JobRead,
+  MessageDayRead,
   MessageRead,
   PersonaProfileRead,
   SettingRead,
@@ -179,6 +181,7 @@ export default function App() {
   const [mockMessagesByConversation, setMockMessagesByConversation] = useState<Record<number, FrontChatMessage[]>>({})
   const [chatHistoryKeyword, setChatHistoryKeyword] = useState('')
   const [chatHistoryDate, setChatHistoryDate] = useState('')
+  const [chatHistoryAvailableDates, setChatHistoryAvailableDates] = useState<MessageDayRead[]>([])
   const [chatHistoryResults, setChatHistoryResults] = useState<MessageRead[]>([])
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false)
   const [chatHistoryLoadingMore, setChatHistoryLoadingMore] = useState(false)
@@ -531,6 +534,7 @@ export default function App() {
     setChatHistoryActiveTab('all')
     setChatHistoryKeyword('')
     setChatHistoryDate('')
+    setChatHistoryAvailableDates([])
     setChatHistoryResults([])
     setChatHistoryError(null)
     setChatHistoryLoading(false)
@@ -556,6 +560,7 @@ export default function App() {
     setChatHistoryActiveTab('all')
     setChatHistoryKeyword('')
     setChatHistoryDate('')
+    setChatHistoryAvailableDates([])
     setChatHistoryResults([])
     setChatHistoryError(null)
     setChatHistoryLoading(false)
@@ -798,6 +803,34 @@ export default function App() {
   const effectiveChatHistoryDate = chatHistoryActiveTab === 'date' ? normalizedChatHistoryDate : ''
   const chatHistoryUsesFilteredOrder = normalizedChatHistoryKeyword.length > 0 || effectiveChatHistoryDate.length > 0
   const chatHistoryOrder: 'asc' | 'desc' = chatHistoryUsesFilteredOrder ? 'asc' : 'desc'
+
+  useEffect(() => {
+    if (state.phase !== 'ready' || activeTab !== 'chat' || selectedConversationId === null || !showChatHistoryDialog) {
+      return
+    }
+
+    let cancelled = false
+
+    const loadAvailableDays = async () => {
+      try {
+        const days = await listMessageDays(selectedConversationId)
+
+        if (!cancelled) {
+          setChatHistoryAvailableDates(days)
+        }
+      } catch {
+        if (!cancelled) {
+          setChatHistoryAvailableDates([])
+        }
+      }
+    }
+
+    void loadAvailableDays()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab, selectedConversationId, showChatHistoryDialog, state.phase])
 
   useEffect(() => {
     if (state.phase !== 'ready' || activeTab !== 'chat' || selectedConversationId === null || !showChatHistoryDialog) {
@@ -1981,6 +2014,7 @@ export default function App() {
         activeTab={chatHistoryActiveTab}
         keyword={chatHistoryKeyword}
         dateValue={chatHistoryDate}
+        availableDates={chatHistoryAvailableDates}
         results={chatHistoryResults}
         loading={chatHistoryLoading}
         loadingMore={chatHistoryLoadingMore}

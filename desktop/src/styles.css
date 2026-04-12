@@ -969,24 +969,94 @@ body {
   background: #ffffff;
 }
 
-.chat-history-modal__date-picker {
-  height: 36px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-  margin-bottom: 16px;
-  border: 1px solid #e5e5e5;
-  border-radius: 8px;
-  background: #fafafa;
+.chat-history-modal__calendar {
+  margin-top: 14px;
+  padding: 12px 12px 10px;
+  border-top: 1px solid #e7e7e7;
+  background: #f5f5f5;
 }
 
-.chat-history-modal__date-input {
+.chat-history-modal__calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.chat-history-modal__calendar-label {
+  color: #333333;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.chat-history-modal__calendar-nav {
   border: none;
   background: transparent;
-  color: #333333;
-  font: inherit;
-  outline: none;
+  color: #666666;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.chat-history-modal__calendar-nav:hover {
+  background: #e7e7e7;
+}
+
+.chat-history-modal__calendar-weekdays,
+.chat-history-modal__calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.chat-history-modal__calendar-weekdays {
+  margin-bottom: 6px;
+}
+
+.chat-history-modal__calendar-weekdays span {
+  text-align: center;
+  color: #a7a7a7;
+  font-size: 11px;
+}
+
+.chat-history-modal__calendar-blank {
+  display: block;
+  height: 28px;
+}
+
+.chat-history-modal__calendar-day {
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #444444;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chat-history-modal__calendar-day:hover:not(:disabled) {
+  background: #e7f7ef;
+  color: #07c160;
+}
+
+.chat-history-modal__calendar-day--selected {
+  background: #07c160;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.chat-history-modal__calendar-day--selected:hover:not(:disabled) {
+  background: #07c160;
+  color: #ffffff;
+}
+
+.chat-history-modal__calendar-day--disabled {
+  color: #cfcfcf;
+  cursor: not-allowed;
 }
 
 .chat-history-modal__group {

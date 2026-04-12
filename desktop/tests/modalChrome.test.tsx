@@ -74,6 +74,10 @@ describe('desktop modal chrome', () => {
         conversationTitle="阿青"
         keyword="电影"
         dateValue="2026-04-01"
+        availableDates={[
+          { date: '2026-04-01', message_count: 2 },
+          { date: '2026-04-03', message_count: 1 },
+        ]}
         results={[
           {
             id: 12,
@@ -89,7 +93,7 @@ describe('desktop modal chrome', () => {
         loading={false}
         errorMessage={null}
         hasMore
-        activeTab="all"
+        activeTab="date"
         locatePendingMessageId={null}
         onClose={() => undefined}
         onTabChange={() => undefined}
@@ -108,6 +112,9 @@ describe('desktop modal chrome', () => {
     expect(html).toContain('日期')
     expect(html).not.toContain('默认按时间倒序展示')
     expect(html).not.toContain('type="date"')
+    expect(html).toContain('data-chat-history-date="2026-04-01"')
+    expect(html).toContain('data-chat-history-date="2026-04-02"')
+    expect(html).toContain('chat-history-modal__calendar-day--disabled')
     expect(html).toContain('定位到此位置')
   })
 })

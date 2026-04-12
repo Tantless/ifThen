@@ -32,6 +32,11 @@ export type MessageRead = {
   resource_items: Record<string, unknown>[] | null
 }
 
+export type MessageDayRead = {
+  date: string
+  message_count: number
+}
+
 export type TopicRead = {
   id: number
   topic_name: string
