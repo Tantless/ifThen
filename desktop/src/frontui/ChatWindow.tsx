@@ -489,14 +489,14 @@ export function FrontChatWindow({
               (rewriteState.state === 'editing' || rewriteState.state === 'pending' || rewriteState.state === 'completed')
             const bubbleClass =
               bubbleTone === 'rewrite-target'
-                ? 'rewrite-target rounded-[12px] bg-[linear-gradient(135deg,#dff6ff_0%,#eef4ff_48%,#fdfcff_100%)] text-black ring-1 ring-[#8fd3ff]/80 shadow-[0_10px_28px_rgba(92,173,255,0.22)]'
+                ? 'rewrite-target rounded-[8px] bg-[linear-gradient(135deg,#dff6ff_0%,#eef4ff_48%,#fdfcff_100%)] text-black ring-1 ring-[#8fd3ff]/80 shadow-[0_10px_28px_rgba(92,173,255,0.22)]'
                 : bubbleTone === 'simulation-self'
-                  ? 'rounded-[12px] bg-[#d9ecff] text-black'
+                  ? 'rounded-[8px] bg-[#d9ecff] text-black'
                   : bubbleTone === 'simulation-other'
-                    ? 'rounded-[12px] bg-[#f8dce6] text-black'
+                    ? 'rounded-[8px] bg-[#f8dce6] text-black'
                     : isSelf
-                      ? 'rounded-[12px] bg-[#95ec69] text-black'
-                      : 'rounded-[12px] bg-white text-black'
+                      ? 'rounded-[8px] bg-[#95ec69] text-black'
+                      : 'rounded-[8px] bg-white text-black'
             const bubbleArrowClass =
               bubbleTone === 'rewrite-target'
                 ? 'right-[-10px] border-l-[#eef4ff]'
