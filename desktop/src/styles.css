@@ -1097,34 +1097,24 @@ body {
 
 .chat-history-modal__group {
   display: grid;
-  gap: 18px;
+  gap: 16px;
 }
 
 .chat-history-modal__group + .chat-history-modal__group {
-  margin-top: 28px;
+  margin-top: 24px;
 }
 
 .chat-history-modal__group-label {
   position: sticky;
-  top: 0;
+  top: -1px;
   z-index: 10;
   text-align: center;
-  padding: 2px 0 12px;
-  margin: -6px 0 2px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.94) 70%, rgba(255, 255, 255, 0) 100%);
-  backdrop-filter: blur(6px);
+  padding: 4px 0;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
 }
 
-.chat-history-modal__group-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 26px;
-  padding: 0 14px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  border-radius: 999px;
-  background: rgba(243, 243, 243, 0.96);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.04);
+.chat-history-modal__group-label span {
   color: #b4b4b4;
   font-size: 12px;
 }

@@ -387,7 +387,7 @@ export function ChatHistoryDialog({
                     {groupedResults.map((group) => (
                       <div key={group.label} className="chat-history-modal__group">
                         <div className="chat-history-modal__group-label">
-                          <span className="chat-history-modal__group-chip">{group.label}</span>
+                          <span>{group.label}</span>
                         </div>
                         {group.messages.map((message) => {
                           const locatePending = locatePendingMessageId === message.id
