@@ -148,6 +148,35 @@ describe('frontUI shell wiring', () => {
     expect(outputs.some((entry) => entry.type === 'asset' && entry.fileName.endsWith('.css'))).toBe(true)
     expect(outputs.some((entry) => entry.type === 'chunk' && entry.fileName.endsWith('.js'))).toBe(true)
   })
+
+  it('emits file-protocol-safe relative asset paths for packaged desktop builds', async () => {
+    const result = await build({
+      configFile: viteConfigFile,
+      root: desktopRoot,
+      logLevel: 'silent',
+      build: {
+        write: false,
+        emptyOutDir: false,
+        minify: false,
+      },
+    })
+
+    const outputs = (Array.isArray(result) ? result : [result]).flatMap((entry) =>
+      'output' in entry ? entry.output : [],
+    )
+    const htmlAsset = outputs.find((entry) => entry.type === 'asset' && entry.fileName === 'index.html')
+
+    expect(htmlAsset).toBeDefined()
+
+    if (!htmlAsset || typeof htmlAsset.source !== 'string') {
+      throw new Error('expected vite build to emit index.html as a string asset')
+    }
+
+    expect(htmlAsset.source).not.toContain('src="/assets/')
+    expect(htmlAsset.source).not.toContain('href="/assets/')
+    expect(htmlAsset.source).toContain('src="./assets/')
+    expect(htmlAsset.source).toContain('href="./assets/')
+  })
 })
 
 describe('frontUI shell markup', () => {
