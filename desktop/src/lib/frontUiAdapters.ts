@@ -7,6 +7,20 @@ function trimText(value: string | null | undefined): string {
   return value?.trim() ?? ''
 }
 
+function splitSimulationMessageText(value: string | null | undefined): string[] {
+  const normalized = trimText(value)
+  if (!normalized) {
+    return []
+  }
+
+  const parts = normalized
+    .split(/[\r\n]+|[，,。！？!?；;、…]+/u)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  return parts.length > 0 ? parts : [normalized]
+}
+
 function resolveConversationDisplayName(conversation: ConversationRead): string {
   const title = trimText(conversation.title)
   if (title) {
@@ -151,40 +165,38 @@ export function buildFrontChatMessagesFromSimulation(input: {
   const normalizedTimestamp = trimText(timestampRaw) || new Date().toISOString()
 
   if (simulation.simulated_turns.length > 0) {
-    return simulation.simulated_turns.map((turn, index) => {
+    return simulation.simulated_turns.flatMap((turn, index) => {
       const isSelf = turn.speaker_role === 'self'
-      return {
-        id: `simulation-${simulation.id}-turn-${turn.turn_index}-${index}`,
+      return splitSimulationMessageText(turn.message_text).map((text, partIndex) => ({
+        id: `simulation-${simulation.id}-turn-${turn.turn_index}-${index}-part-${partIndex}`,
         messageId: null,
         align: isSelf ? 'right' : 'left',
         bubbleTone: isSelf ? 'simulation-self' : 'simulation-other',
         speakerName: isSelf ? selfDisplayName : otherDisplayName,
         avatarUrl: isSelf ? selfAvatarUrl || FRONTUI_SELF_AVATAR : otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR,
-        text: turn.message_text,
+        text,
         timestampLabel: resolveTimestampLabel(normalizedTimestamp),
         timestampRaw: normalizedTimestamp,
         canRewrite: false,
         source: 'mock',
-      }
+      }))
     })
   }
 
   if (trimText(simulation.first_reply_text)) {
-    return [
-      {
-        id: `simulation-${simulation.id}-first-reply`,
-        messageId: null,
-        align: 'left',
-        bubbleTone: 'simulation-other',
-        speakerName: otherDisplayName,
-        avatarUrl: otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR,
-        text: simulation.first_reply_text ?? '',
-        timestampLabel: resolveTimestampLabel(normalizedTimestamp),
-        timestampRaw: normalizedTimestamp,
-        canRewrite: false,
-        source: 'mock',
-      },
-    ]
+    return splitSimulationMessageText(simulation.first_reply_text).map((text, partIndex) => ({
+      id: `simulation-${simulation.id}-first-reply-part-${partIndex}`,
+      messageId: null,
+      align: 'left',
+      bubbleTone: 'simulation-other',
+      speakerName: otherDisplayName,
+      avatarUrl: otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR,
+      text,
+      timestampLabel: resolveTimestampLabel(normalizedTimestamp),
+      timestampRaw: normalizedTimestamp,
+      canRewrite: false,
+      source: 'mock',
+    }))
   }
 
   return []

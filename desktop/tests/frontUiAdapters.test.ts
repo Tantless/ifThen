@@ -237,20 +237,20 @@ describe('buildFrontChatWindowState', () => {
 })
 
 describe('buildFrontChatMessagesFromSimulation', () => {
-  it('maps simulated turns into left/right chat rows without duplicating the first reply', () => {
+  it('splits simulated turns into shorter chat-like fragments without duplicating the first reply', () => {
     expect(
       buildFrontChatMessagesFromSimulation({
         simulation: {
           id: 88,
           mode: 'short_thread',
           replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
-          first_reply_text: '好，那你先休息。',
+          first_reply_text: '真好，我们下次一定来，下次去那家店。',
           impact_summary: '冲突被降温。',
           simulated_turns: [
             {
               turn_index: 1,
               speaker_role: 'other',
-              message_text: '好，那你先休息。',
+              message_text: '真好，我们下次一定来，下次去那家店。',
               strategy_used: 'de-escalate',
               state_after_turn: {},
               generation_notes: null,
@@ -258,7 +258,7 @@ describe('buildFrontChatMessagesFromSimulation', () => {
             {
               turn_index: 2,
               speaker_role: 'self',
-              message_text: '谢谢理解，我们晚点再聊。',
+              message_text: '好呀，那就这么说定了。',
               strategy_used: 'repair',
               state_after_turn: {},
               generation_notes: null,
@@ -273,12 +273,12 @@ describe('buildFrontChatMessagesFromSimulation', () => {
       }),
     ).toEqual([
       {
-        id: 'simulation-88-turn-1-0',
+        id: 'simulation-88-turn-1-0-part-0',
         messageId: null,
         align: 'left',
         speakerName: '小李',
         avatarUrl: 'data:image/svg+xml;base64,other-avatar',
-        text: '好，那你先休息。',
+        text: '真好',
         timestampLabel: '10:02',
         timestampRaw: '2026-04-08T10:02:00',
         canRewrite: false,
@@ -286,17 +286,116 @@ describe('buildFrontChatMessagesFromSimulation', () => {
         bubbleTone: 'simulation-other',
       },
       {
-        id: 'simulation-88-turn-2-1',
+        id: 'simulation-88-turn-1-0-part-1',
+        messageId: null,
+        align: 'left',
+        speakerName: '小李',
+        avatarUrl: 'data:image/svg+xml;base64,other-avatar',
+        text: '我们下次一定来',
+        timestampLabel: '10:02',
+        timestampRaw: '2026-04-08T10:02:00',
+        canRewrite: false,
+        source: 'mock',
+        bubbleTone: 'simulation-other',
+      },
+      {
+        id: 'simulation-88-turn-1-0-part-2',
+        messageId: null,
+        align: 'left',
+        speakerName: '小李',
+        avatarUrl: 'data:image/svg+xml;base64,other-avatar',
+        text: '下次去那家店',
+        timestampLabel: '10:02',
+        timestampRaw: '2026-04-08T10:02:00',
+        canRewrite: false,
+        source: 'mock',
+        bubbleTone: 'simulation-other',
+      },
+      {
+        id: 'simulation-88-turn-2-1-part-0',
         messageId: null,
         align: 'right',
         speakerName: '我',
         avatarUrl: 'data:image/svg+xml;base64,self-avatar',
-        text: '谢谢理解，我们晚点再聊。',
+        text: '好呀',
         timestampLabel: '10:02',
         timestampRaw: '2026-04-08T10:02:00',
         canRewrite: false,
         source: 'mock',
         bubbleTone: 'simulation-self',
+      },
+      {
+        id: 'simulation-88-turn-2-1-part-1',
+        messageId: null,
+        align: 'right',
+        speakerName: '我',
+        avatarUrl: 'data:image/svg+xml;base64,self-avatar',
+        text: '那就这么说定了',
+        timestampLabel: '10:02',
+        timestampRaw: '2026-04-08T10:02:00',
+        canRewrite: false,
+        source: 'mock',
+        bubbleTone: 'simulation-self',
+      },
+    ])
+  })
+
+  it('splits single-reply simulations into multiple chat rows when the reply contains multiple clauses', () => {
+    expect(
+      buildFrontChatMessagesFromSimulation({
+        simulation: {
+          id: 89,
+          mode: 'single_reply',
+          replacement_content: '那我们改天再聊？',
+          first_reply_text: '好呀，我们改天细说，到时候你再喊我。',
+          impact_summary: '对方接住了话题。',
+          simulated_turns: [],
+        },
+        selfDisplayName: '我',
+        otherDisplayName: '小李',
+        selfAvatarUrl: 'data:image/svg+xml;base64,self-avatar',
+        otherAvatarUrl: 'data:image/svg+xml;base64,other-avatar',
+        timestampRaw: '2026-04-08T10:02:00',
+      }),
+    ).toEqual([
+      {
+        id: 'simulation-89-first-reply-part-0',
+        messageId: null,
+        align: 'left',
+        speakerName: '小李',
+        avatarUrl: 'data:image/svg+xml;base64,other-avatar',
+        text: '好呀',
+        timestampLabel: '10:02',
+        timestampRaw: '2026-04-08T10:02:00',
+        canRewrite: false,
+        source: 'mock',
+        bubbleTone: 'simulation-other',
+      },
+      {
+        id: 'simulation-89-first-reply-part-1',
+        messageId: null,
+        align: 'left',
+        speakerName: '小李',
+        avatarUrl: 'data:image/svg+xml;base64,other-avatar',
+        text: '我们改天细说',
+        timestampLabel: '10:02',
+        timestampRaw: '2026-04-08T10:02:00',
+        canRewrite: false,
+        source: 'mock',
+        bubbleTone: 'simulation-other',
+      },
+      {
+        id: 'simulation-89-first-reply-part-2',
+        messageId: null,
+        align: 'left',
+        speakerName: '小李',
+        avatarUrl: 'data:image/svg+xml;base64,other-avatar',
+        text: '到时候你再喊我',
+        timestampLabel: '10:02',
+        timestampRaw: '2026-04-08T10:02:00',
+        canRewrite: false,
+        source: 'mock',
+        bubbleTone: 'simulation-other',
       },
     ])
   })
