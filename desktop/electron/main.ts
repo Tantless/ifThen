@@ -31,11 +31,23 @@ function getDesktopRuntime() {
   }
 }
 
-async function bootstrapBackend() {
+export async function bootstrapBackend() {
   const { backendPaths, processManager } = getDesktopRuntime()
   processManager.startApi(buildPythonLaunchSpec('api', backendPaths))
 
   const apiHealthy = await waitForHealth(backendPaths.healthUrl)
+  const stateAfterHealthCheck = processManager.getState()
+
+  if (!stateAfterHealthCheck.api.running) {
+    const existingDetail = stateAfterHealthCheck.api.detail ?? 'api process exited before healthcheck completed'
+    const detail = apiHealthy
+      ? `${existingDetail}; another service may already be responding on ${backendPaths.healthUrl}`
+      : existingDetail
+
+    processManager.markApiHealthy(false, detail)
+    return
+  }
+
   processManager.markApiHealthy(
     apiHealthy,
     apiHealthy ? 'api healthcheck passed' : `health polling timed out at ${backendPaths.healthUrl}`,
