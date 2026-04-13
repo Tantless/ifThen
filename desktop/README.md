@@ -66,6 +66,12 @@ npx electron .
 2. 终端 B：`npm run build:electron`
 3. 终端 B：设置 `IF_THEN_DESKTOP_RENDERER_URL` 后执行 `npx electron .`
 
+开发态 Electron 约定：
+
+- Electron `userData` 会单独落到 `%APPDATA%/if-then-desktop-dev`
+- 打包后的 release 继续使用正式 `userData` 目录，不与开发态混用
+- dev / release 都默认启用单实例锁；同一套实例重复打开时会回到已有窗口
+
 ## Windows 发布
 
 构建 Windows 可分发 release：
