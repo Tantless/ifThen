@@ -13,6 +13,7 @@ type ImportDialogSubmitPayload = {
 
 type ImportDialogProps = {
   open: boolean
+  canAutoAnalyze?: boolean
   pending?: boolean
   errorMessage?: string | null
   onClose: () => void
@@ -21,6 +22,7 @@ type ImportDialogProps = {
 
 export function ImportDialog({
   open,
+  canAutoAnalyze = true,
   pending = false,
   errorMessage,
   onClose,
@@ -39,6 +41,12 @@ export function ImportDialog({
       setOtherAvatarUrl(DEFAULT_OTHER_AVATAR_URL)
     }
   }, [open])
+
+  useEffect(() => {
+    if (!canAutoAnalyze && importMode === 'import_and_analyze') {
+      setImportMode('import_only')
+    }
+  }, [canAutoAnalyze, importMode])
 
   if (!open) {
     return null
@@ -115,12 +123,16 @@ export function ImportDialog({
               onChange={(event) => setImportMode(event.target.value as 'import_only' | 'import_and_analyze')}
             >
               <option value="import_only">只导入</option>
-              <option value="import_and_analyze">导入并分析</option>
+              <option value="import_and_analyze" disabled={!canAutoAnalyze}>
+                导入并分析
+              </option>
             </select>
           </label>
 
           <p className="desktop-modal__body desktop-modal__body--muted">
-            {importMode === 'import_and_analyze'
+            {!canAutoAnalyze
+              ? '请先在设置中完成分析模型配置，当前只能先导入聊天记录。'
+              : importMode === 'import_and_analyze'
               ? '导入后将自动进行分段、话题提取、人格分析等操作。'
               : '导入后仅展示聊天记录，你可以稍后手动触发分析。'}
           </p>

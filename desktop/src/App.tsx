@@ -18,7 +18,7 @@ import {
   MOCK_FILES_TAB_ITEMS,
 } from './frontui/mockState'
 import type { FrontChatMessage, FrontSidebarTab } from './frontui/types'
-import { decideAppShellState, resolveShellHydrationStatus } from './lib/bootstrap'
+import { decideAppShellState, hasModelSettings, resolveShellHydrationStatus } from './lib/bootstrap'
 import {
   createImportFileBlob,
   getBootLabel,
@@ -329,6 +329,7 @@ export default function App() {
           conversations: conversations ?? [],
         })
       : null
+  const analysisModelSettingsReady = hasModelSettings(settings ?? [])
 
   useEffect(() => {
     if (shellState?.showWelcome) {
@@ -1438,6 +1439,10 @@ export default function App() {
         throw new Error('请填写你的显示名')
       }
 
+      if (autoAnalyze && !analysisModelSettingsReady) {
+        throw new Error('请先在设置中填写分析模型配置，再使用导入并分析')
+      }
+
       const importFile = await readImportFile()
       if (!importFile) {
         throw new Error('当前桌面环境无法读取导出文件内容')
@@ -1509,6 +1514,12 @@ export default function App() {
 
   const handleStartAnalysis = async () => {
     if (selectedConversationId === null) {
+      return
+    }
+
+    if (!analysisModelSettingsReady) {
+      setSettingsError('请先在设置中填写分析模型配置，再开始分析')
+      setShowSettings(true)
       return
     }
 
@@ -1970,6 +1981,7 @@ export default function App() {
       />
       <ImportDialog
         open={showImportDialog}
+        canAutoAnalyze={analysisModelSettingsReady}
         pending={importPending}
         errorMessage={importError}
         onClose={() => setShowImportDialog(false)}
