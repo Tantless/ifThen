@@ -12,40 +12,11 @@
 
 > **如果那时，真的换了一种说法，一切会不会不同？**
 
-## 只启动后端
+## 聊天记录导出
 
-先确保你已经在项目根目录准备好了 `.venv`，并按需设置数据目录：
+推荐使用qce导出聊天记录
 
-```powershell
-cd D:\newProj
-$env:IF_THEN_DATA_DIR = "D:\newProj\.data"
-```
-
-终端 1 启动 API：
-
-```powershell
-cd D:\newProj
-.venv\Scripts\Activate.ps1
-$env:IF_THEN_DATA_DIR = "D:\newProj\.data"
-python scripts\run_api.py
-```
-
-终端 2 启动 worker：
-
-```powershell
-cd D:\newProj
-.venv\Scripts\Activate.ps1
-$env:IF_THEN_DATA_DIR = "D:\newProj\.data"
-python scripts\run_worker.py
-```
-
-健康检查：
-
-```powershell
-Invoke-RestMethod -Method Get -Uri "http://127.0.0.1:8000/health"
-```
-
-## 只启动 Electron，快速体验前端页面
+## 快速体验
 
 先确保根目录 `.venv` 已准备好，并且已经安装过桌面端依赖：
 
