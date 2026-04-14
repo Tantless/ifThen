@@ -7,7 +7,6 @@ type SettingsDrawerProps = {
   initialState: SettingsFormState
   pending?: boolean
   errorMessage?: string | null
-  onClose: () => void
   onSave: (state: SettingsFormState) => Promise<void> | void
 }
 
@@ -16,10 +15,13 @@ export function SettingsDrawer({
   initialState,
   pending = false,
   errorMessage,
-  onClose,
   onSave,
 }: SettingsDrawerProps) {
   const [formState, setFormState] = useState<SettingsFormState>(initialState)
+
+  const handleSubmit = async () => {
+    await onSave(formState)
+  }
 
   useEffect(() => {
     if (open) {
@@ -33,23 +35,30 @@ export function SettingsDrawer({
 
   return (
     <aside className="desktop-drawer" aria-label="模型设置">
-      <header className="desktop-drawer__header">
-        <div>
-          <p className="desktop-drawer__eyebrow">设置</p>
-          <h2 className="desktop-drawer__title">模型配置</h2>
-        </div>
-        <button type="button" className="desktop-drawer__button" onClick={onClose}>
-          关闭
-        </button>
-      </header>
-
       <form
         className="desktop-drawer__form"
         onSubmit={async (event) => {
           event.preventDefault()
-          await onSave(formState)
+          await handleSubmit()
         }}
       >
+        <header className="desktop-drawer__header">
+          <div>
+            <p className="desktop-drawer__eyebrow">设置</p>
+            <h2 className="desktop-drawer__title">模型配置</h2>
+          </div>
+          <button
+            type="button"
+            className="desktop-drawer__button desktop-drawer__button--primary"
+            disabled={pending}
+            onClick={() => {
+              void handleSubmit()
+            }}
+          >
+            {pending ? '保存中…' : '保存'}
+          </button>
+        </header>
+
         <label className="desktop-drawer__field">
           <span className="desktop-drawer__label">Base URL</span>
           <input
@@ -155,10 +164,6 @@ export function SettingsDrawer({
             {errorMessage}
           </p>
         ) : null}
-
-        <button type="submit" className="desktop-drawer__button desktop-drawer__button--primary" disabled={pending}>
-          {pending ? '保存中…' : '保存'}
-        </button>
       </form>
     </aside>
   )

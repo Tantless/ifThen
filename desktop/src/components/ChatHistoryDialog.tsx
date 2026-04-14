@@ -339,7 +339,7 @@ export function ChatHistoryDialog({
           <div className="chat-history-modal__main">
             <div className="chat-history-modal__toolbar">
               <label className="chat-history-modal__search" aria-label="搜索聊天记录">
-                <Search size={14} className="text-[#8c8c8c]" />
+                <Search size={14} className="text-[var(--if-text-tertiary)]" />
                 <input
                   type="text"
                   className="chat-history-modal__search-input"

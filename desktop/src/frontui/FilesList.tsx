@@ -17,10 +17,10 @@ type FilesListProps = {
 export function FilesList({ files, onSelectFile }: FilesListProps) {
   if (files.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-[#999]">
+      <div className="flex h-full flex-col items-center justify-center text-[var(--if-text-tertiary)]">
         <Folder size={64} className="mb-4 opacity-30" />
         <p className="text-sm">暂无文件</p>
-        <p className="text-xs mt-2">聊天记录中的文件会在此显示</p>
+        <p className="mt-2 text-xs">聊天记录中的文件会在此显示</p>
       </div>
     )
   }
@@ -32,18 +32,18 @@ export function FilesList({ files, onSelectFile }: FilesListProps) {
           key={file.id}
           type="button"
           onClick={() => onSelectFile(file.id)}
-          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#f5f5f5] transition-colors cursor-pointer border-b border-[#e5e5e5]"
+          className="flex w-full cursor-pointer items-center gap-3 border-b border-[color:var(--if-divider)] px-4 py-3 text-left transition-colors duration-150 hover:bg-white/36"
         >
-          <div className="w-10 h-10 flex items-center justify-center bg-[#f0f0f0] rounded-md flex-shrink-0">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[10px] border border-[color:var(--if-divider)] bg-white/72 text-[var(--if-text-secondary)]">
             {file.type === 'folder' ? (
-              <Folder size={24} className="text-[#666]" />
+              <Folder size={22} />
             ) : (
-              <FileText size={24} className="text-[#666]" />
+              <FileText size={22} />
             )}
           </div>
           <div className="flex-1 min-w-0 text-left">
-            <div className="text-sm font-medium text-[#333] truncate">{file.name}</div>
-            <div className="text-xs text-[#999] mt-1 flex gap-2">
+            <div className="truncate text-sm font-medium text-[var(--if-text-primary)]">{file.name}</div>
+            <div className="mt-1 flex gap-2 text-xs text-[var(--if-text-secondary)]">
               {file.size && <span>{file.size}</span>}
               {file.modifiedTime && <span>{file.modifiedTime}</span>}
             </div>

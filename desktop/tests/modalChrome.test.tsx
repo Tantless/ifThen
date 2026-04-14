@@ -54,13 +54,14 @@ describe('desktop modal chrome', () => {
           simulationTurnCount: 1,
           selfAvatarUrl: 'data:image/svg+xml;base64,self-avatar',
         }}
-        onClose={() => undefined}
         onSave={() => undefined}
       />,
     )
 
     expect(html).toContain('desktop-drawer')
     expect(html).toContain('desktop-drawer__header')
+    expect(html).toContain('>保存<')
+    expect(html).not.toContain('>关闭<')
     expect(html).not.toContain('我的头像')
   })
 

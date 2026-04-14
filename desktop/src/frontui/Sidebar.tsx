@@ -12,23 +12,44 @@ type FrontSidebarProps = {
 
 export function FrontSidebar({ activeTab, selfAvatarUrl, onOpenAvatarDialog, onTabChange, onOpenSettings }: FrontSidebarProps) {
   return (
-    <div className="w-[60px] h-full bg-[#2e2e2e] flex flex-col items-center py-6 select-none flex-shrink-0">
-      <button type="button" className="mb-6 cursor-pointer" onClick={onOpenAvatarDialog} aria-label="打开头像设置">
-        <img src={selfAvatarUrl} alt="当前用户头像" className="w-10 h-10 rounded-md object-cover" />
+    <div className="flex h-full w-[64px] flex-shrink-0 flex-col items-center border-r border-white/6 bg-[var(--if-bg-sidebar)] py-5 select-none">
+      <button
+        type="button"
+        className="mb-5 rounded-xl p-1 transition-colors duration-150 hover:bg-white/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(7,193,96,0.28)]"
+        onClick={onOpenAvatarDialog}
+        aria-label="打开头像设置"
+      >
+        <img src={selfAvatarUrl} alt="当前用户头像" className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10" />
       </button>
 
-      <div className="flex flex-col gap-6 flex-1 w-full items-center mt-2">
-        <button type="button" onClick={() => onTabChange('chat')} className="p-2 relative outline-none" aria-label="聊天">
+      <div className="mt-2 flex w-full flex-1 flex-col items-center gap-4">
+        <button
+          type="button"
+          onClick={() => onTabChange('chat')}
+          className={`relative rounded-xl p-2.5 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(7,193,96,0.28)] ${
+            activeTab === 'chat' ? 'bg-white/10' : 'hover:bg-white/6'
+          }`}
+          aria-label="聊天"
+        >
           <MessageSquare
             size={26}
-            className={activeTab === 'chat' ? 'text-[#07c160] fill-[#07c160]' : 'text-[#8c8c8c] hover:text-[#b0b0b0]'}
+            className={
+              activeTab === 'chat'
+                ? 'fill-[var(--if-accent)] text-[var(--if-accent)]'
+                : 'text-[#9e968d] hover:text-[#d6cfc6]'
+            }
           />
         </button>
       </div>
 
-      <div className="flex flex-col gap-4 items-center">
-        <button type="button" className="p-2 outline-none group" onClick={onOpenSettings} aria-label="设置">
-          <Settings size={22} className="text-[#8c8c8c] group-hover:text-[#b0b0b0]" />
+      <div className="flex flex-col items-center gap-4">
+        <button
+          type="button"
+          className="group rounded-xl p-2.5 outline-none transition-colors duration-150 hover:bg-white/6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(7,193,96,0.28)]"
+          onClick={onOpenSettings}
+          aria-label="设置"
+        >
+          <Settings size={22} className="text-[#9e968d] transition-colors duration-150 group-hover:text-[#d6cfc6]" />
         </button>
       </div>
     </div>

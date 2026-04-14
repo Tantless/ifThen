@@ -1968,7 +1968,6 @@ export default function App() {
         initialState={settingsFormState}
         pending={settingsSavePending}
         errorMessage={settingsError}
-        onClose={() => setShowSettings(false)}
         onSave={handleSaveSettings}
       />
       <SelfAvatarDialog

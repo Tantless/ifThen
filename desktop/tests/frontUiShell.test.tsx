@@ -326,9 +326,9 @@ describe('frontUI shell markup', () => {
     expect(html).toContain('desktop-shell-main')
     expect(html).not.toContain('max-w-[1200px]')
     expect(html).not.toContain('max-h-[800px]')
-    expect(html).toContain('bg-[#2e2e2e]')
+    expect(html).toContain('bg-[var(--if-bg-sidebar)]')
     expect(html).toContain('w-[280px]')
-    expect(html).toContain('w-[60px]')
+    expect(html).toContain('w-[64px]')
     expect(html).toContain('min-w-[400px]')
     expect(html).toContain('min-h-0')
     expect(html).toContain('overflow-hidden')
@@ -398,7 +398,7 @@ describe('frontUI shell markup', () => {
   it('renders the placeholder chat state without requiring extra placeholder data', () => {
     const html = renderToStaticMarkup(<FrontChatWindow state={{ mode: 'placeholder' }} onSendMessage={() => undefined} />)
 
-    expect(html).toContain('bg-[#f5f5f5]')
+    expect(html).toContain('bg-[var(--if-bg-panel)]')
     expect(html).toContain('选择一段对话开始聊天')
   })
 
@@ -861,9 +861,9 @@ describe('frontUI shell markup', () => {
     const originalBubble = container.querySelector('[data-chat-message-id="message-13"] [data-chat-bubble-tone]')
 
     expect(otherSimulationBubble?.getAttribute('data-chat-bubble-tone')).toBe('simulation-other')
-    expect(otherSimulationBubble?.className).toContain('bg-[#f8dce6]')
+    expect(otherSimulationBubble?.className).toContain('bg-[#f3e0e6]')
     expect(selfSimulationBubble?.getAttribute('data-chat-bubble-tone')).toBe('simulation-self')
-    expect(selfSimulationBubble?.className).toContain('bg-[#d9ecff]')
+    expect(selfSimulationBubble?.className).toContain('bg-[#d9e9f2]')
     expect(originalBubble?.getAttribute('data-chat-bubble-tone')).toBe('default')
     expect(originalBubble?.className).toContain('bg-white')
 

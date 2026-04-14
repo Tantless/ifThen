@@ -1262,6 +1262,53 @@ describe('App frontUI integration', () => {
     })
   })
 
+  it('点击设置右上角保存后会持久化配置并自动关闭抽屉', async () => {
+    mockedReadSettings.mockResolvedValue([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+      { setting_key: 'llm.simulation_base_url', setting_value: '', is_secret: false },
+      { setting_key: 'llm.simulation_api_key', setting_value: '', is_secret: true },
+      { setting_key: 'simulation.default_mode', setting_value: 'single_reply', is_secret: false },
+      { setting_key: 'simulation.default_turn_count', setting_value: '1', is_secret: false },
+    ])
+    mockedListConversations.mockResolvedValue([])
+    mockedWriteSetting.mockImplementation(async (payload) => payload)
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(8)
+
+    const openSettingsButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('配置模型') ?? false,
+    )
+    expect(openSettingsButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (openSettingsButton) {
+        getReactProps<{ onClick?: () => void }>(openSettingsButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    const saveButton = Array.from(container.querySelectorAll('button')).find((element) => element.textContent === '保存')
+    expect(saveButton).not.toBeUndefined()
+    expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent === '关闭')).toBe(false)
+
+    await act(async () => {
+      if (saveButton) {
+        await getReactProps<{ onClick?: () => Promise<void> | void }>(saveButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(6)
+
+    expect(mockedWriteSetting).toHaveBeenCalledTimes(9)
+    expect(container.querySelector('.desktop-drawer')).toBeNull()
+  })
+
   it('在缺少模型配置或会话时仍保留欢迎引导流程', async () => {
     mockedReadSettings.mockResolvedValue([])
     mockedListConversations.mockResolvedValue([])

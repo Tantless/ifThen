@@ -366,46 +366,50 @@ export function FrontChatWindow({
 
   if (state.mode === 'placeholder') {
     return (
-      <div className="flex-1 h-full bg-[#f5f5f5] flex items-center justify-center">
+      <div className="flex h-full flex-1 items-center justify-center bg-[var(--if-bg-panel)]">
         <div className="flex flex-col items-center gap-4 text-center">
           <MonitorLogo />
-          <p className="text-[#b4b4b4] text-[14px]">选择一段对话开始聊天</p>
+          <p className="text-[14px] text-[var(--if-text-tertiary)]">选择一段对话开始聊天</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-0 min-w-[400px] flex-1 flex-col overflow-hidden bg-[#f5f5f5]">
-      <div className="border-b border-[#e5e5e5] flex-shrink-0 bg-[#f5f5f5]">
-        <div className="h-[60px] px-5 flex items-center justify-between">
-          <h2 className="text-[20px] font-medium text-[#111]">{state.title}</h2>
+    <div className="flex min-h-0 min-w-[400px] flex-1 flex-col overflow-hidden bg-[var(--if-bg-panel)]">
+      <div className="flex-shrink-0 border-b border-[color:var(--if-divider)] bg-[var(--if-bg-window)]">
+        <div className="flex h-14 items-center justify-between px-5">
+          <h2 className="text-[16px] font-semibold text-[var(--if-text-primary)]">{state.title}</h2>
           <div className="flex items-center gap-2">
             {showInspectorButton && onToggleInspector ? (
               <button
                 type="button"
-                className="rounded bg-white px-3 py-1.5 text-[13px] text-[#555] shadow-sm hover:bg-[#ececec]"
+                className="rounded-[8px] border border-[color:var(--if-divider-strong)] bg-white/72 px-3 py-1.5 text-[13px] text-[var(--if-text-secondary)] transition-colors duration-150 hover:bg-white hover:text-[var(--if-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(7,193,96,0.18)]"
                 onClick={onToggleInspector}
               >
                 分析
               </button>
             ) : null}
-            <button type="button" className="p-1 hover:bg-[#e5e5e5] rounded" aria-label="更多操作">
-              <MoreHorizontal size={20} className="text-[#666]" />
+            <button
+              type="button"
+              className="rounded-[8px] border border-transparent p-1.5 text-[var(--if-text-secondary)] transition-colors duration-150 hover:border-[color:var(--if-divider)] hover:bg-white/72 hover:text-[var(--if-text-primary)]"
+              aria-label="更多操作"
+            >
+              <MoreHorizontal size={18} />
             </button>
           </div>
         </div>
         {analysisProgress ? <HeaderProgressBar progress={analysisProgress} /> : null}
         {showStartAnalysisButton && onStartAnalysis ? (
-          <div className="border-t border-[#ebebeb] bg-[#f7f9fa] px-5 py-3">
+          <div className="border-t border-[color:var(--if-divider)] bg-[var(--if-bg-panel)] px-5 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[13px] font-medium text-[#333]">聊天记录已导入</p>
-                <p className="mt-1 text-[12px] text-[#888]">开始分析以提取话题、人格特征和关系快照</p>
+                <p className="text-[13px] font-medium text-[var(--if-text-primary)]">聊天记录已导入</p>
+                <p className="mt-1 text-[12px] text-[var(--if-text-secondary)]">开始分析以提取话题、人格特征和关系快照</p>
               </div>
               <button
                 type="button"
-                className="rounded-md bg-[#07c160] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#06ad56] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-[8px] border border-[rgba(7,193,96,0.2)] bg-[var(--if-accent)] px-4 py-2 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-[var(--if-accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={onStartAnalysis}
                 disabled={startAnalysisPending}
               >
@@ -415,11 +419,11 @@ export function FrontChatWindow({
           </div>
         ) : null}
         {rewriteState?.state === 'completed' ? (
-          <div className="border-t border-[#ebebeb] bg-[#f2f9f0] px-5 py-3">
+          <div className="border-t border-[color:var(--if-divider)] bg-[var(--if-accent-softer)] px-5 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-[#07c160]" />
+                  <span className="h-2 w-2 rounded-full bg-[var(--if-accent)]" />
                   <p className="text-[13px] font-medium text-[#245c33]">正在查看推演结果</p>
                 </div>
                 <p className="mt-1 text-[12px] text-[#5f7a67]">原始历史已保留，可随时切回</p>
@@ -427,14 +431,14 @@ export function FrontChatWindow({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="rounded-md border border-[#cfe6d4] bg-white px-3 py-1.5 text-[12px] text-[#355e45] transition-colors hover:bg-[#f7fbf7]"
+                  className="rounded-[8px] border border-[color:var(--if-divider)] bg-white/92 px-3 py-1.5 text-[12px] text-[var(--if-text-secondary)] transition-colors duration-150 hover:bg-white hover:text-[var(--if-text-primary)]"
                   onClick={onResetRewriteView}
                 >
                   返回原始历史
                 </button>
                 <button
                   type="button"
-                  className="rounded-md border border-[#b7ddc1] bg-[#e6f5e9] px-3 py-1.5 text-[12px] text-[#245c33] transition-colors hover:bg-[#dbf0df]"
+                  className="rounded-[8px] border border-[rgba(7,193,96,0.2)] bg-[var(--if-accent)] px-3 py-1.5 text-[12px] text-white transition-colors duration-150 hover:bg-[var(--if-accent-hover)]"
                   onClick={onContinueRewrite}
                 >
                   继续改写
@@ -451,8 +455,8 @@ export function FrontChatWindow({
             <span
               className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-[11px] font-medium tracking-[0.01em] shadow-[0_6px_18px_rgba(0,0,0,0.16)] backdrop-blur-md transition-all duration-300 ${
                 historyLoadHint === 'loading'
-                  ? 'border-white/12 bg-[rgba(36,36,36,0.78)] text-white'
-                  : 'border-black/6 bg-[rgba(44,44,44,0.68)] text-white/92'
+                  ? 'border-white/10 bg-[rgba(54,49,44,0.88)] text-white'
+                  : 'border-white/10 bg-[rgba(72,66,60,0.78)] text-white/92'
               }`}
             >
               {historyLoadHint === 'loading' ? (
@@ -469,12 +473,12 @@ export function FrontChatWindow({
 
         {contextMenu ? (
           <div
-            className="fixed z-30 min-w-[112px] rounded-xl border border-black/8 bg-white/96 p-1 shadow-[0_10px_28px_rgba(0,0,0,0.18)] backdrop-blur"
+            className="fixed z-30 min-w-[112px] rounded-[10px] border border-[color:var(--if-divider-strong)] bg-white/96 p-1 shadow-[var(--if-shadow-popover)] backdrop-blur"
             style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           >
             <button
               type="button"
-              className="w-full rounded-lg px-3 py-2 text-left text-[13px] text-[#222] hover:bg-[#f0f0f0]"
+              className="w-full rounded-[8px] px-3 py-2 text-left text-[13px] text-[var(--if-text-primary)] transition-colors duration-150 hover:bg-[var(--if-bg-panel)]"
               onClick={() => {
                 onStartRewrite?.(contextMenu.messageId)
                 setContextMenu(null)
@@ -491,15 +495,15 @@ export function FrontChatWindow({
             className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center px-6"
           >
             <div className="relative w-full max-w-[320px]">
-              <div className="absolute inset-0 rounded-3xl bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.82),rgba(255,255,255,0.18)_72%,rgba(255,255,255,0))] blur-xl" />
-              <div className="relative rounded-2xl border border-white/55 bg-[rgba(255,255,255,0.88)] px-4 py-3 text-center shadow-[0_14px_40px_rgba(0,0,0,0.12)] backdrop-blur-md">
+              <div className="absolute inset-0 rounded-[24px] bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.68),rgba(255,255,255,0.12)_72%,rgba(255,255,255,0))] blur-xl" />
+              <div className="relative rounded-[16px] border border-[color:var(--if-divider-strong)] bg-[rgba(255,255,255,0.92)] px-4 py-3 text-center shadow-[0_14px_40px_rgba(0,0,0,0.12)] backdrop-blur-md">
                 <div className="mx-auto mb-2 flex w-fit items-center gap-1.5" aria-hidden="true">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#07c160] animate-pulse" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#07c160]/75 animate-pulse [animation-delay:120ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#07c160]/55 animate-pulse [animation-delay:240ms]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--if-accent)] animate-pulse" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-[rgba(7,193,96,0.78)] animate-pulse [animation-delay:120ms]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-[rgba(7,193,96,0.56)] animate-pulse [animation-delay:240ms]" />
                 </div>
-                <p className="text-[14px] font-medium text-[#2a2a2a]">正在推演……</p>
-                <p className="mt-1 text-[12px] text-[#6f6f6f]">{rewriteState.stageLabel ?? '正在等待推演结果返回'}</p>
+                <p className="text-[14px] font-medium text-[var(--if-text-primary)]">正在推演……</p>
+                <p className="mt-1 text-[12px] text-[var(--if-text-secondary)]">{rewriteState.stageLabel ?? '正在等待推演结果返回'}</p>
               </div>
             </div>
           </div>
@@ -515,7 +519,7 @@ export function FrontChatWindow({
         <div
           ref={scrollContainerRef}
           data-testid="chat-message-scroll"
-          className="h-full min-h-0 overflow-y-auto p-5 space-y-4 custom-scrollbar"
+          className="h-full min-h-0 space-y-4 overflow-y-auto bg-[var(--if-bg-panel)] p-5 custom-scrollbar"
           onScroll={() => {
             void handleScroll()
           }}
@@ -530,21 +534,21 @@ export function FrontChatWindow({
               (rewriteState.state === 'editing' || rewriteState.state === 'pending' || rewriteState.state === 'completed')
             const bubbleClass =
               bubbleTone === 'rewrite-target'
-                ? 'rewrite-target rounded-[8px] bg-[linear-gradient(135deg,#dff6ff_0%,#eef4ff_48%,#fdfcff_100%)] text-black ring-1 ring-[#8fd3ff]/80 shadow-[0_10px_28px_rgba(92,173,255,0.22)]'
+                ? 'rewrite-target rounded-[10px] border border-[#c9dce8] bg-[linear-gradient(135deg,#f8fbff_0%,#eef6fc_52%,#fcfaf6_100%)] text-[var(--if-text-primary)] shadow-[0_12px_24px_rgba(73,61,49,0.08)]'
                 : bubbleTone === 'simulation-self'
-                  ? 'rounded-[8px] bg-[#d9ecff] text-black'
+                  ? 'rounded-[10px] border border-[#c9deeb] bg-[#d9e9f2] text-[var(--if-text-primary)]'
                   : bubbleTone === 'simulation-other'
-                    ? 'rounded-[8px] bg-[#f8dce6] text-black'
+                    ? 'rounded-[10px] border border-[#ead1da] bg-[#f3e0e6] text-[var(--if-text-primary)]'
                     : isSelf
-                      ? 'rounded-[8px] bg-[#95ec69] text-black'
-                      : 'rounded-[8px] bg-white text-black'
+                      ? 'rounded-[10px] border border-[#c8deb9] bg-[#d8ebc8] text-[var(--if-text-primary)]'
+                      : 'rounded-[10px] border border-[color:var(--if-divider)] bg-white text-[var(--if-text-primary)]'
             const bubbleArrowClass =
               bubbleTone === 'simulation-self'
-                  ? 'right-[-12px] border-l-[#d9ecff]'
+                  ? 'right-[-12px] border-l-[#d9e9f2]'
                   : bubbleTone === 'simulation-other'
-                    ? 'left-[-12px] border-r-[#f8dce6]'
+                    ? 'left-[-12px] border-r-[#f3e0e6]'
                     : isSelf
-                      ? 'right-[-12px] border-l-[#95ec69]'
+                      ? 'right-[-12px] border-l-[#d8ebc8]'
                       : 'left-[-12px] border-r-white'
 
             return (
@@ -559,13 +563,13 @@ export function FrontChatWindow({
               >
                 {showTime ? (
                   <div className="text-center my-2">
-                    <span className="text-[12px] text-[#b4b4b4]">{message.timestampLabel}</span>
+                    <span className="text-[12px] text-[var(--if-text-tertiary)]">{message.timestampLabel}</span>
                   </div>
                 ) : null}
 
                 <div className={`flex w-full ${isSelf ? 'justify-end' : 'justify-start'}`}>
                   {!isSelf ? (
-                    <img src={message.avatarUrl} alt={message.speakerName} className="mr-3 h-9 w-9 flex-shrink-0 rounded-md object-cover" />
+                    <img src={message.avatarUrl} alt={message.speakerName} className="mr-3 h-9 w-9 flex-shrink-0 rounded-[10px] object-cover ring-1 ring-black/4" />
                   ) : null}
 
                   <div
@@ -589,7 +593,7 @@ export function FrontChatWindow({
                     }}
                   >
                     {isRewriteTarget && rewriteState?.state === 'editing' ? (
-                      <div className="rounded-xl rounded-tr-none border border-[#83d95b] bg-[#f7fff1] px-3 py-2 shadow-sm">
+                      <div className="rounded-[12px] border border-[rgba(7,193,96,0.28)] bg-white/92 px-3 py-2 shadow-[0_10px_22px_rgba(73,61,49,0.08)]">
                         <textarea
                           ref={inlineEditorRef}
                           value={rewriteState.draftText}
@@ -598,20 +602,20 @@ export function FrontChatWindow({
                             onSubmitRewrite?.()
                           }}
                           onKeyDown={handleRewriteEditorKeyDown}
-                          className="min-h-[56px] w-[min(420px,60vw)] resize-none bg-transparent text-[14px] leading-relaxed text-[#111] outline-none"
+                          className="min-h-[56px] w-[min(420px,60vw)] resize-none bg-transparent text-[14px] leading-relaxed text-[var(--if-text-primary)] outline-none"
                         />
-                        <div className="mt-2 flex items-center justify-between text-[11px] text-[#6a6a6a]">
+                        <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--if-text-secondary)]">
                           <span>回车保存并推演 · Esc 取消</span>
                           <span>点击空白处也会保存</span>
                         </div>
                         {rewriteState.errorMessage ? (
-                          <p className="mt-2 text-[12px] text-[#d04b57]">{rewriteState.errorMessage}</p>
+                          <p className="mt-2 text-[12px] text-[var(--if-danger)]">{rewriteState.errorMessage}</p>
                         ) : null}
                       </div>
                     ) : (
                       <div
                         data-chat-bubble-tone={bubbleTone}
-                        className={`relative break-words px-3 py-2 text-[14px] leading-relaxed shadow-sm ${bubbleClass}`}
+                        className={`relative break-words px-3 py-2 text-[14px] leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${bubbleClass}`}
                         style={{ wordBreak: 'break-word' }}
                       >
                         {bubbleTone !== 'rewrite-target' ? (
@@ -625,7 +629,7 @@ export function FrontChatWindow({
                   </div>
 
                   {isSelf ? (
-                    <img src={message.avatarUrl} alt={message.speakerName} className="ml-3 h-9 w-9 flex-shrink-0 rounded-md object-cover" />
+                    <img src={message.avatarUrl} alt={message.speakerName} className="ml-3 h-9 w-9 flex-shrink-0 rounded-[10px] object-cover ring-1 ring-black/4" />
                   ) : null}
                 </div>
               </div>
@@ -636,29 +640,49 @@ export function FrontChatWindow({
         </div>
       </div>
 
-      <div className="h-[160px] border-t border-[#e5e5e5] bg-[#f5f5f5] flex flex-col flex-shrink-0">
-        <div className="h-10 px-4 flex items-center justify-between text-[#666]">
+      <div className="flex h-[164px] flex-shrink-0 flex-col border-t border-[color:var(--if-divider)] bg-[var(--if-bg-window)]">
+        <div className="flex h-10 items-center justify-between px-4 text-[var(--if-text-secondary)]">
           <div className="flex items-center gap-4">
-            <button type="button" className="hover:text-[#333] transition-colors" aria-label="表情">
+            <button
+              type="button"
+              className="rounded-[8px] p-1 transition-colors duration-150 hover:bg-white/72 hover:text-[var(--if-text-primary)]"
+              aria-label="表情"
+            >
               <Smile size={20} />
             </button>
-            <button type="button" className="hover:text-[#333] transition-colors" aria-label="文件">
+            <button
+              type="button"
+              className="rounded-[8px] p-1 transition-colors duration-150 hover:bg-white/72 hover:text-[var(--if-text-primary)]"
+              aria-label="文件"
+            >
               <Folder size={20} />
             </button>
-            <button type="button" className="hover:text-[#333] transition-colors" aria-label="截图">
+            <button
+              type="button"
+              className="rounded-[8px] p-1 transition-colors duration-150 hover:bg-white/72 hover:text-[var(--if-text-primary)]"
+              aria-label="截图"
+            >
               <Scissors size={20} />
             </button>
-            <button type="button" className="hover:text-[#333] transition-colors" aria-label="消息">
+            <button
+              type="button"
+              className="rounded-[8px] p-1 transition-colors duration-150 hover:bg-white/72 hover:text-[var(--if-text-primary)]"
+              aria-label="消息"
+            >
               <MessageSquare size={20} />
             </button>
-            <button type="button" className="hover:text-[#333] transition-colors" aria-label="通话">
+            <button
+              type="button"
+              className="rounded-[8px] p-1 transition-colors duration-150 hover:bg-white/72 hover:text-[var(--if-text-primary)]"
+              aria-label="通话"
+            >
               <Phone size={20} />
             </button>
           </div>
           {showChatHistoryButton && onOpenChatHistory ? (
             <button
               type="button"
-              className="hover:text-[#333] transition-colors"
+              className="rounded-[8px] p-1 transition-colors duration-150 hover:bg-white/72 hover:text-[var(--if-text-primary)]"
               aria-label="聊天记录"
               title="聊天记录"
               onClick={onOpenChatHistory}
@@ -673,16 +697,16 @@ export function FrontChatWindow({
             value={inputText}
             onChange={(event) => setInputText(event.target.value)}
             onKeyDown={handleComposerKeyDown}
-            className="w-full h-full bg-transparent border-none outline-none resize-none text-[14px] text-[#333] custom-scrollbar"
+            className="h-full w-full resize-none border-none bg-transparent text-[14px] text-[var(--if-text-primary)] outline-none custom-scrollbar placeholder:text-[var(--if-text-tertiary)]"
             placeholder="输入消息…"
           />
         </div>
 
-        <div className="px-4 pb-3 flex justify-end">
+        <div className="flex justify-end px-4 pb-3">
           <button
             type="button"
             onClick={handleSend}
-            className="bg-[#e9e9e9] hover:bg-[#d2d2d2] text-[#07c160] px-6 py-1.5 rounded text-[14px] transition-colors font-medium"
+            className="rounded-[8px] border border-[rgba(7,193,96,0.18)] bg-[var(--if-accent)] px-5 py-1.5 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-[var(--if-accent-hover)]"
           >
             发送(S)
           </button>
@@ -693,16 +717,16 @@ export function FrontChatWindow({
 }
 
 function HeaderProgressBar({ progress }: { progress: FrontAnalysisProgress }) {
-  const fillClass = progress.tone === 'failed' ? 'bg-[#e34d59]' : 'bg-[#07c160]'
-  const textClass = progress.tone === 'failed' ? 'text-[#c1535d]' : 'text-[#5f6b66]'
+  const fillClass = progress.tone === 'failed' ? 'bg-[var(--if-danger)]' : 'bg-[var(--if-accent)]'
+  const textClass = progress.tone === 'failed' ? 'text-[var(--if-danger)]' : 'text-[var(--if-text-secondary)]'
 
   return (
-    <div className="front-progress border-t border-[#ebebeb] px-5 py-3">
+    <div className="front-progress border-t border-[color:var(--if-divider)] px-5 py-3">
       <div className={`front-progress__meta mb-2 flex items-center justify-between text-[12px] ${textClass}`}>
         <span className="truncate font-medium">{progress.label}</span>
         <span className="ml-3 whitespace-nowrap">{progress.percent}%</span>
       </div>
-      <div className="front-progress__track h-[6px] overflow-hidden rounded-full bg-[#dfdfdf]">
+      <div className="front-progress__track h-[5px] overflow-hidden rounded-full bg-[rgba(94,84,72,0.14)]">
         <div
           className={`front-progress__fill h-full rounded-full transition-all duration-300 ${fillClass}`}
           style={{ width: `${progress.percent}%` }}
@@ -717,13 +741,13 @@ function MonitorLogo() {
     <svg width="120" height="120" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         d="M4 6C4 4.89543 4.89543 4 6 4H18C19.1046 4 20 4.89543 20 6V14C20 15.1046 19.1046 16 18 16H6C4.89543 16 4 15.1046 4 14V6Z"
-        stroke="#e0e0e0"
+        stroke="#c6beb5"
         strokeWidth="1"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path d="M8 20H16" stroke="#e0e0e0" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M12 16V20" stroke="#e0e0e0" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 20H16" stroke="#c6beb5" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 16V20" stroke="#c6beb5" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

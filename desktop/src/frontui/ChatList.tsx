@@ -42,37 +42,37 @@ export function FrontChatList({
   }, [contextMenu])
 
   return (
-    <div className="w-[280px] h-full bg-[#e6e5e5] border-r border-[#d6d6d6] flex flex-col flex-shrink-0 select-none">
-      <div className="h-[60px] px-3 flex items-center gap-2 pt-2 bg-[#f7f7f7] border-b border-[#e5e5e5] shrink-0">
-        <div className="flex-1 h-8 bg-[#e2e2e2] rounded flex items-center px-2">
-          <Search size={14} className="text-[#8c8c8c] mr-1" />
+    <div className="flex h-full w-[280px] flex-shrink-0 flex-col border-r border-[color:var(--if-divider)] bg-[var(--if-bg-secondary)] select-none">
+      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-[color:var(--if-divider)] bg-[var(--if-bg-panel)] px-3">
+        <div className="flex h-8 flex-1 items-center rounded-[8px] border border-[color:var(--if-divider)] bg-white/72 px-2 text-[var(--if-text-secondary)]">
+          <Search size={14} className="mr-1 text-[var(--if-text-tertiary)]" />
           <input
             type="text"
             placeholder="搜索"
-            className="bg-transparent border-none outline-none text-sm w-full placeholder:text-[#8c8c8c] text-[#333]"
+            className="w-full border-none bg-transparent text-[13px] text-[var(--if-text-primary)] outline-none placeholder:text-[var(--if-text-tertiary)]"
             value={searchQuery}
             onChange={(event) => onSearchChange(event.target.value)}
           />
         </div>
         <button
           type="button"
-          className="w-8 h-8 bg-[#e2e2e2] rounded flex items-center justify-center hover:bg-[#d1d1d1] transition-colors"
+          className="flex h-8 w-8 items-center justify-center rounded-[8px] border border-[color:var(--if-divider)] bg-white/72 text-[var(--if-text-secondary)] transition-colors duration-150 hover:bg-white hover:text-[var(--if-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(7,193,96,0.18)]"
           onClick={onOpenImport}
           aria-label="导入聊天记录"
         >
-          <Plus size={18} className="text-[#666]" />
+          <Plus size={16} />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         {contextMenu ? (
           <div
-            className="fixed z-30 min-w-[120px] rounded-xl border border-black/8 bg-white/96 p-1 shadow-[0_10px_28px_rgba(0,0,0,0.18)] backdrop-blur"
+            className="fixed z-30 min-w-[132px] rounded-[10px] border border-[color:var(--if-divider-strong)] bg-white/96 p-1 shadow-[var(--if-shadow-popover)] backdrop-blur"
             style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           >
             <button
               type="button"
-              className="w-full rounded-lg px-3 py-2 text-left text-[13px] text-[#b42318] hover:bg-[#fef3f2] disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-[8px] px-3 py-2 text-left text-[13px] text-[var(--if-danger)] transition-colors duration-150 hover:bg-[var(--if-danger-soft)] disabled:cursor-not-allowed disabled:opacity-60"
               disabled={deletingConversationId === contextMenu.conversationId}
               onClick={async () => {
                 setDeletingConversationId(contextMenu.conversationId)
@@ -111,24 +111,26 @@ export function FrontChatList({
                   y: event.clientY,
                 })
               }}
-              className={`w-full text-left flex items-center p-3 cursor-pointer ${
-                isActive ? 'bg-[#c6c5c4]' : 'hover:bg-[#d8d8d8]'
+              className={`flex w-full items-center border-l-2 px-3 py-3 text-left transition-colors duration-150 cursor-pointer ${
+                isActive
+                  ? 'border-l-[var(--if-accent)] bg-white/60'
+                  : 'border-l-transparent border-b border-[color:rgba(94,84,72,0.06)] hover:bg-white/36'
               }`}
             >
               <div className="relative">
-                <img src={item.avatarUrl} alt={item.displayName} className="w-10 h-10 rounded-md object-cover" />
+                <img src={item.avatarUrl} alt={item.displayName} className="h-10 w-10 rounded-[10px] object-cover ring-1 ring-black/4" />
                 {item.unreadCount > 0 ? (
-                  <div className="absolute -top-1.5 -right-1.5 bg-[#f43530] text-white text-[10px] w-[18px] h-[18px] rounded-full flex items-center justify-center font-semibold">
+                  <div className="absolute -right-1.5 -top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#d04b57] text-[10px] font-semibold text-white">
                     {item.unreadCount}
                   </div>
                 ) : null}
               </div>
               <div className="ml-3 flex-1 min-w-0">
                 <div className="flex justify-between items-baseline mb-1">
-                  <h3 className="text-[14px] text-[#111] font-normal truncate">{item.displayName}</h3>
-                  <span className="text-[12px] text-[#999] whitespace-nowrap ml-2">{item.timestampLabel}</span>
+                  <h3 className="truncate text-[14px] font-medium text-[var(--if-text-primary)]">{item.displayName}</h3>
+                  <span className="ml-2 whitespace-nowrap text-[11px] text-[var(--if-text-tertiary)]">{item.timestampLabel}</span>
                 </div>
-                <p className="text-[12px] text-[#999] truncate w-full">{item.previewText}</p>
+                <p className="w-full truncate text-[12px] text-[var(--if-text-secondary)]">{item.previewText}</p>
                 {item.progress ? <ProgressBar progress={item.progress} compact /> : null}
               </div>
             </button>
@@ -141,8 +143,8 @@ export function FrontChatList({
 
 function ProgressBar({ progress, compact = false }: { progress: FrontAnalysisProgress; compact?: boolean }) {
   const trackClass = compact ? 'mt-2' : 'mt-3'
-  const fillClass = progress.tone === 'failed' ? 'bg-[#e34d59]' : 'bg-[#07c160]'
-  const textClass = progress.tone === 'failed' ? 'text-[#c1535d]' : 'text-[#5f6b66]'
+  const fillClass = progress.tone === 'failed' ? 'bg-[var(--if-danger)]' : 'bg-[var(--if-accent)]'
+  const textClass = progress.tone === 'failed' ? 'text-[var(--if-danger)]' : 'text-[var(--if-text-secondary)]'
 
   return (
     <div className={`front-progress ${trackClass}`}>
@@ -150,7 +152,7 @@ function ProgressBar({ progress, compact = false }: { progress: FrontAnalysisPro
         <span className="truncate">{progress.label}</span>
         <span className="ml-2 whitespace-nowrap">{progress.percent}%</span>
       </div>
-      <div className="front-progress__track h-[3px] overflow-hidden rounded-full bg-[#d8d8d8]">
+      <div className="front-progress__track h-[3px] overflow-hidden rounded-full bg-[rgba(94,84,72,0.14)]">
         <div
           className={`front-progress__fill h-full rounded-full transition-all duration-300 ${fillClass}`}
           style={{ width: `${progress.percent}%` }}
