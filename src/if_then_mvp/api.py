@@ -62,6 +62,7 @@ DESKTOP_RENDERER_ORIGINS = [
     "http://127.0.0.1:5173",
     "null",
 ]
+ANALYSIS_SETTINGS_MISSING_DETAIL = "Analysis model settings are incomplete"
 
 
 def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
@@ -143,6 +144,8 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             if batch is None:
                 raise HTTPException(status_code=400, detail="No import batch found for this conversation")
 
+            _require_analysis_model_settings(session)
+
             job = AnalysisJob(
                 conversation_id=conversation_id,
                 job_type="full_analysis",
@@ -162,6 +165,8 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
     def rerun_analysis(conversation_id: int) -> JobRead:
         with session_scope() as session:
             _require_conversation(session, conversation_id)
+            _validate_rerun_analysis_preconditions(session, conversation_id)
+            _require_analysis_model_settings(session)
             try:
                 job = queue_rerun_analysis(session, conversation_id=conversation_id)
             except ValueError as exc:
@@ -442,6 +447,10 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
         destination = uploads_dir / _generate_storage_name()
         source_file_name = file.filename or "qq_export.txt"
 
+        with session_scope() as session:
+            if auto_analyze:
+                _require_analysis_model_settings(session)
+
         try:
             destination.write_bytes(raw_bytes)
 
@@ -515,6 +524,35 @@ def _remove_managed_file_if_present(path: Path, *, managed_root: Path) -> None:
         return
 
     _remove_file_if_present(resolved_path)
+
+
+def _require_analysis_model_settings(session) -> None:
+    settings_map = load_runtime_settings_map(session)
+    required_keys = ("llm.base_url", "llm.api_key", "llm.chat_model")
+
+    if not all(str(settings_map.get(key, "")).strip() for key in required_keys):
+        raise HTTPException(status_code=400, detail=ANALYSIS_SETTINGS_MISSING_DETAIL)
+
+
+def _validate_rerun_analysis_preconditions(session, conversation_id: int) -> None:
+    active_job = session.execute(
+        select(AnalysisJob).where(
+            AnalysisJob.conversation_id == conversation_id,
+            AnalysisJob.job_type == "full_analysis",
+            AnalysisJob.status.in_(("queued", "running")),
+        )
+    ).scalar_one_or_none()
+    if active_job is not None:
+        raise HTTPException(status_code=409, detail="Analysis already queued or running")
+
+    latest_batch = session.execute(
+        select(ImportBatch)
+        .where(ImportBatch.conversation_id == conversation_id)
+        .order_by(ImportBatch.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if latest_batch is None:
+        raise HTTPException(status_code=400, detail="Conversation has no import batch")
 
 
 def _require_conversation(session, conversation_id: int) -> Conversation:

@@ -29,6 +29,16 @@ describe('desktop modal chrome', () => {
     expect(importDialog).toContain('desktop-modal__panel')
   })
 
+  it('keeps import-only as the only actionable mode until analysis model settings are configured', () => {
+    const html = renderToStaticMarkup(
+      <ImportDialog open canAutoAnalyze={false} onClose={() => undefined} onSubmit={() => undefined} />,
+    )
+
+    expect(html).toContain('value="import_only"')
+    expect(html).toContain('value="import_and_analyze" disabled=""')
+    expect(html).toContain('请先在设置中完成分析模型配置')
+  })
+
   it('renders settings inside a dedicated desktop drawer shell', () => {
     const html = renderToStaticMarkup(
       <SettingsDrawer

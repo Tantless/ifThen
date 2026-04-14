@@ -1,3 +1,5 @@
+import { appendFileSync, mkdirSync } from 'node:fs'
+import path from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import type { BackendLaunchSpec, ManagedServiceState, ServiceState } from './contracts.js'
 
@@ -57,6 +59,8 @@ export function toManagedServiceState(input: {
 }
 
 export class BackendProcessManager {
+  constructor(private readonly logsDir?: string) {}
+
   private apiProcess: ChildProcess | null = null
   private workerProcess: ChildProcess | null = null
 
@@ -112,6 +116,7 @@ export class BackendProcessManager {
         this.apiProcess = null
       },
     )
+    this.attachProcessLogs(this.apiProcess, 'api')
 
     return this.apiProcess
   }
@@ -138,6 +143,7 @@ export class BackendProcessManager {
         this.workerProcess = null
       },
     )
+    this.attachProcessLogs(this.workerProcess, 'worker')
 
     return this.workerProcess
   }
@@ -162,5 +168,22 @@ export class BackendProcessManager {
     this.workerProcess = null
     this.apiState = { running: false, healthy: false }
     this.workerState = { running: false, healthy: false }
+  }
+
+  private attachProcessLogs(processRef: ChildProcess, serviceName: 'api' | 'worker') {
+    if (!this.logsDir) {
+      return
+    }
+
+    const normalizedLogsDir = path.normalize(this.logsDir)
+    mkdirSync(normalizedLogsDir, { recursive: true })
+    const logFilePath = path.join(normalizedLogsDir, `${serviceName}.log`)
+    const appendChunk = (streamName: 'stdout' | 'stderr') => (chunk: string | Buffer) => {
+      const payload = chunk instanceof Buffer ? chunk.toString('utf8') : String(chunk)
+      appendFileSync(logFilePath, `[${new Date().toISOString()}] [${streamName}] ${payload}`, 'utf8')
+    }
+
+    processRef.stdout?.on('data', appendChunk('stdout'))
+    processRef.stderr?.on('data', appendChunk('stderr'))
   }
 }

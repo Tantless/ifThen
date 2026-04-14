@@ -1,18 +1,101 @@
 import { app, BrowserWindow, Menu } from 'electron'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { waitForHealth } from './backend/health.js'
-import { buildPythonLaunchSpec, getDesktopBackendPaths, resolveDesktopRepoRoot } from './backend/paths.js'
+import { buildPythonLaunchSpec, getDesktopBackendPaths } from './backend/paths.js'
 import { BackendProcessManager } from './backend/processManager.js'
 import { registerDesktopIpc } from './ipc.js'
 
-const processManager = new BackendProcessManager()
-const repoRoot = resolveDesktopRepoRoot(fileURLToPath(import.meta.url))
-const backendPaths = getDesktopBackendPaths(repoRoot)
+type DesktopAppBootstrapConfig = {
+  hasSingleInstanceLock: boolean
+  userDataDir: string
+}
 
-async function bootstrapBackend() {
-  processManager.startApi(buildPythonLaunchSpec('api', repoRoot))
+let cachedProcessManager: BackendProcessManager | null = null
+let cachedBackendPaths: ReturnType<typeof getDesktopBackendPaths> | null = null
+let mainWindow: BrowserWindow | null = null
+
+function resolveDesktopUserDataDir(): string {
+  if (app.isPackaged) {
+    return app.getPath('userData')
+  }
+
+  return path.join(app.getPath('appData'), `${app.getName()}-dev`)
+}
+
+export function configureDesktopApp(): DesktopAppBootstrapConfig {
+  const userDataDir = resolveDesktopUserDataDir()
+
+  if (!app.isPackaged && userDataDir !== app.getPath('userData')) {
+    app.setPath('userData', userDataDir)
+  }
+
+  const hasSingleInstanceLock = app.requestSingleInstanceLock()
+
+  if (!hasSingleInstanceLock) {
+    app.quit()
+  }
+
+  return {
+    hasSingleInstanceLock,
+    userDataDir,
+  }
+}
+
+function focusMainWindow() {
+  if (!mainWindow) {
+    return
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  }
+
+  mainWindow.focus()
+}
+
+const desktopAppBootstrapConfig = configureDesktopApp()
+
+function getDesktopRuntime() {
+  if (cachedBackendPaths === null) {
+    const entryFile = fileURLToPath(import.meta.url)
+
+    cachedBackendPaths = getDesktopBackendPaths({
+      entryFile,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      userDataDir: desktopAppBootstrapConfig.userDataDir,
+      env: process.env,
+    })
+  }
+
+  if (cachedProcessManager === null) {
+    cachedProcessManager = new BackendProcessManager(cachedBackendPaths.logsDir)
+  }
+
+  return {
+    backendPaths: cachedBackendPaths,
+    processManager: cachedProcessManager,
+  }
+}
+
+export async function bootstrapBackend() {
+  const { backendPaths, processManager } = getDesktopRuntime()
+  processManager.startApi(buildPythonLaunchSpec('api', backendPaths))
 
   const apiHealthy = await waitForHealth(backendPaths.healthUrl)
+  const stateAfterHealthCheck = processManager.getState()
+
+  if (!stateAfterHealthCheck.api.running) {
+    const existingDetail = stateAfterHealthCheck.api.detail ?? 'api process exited before healthcheck completed'
+    const detail = apiHealthy
+      ? `${existingDetail}; another service may already be responding on ${backendPaths.healthUrl}`
+      : existingDetail
+
+    processManager.markApiHealthy(false, detail)
+    return
+  }
+
   processManager.markApiHealthy(
     apiHealthy,
     apiHealthy ? 'api healthcheck passed' : `health polling timed out at ${backendPaths.healthUrl}`,
@@ -22,10 +105,11 @@ async function bootstrapBackend() {
     return
   }
 
-  processManager.startWorker(buildPythonLaunchSpec('worker', repoRoot))
+  processManager.startWorker(buildPythonLaunchSpec('worker', backendPaths))
 }
 
 export async function createWindow() {
+  const { backendPaths } = getDesktopRuntime()
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -42,6 +126,12 @@ export async function createWindow() {
     },
   })
   Menu.setApplicationMenu(null)
+  mainWindow = win
+  win.on('closed', () => {
+    if (mainWindow === win) {
+      mainWindow = null
+    }
+  })
 
   const rendererUrl = process.env.IF_THEN_DESKTOP_RENDERER_URL
 
@@ -54,18 +144,25 @@ export async function createWindow() {
   win.show()
 }
 
-app.whenReady().then(async () => {
-  registerDesktopIpc(processManager)
-  void bootstrapBackend()
-  await createWindow()
-})
+if (desktopAppBootstrapConfig.hasSingleInstanceLock) {
+  app.on('second-instance', () => {
+    focusMainWindow()
+  })
 
-app.on('before-quit', () => {
-  processManager.stopAll()
-})
+  app.whenReady().then(async () => {
+    const { processManager } = getDesktopRuntime()
+    registerDesktopIpc(processManager)
+    void bootstrapBackend()
+    await createWindow()
+  })
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
+  app.on('before-quit', () => {
+    cachedProcessManager?.stopAll()
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit()
+    }
+  })
+}

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 import if_then_mvp.api as api_module
 from if_then_mvp.api import create_app
 from if_then_mvp.db import get_sessionmaker, init_db, session_scope
-from if_then_mvp.models import AnalysisJob, Conversation, ImportBatch
+from if_then_mvp.models import AnalysisJob, AppSetting, Conversation, ImportBatch
 
 
 def _post_import(
@@ -27,10 +27,22 @@ def _post_import(
     )
 
 
+def _seed_analysis_settings() -> None:
+    with session_scope() as session:
+        session.add_all(
+            [
+                AppSetting(setting_key="llm.base_url", setting_value="https://example.test/v1", is_secret=False),
+                AppSetting(setting_key="llm.api_key", setting_value="secret-key", is_secret=True),
+                AppSetting(setting_key="llm.chat_model", setting_value="gpt-5.4-mini", is_secret=False),
+            ]
+        )
+
+
 def test_import_endpoint_persists_upload_and_enqueues_job(tmp_path, monkeypatch):
     uploads_root = tmp_path / "app_data"
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(uploads_root))
     init_db()
+    _seed_analysis_settings()
 
     sample_bytes = Path("tests/fixtures/qq_export_sample.txt").read_bytes()
 
@@ -80,10 +92,30 @@ def test_import_endpoint_can_skip_analysis_and_queue_import_only_job(tmp_path, m
     assert job.payload_json["import_id"] == 1
 
 
+def test_import_endpoint_rejects_auto_analysis_when_model_settings_are_missing(tmp_path, monkeypatch):
+    uploads_root = tmp_path / "app_data"
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(uploads_root))
+    init_db()
+
+    sample_bytes = Path("tests/fixtures/qq_export_sample.txt").read_bytes()
+
+    with TestClient(create_app()) as client:
+        response = _post_import(client, sample_bytes, auto_analyze=True)
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Analysis model settings are incomplete"}
+
+    with session_scope() as session:
+        assert session.query(Conversation).count() == 0
+        assert session.query(ImportBatch).count() == 0
+        assert session.query(AnalysisJob).count() == 0
+
+
 def test_import_endpoint_keeps_distinct_files_for_same_original_filename(tmp_path, monkeypatch):
     uploads_root = tmp_path / "app_data"
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(uploads_root))
     init_db()
+    _seed_analysis_settings()
 
     first_bytes = Path("tests/fixtures/qq_export_sample.txt").read_bytes()
     second_text = Path("tests/fixtures/qq_export_sample.txt").read_text(encoding="utf-8").replace("内容: 你好", "内容: 第二次导入", 1)
@@ -112,6 +144,7 @@ def test_import_endpoint_cleans_up_saved_file_when_transaction_fails(tmp_path, m
     uploads_root = tmp_path / "app_data"
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(uploads_root))
     init_db()
+    _seed_analysis_settings()
 
     @contextmanager
     def failing_session_scope():

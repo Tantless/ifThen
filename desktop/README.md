@@ -66,6 +66,32 @@ npx electron .
 2. 终端 B：`npm run build:electron`
 3. 终端 B：设置 `IF_THEN_DESKTOP_RENDERER_URL` 后执行 `npx electron .`
 
+开发态 Electron 约定：
+
+- Electron `userData` 会单独落到 `%APPDATA%/if-then-desktop-dev`
+- 打包后的 release 继续使用正式 `userData` 目录，不与开发态混用
+- dev / release 都默认启用单实例锁；同一套实例重复打开时会回到已有窗口
+
+## Windows 发布
+
+构建 Windows 可分发 release：
+
+```powershell
+cd D:\newProj\desktop
+npm run release:win
+```
+
+产物位置：
+
+- `desktop/release/win-unpacked/`：可直接运行的解包目录
+- `desktop/release/If Then-0.1.0-x64.zip`：可直接分发给 Windows 用户的 zip release
+
+发布态约定：
+
+- 后端 `api / worker` 会以 PyInstaller 可执行文件形式随包分发
+- 默认数据目录会落到 Electron `userData` 下的 `data/`
+- 默认日志目录会落到 `data/logs/`
+
 ## Python 启动行为
 
 Electron 主进程会按以下顺序启动：

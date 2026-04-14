@@ -4,6 +4,7 @@ from if_then_mvp.api import create_app
 from if_then_mvp.db import init_db, session_scope
 from if_then_mvp.models import (
     AnalysisJob,
+    AppSetting,
     Conversation,
     ImportBatch,
     Message,
@@ -17,6 +18,17 @@ from if_then_mvp.models import (
     Topic,
     TopicLink,
 )
+
+
+def _seed_analysis_settings() -> None:
+    with session_scope() as session:
+        session.add_all(
+            [
+                AppSetting(setting_key="llm.base_url", setting_value="https://example.test/v1", is_secret=False),
+                AppSetting(setting_key="llm.api_key", setting_value="secret-key", is_secret=True),
+                AppSetting(setting_key="llm.chat_model", setting_value="gpt-5.4-mini", is_secret=False),
+            ]
+        )
 
 
 def test_delete_conversation_removes_rows_and_upload_file(tmp_path, monkeypatch):
@@ -265,6 +277,7 @@ def test_delete_conversation_returns_404_for_missing_conversation(tmp_path, monk
 def test_rerun_analysis_queues_new_job_and_clears_stale_simulations(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()
+    _seed_analysis_settings()
 
     with session_scope() as session:
         conversation = Conversation(
@@ -354,6 +367,7 @@ def test_rerun_analysis_queues_new_job_and_clears_stale_simulations(tmp_path, mo
 def test_start_analysis_queues_new_full_analysis_job_for_imported_conversation(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()
+    _seed_analysis_settings()
 
     with session_scope() as session:
         conversation = Conversation(
@@ -403,9 +417,60 @@ def test_start_analysis_queues_new_full_analysis_job_for_imported_conversation(t
         assert session.get(Conversation, 1).status == "queued"
 
 
+def test_start_analysis_rejects_queueing_when_model_settings_are_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="imported",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=1,
+        )
+        session.add(batch)
+        session.flush()
+
+        session.add(
+            AnalysisJob(
+                conversation_id=conversation.id,
+                job_type="import_only",
+                status="completed",
+                current_stage="completed",
+                progress_percent=100,
+                retry_count=0,
+                payload_json={"import_id": batch.id},
+            )
+        )
+
+    with TestClient(create_app()) as client:
+        response = client.post("/conversations/1/start-analysis")
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Analysis model settings are incomplete"}
+
+    with session_scope() as session:
+        jobs = session.query(AnalysisJob).order_by(AnalysisJob.id.asc()).all()
+        assert [job.job_type for job in jobs] == ["import_only"]
+        assert session.get(Conversation, 1).status == "imported"
+
+
 def test_rerun_analysis_returns_409_when_job_is_already_active(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()
+    _seed_analysis_settings()
 
     with session_scope() as session:
         conversation = Conversation(
@@ -451,6 +516,7 @@ def test_rerun_analysis_returns_409_when_job_is_already_active(tmp_path, monkeyp
 def test_rerun_analysis_uses_latest_import_batch(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()
+    _seed_analysis_settings()
 
     with session_scope() as session:
         conversation = Conversation(

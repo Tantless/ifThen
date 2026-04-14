@@ -212,9 +212,25 @@ def _build_worker_runtime_llm_client():
         session.close()
 
 
+def _peek_next_queued_job_type() -> str | None:
+    session = get_sessionmaker()()
+    try:
+        row = _load_next_queued_job(session)
+        return row.job_type if row is not None else None
+    finally:
+        session.close()
+
+
 def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter | None = None) -> bool:
     effective_llm = llm_client
-    if effective_llm is None:
+    next_job_type = _peek_next_queued_job_type()
+
+    if next_job_type is None:
+        return False
+
+    requires_llm = next_job_type != "import_only"
+
+    if effective_llm is None and requires_llm:
         try:
             effective_llm = _build_worker_runtime_llm_client()
         except RuntimeError:
