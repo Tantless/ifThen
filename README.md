@@ -37,7 +37,7 @@ npm run dev
 ```powershell
 cd D:\newProj\desktop
 npm run build:electron
-$env:IF_THEN_DESKTOP_RENDERER_URL = "http://127.0.0.1:5173"
+$env:IF_THEN_DESKTOP_RENDERER_URL = "http://localhost:5173"
 npx electron .
 ```
 
