@@ -62,26 +62,34 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## 5. Project Task Workflow
 
-**When you are making project file changes, you must follow this workflow strictly. Do not skip steps.**
+**When you confirm that you are working on a task involving project file changes, you must follow this workflow strictly. Do not omit any step.**
 
 Before the task:
 - Confirm the repository is up to date.
-- If `.trace/SUMMARY.md` does not exist, create it.
-- Read the project trace in `.trace/SUMMARY.md`.
-- Create `.trace/{today's date}-{daily file index}.md` as the trace file for this task, for example `.trace/03.01-1.md`.
+- Read the project trace in `.trace/SUMMARY.md` and `.trace/{today's date}.md`. If either file does not exist, create it. Use a date-based filename such as `.trace/03.01.md`.
 
 During the task:
-- At each meaningful milestone, write a progress record in `.trace/{today's date}-{daily file index}.md` in Chinese.
+- At each meaningful milestone, write a progress record in `.trace/{today's date}.md` in Chinese. Each entry must use a level-two heading for the title of that piece of work and should include numbering.
 - Each entry should contain only one heading and describe the work completed in as much detail as possible, using concise language.
 - Record only the work from this task, and only describe files that you changed yourself.
 - Do not speculate about what needs to happen next or what may have been done before.
-- You may refer to `.trace/SUMMARY.md`, but do not plan future work on your own.
+- You may refer to `.trace/SUMMARY.md`, but do not make plans for future work on your own.
 
 After the task:
 - Commit the current task with git.
 - Write a summary of this task to `.trace/SUMMARY.md`.
-- Keep the entry short. Use summary language and a list format.
-- Each entry must be no longer than 10 lines. Judge the amount of work and use fewer words to summarize more.
+- Keep the entry concise. Use summary language and a list format.
+- Write the implementation of each feature point in the same list item, and briefly state what was implemented and how it was implemented.
+example:
+```
+## 2026/03/01
+- Fix issue XXX
+- Update frontend styles
+
+## 2026/03/02
+- xxx
+- xx
+```
 
 ---
 
