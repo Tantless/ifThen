@@ -1,3 +1,26 @@
+<!-- TRELLIS:START -->
+# Trellis Instructions
+
+These instructions are for AI assistants working in this project.
+
+Use the `/trellis:start` command when starting a new session to:
+- Initialize your developer identity
+- Understand current project context
+- Read relevant guidelines
+
+Use `@/.trellis/` to learn:
+- Development workflow (`workflow.md`)
+- Project structure guidelines (`spec/`)
+- Developer workspace (`workspace/`)
+
+If you're using Codex, project-scoped helpers may also live in:
+- `.agents/skills/` for reusable Trellis skills
+- `.codex/agents/` for optional custom subagents
+
+Keep this managed block so 'trellis update' can refresh the instructions.
+
+<!-- TRELLIS:END -->
+
 # AGENTS.md
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
@@ -65,6 +88,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 **When you confirm that you are working on a task involving project file changes, you must follow this workflow strictly. Do not omit any step.**
 
 Before the task:
+- If this project isn't git repository, git init first.
 - Confirm the repository is up to date.
 - Read the project trace in `.trace/SUMMARY.md` and `.trace/{today's date}.md`. If either file does not exist, create it. Use a date-based filename such as `.trace/03.01.md`.
 
