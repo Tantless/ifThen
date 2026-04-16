@@ -1,6 +1,8 @@
 import { app, BrowserWindow, Menu } from 'electron'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createDesktopBackendClient } from './backend/client.js'
 import { waitForHealth } from './backend/health.js'
 import { buildPythonLaunchSpec, getDesktopBackendPaths } from './backend/paths.js'
 import { BackendProcessManager } from './backend/processManager.js'
@@ -13,6 +15,7 @@ type DesktopAppBootstrapConfig = {
 
 let cachedProcessManager: BackendProcessManager | null = null
 let cachedBackendPaths: ReturnType<typeof getDesktopBackendPaths> | null = null
+let cachedBackendClient: ReturnType<typeof createDesktopBackendClient> | null = null
 let mainWindow: BrowserWindow | null = null
 
 function resolveDesktopUserDataDir(): string {
@@ -56,6 +59,14 @@ function focusMainWindow() {
 
 const desktopAppBootstrapConfig = configureDesktopApp()
 
+function ensureDesktopBackendRuntimeEnv() {
+  if (!process.env.IF_THEN_API_AUTH_TOKEN) {
+    process.env.IF_THEN_API_AUTH_TOKEN = randomUUID()
+  }
+}
+
+ensureDesktopBackendRuntimeEnv()
+
 function getDesktopRuntime() {
   if (cachedBackendPaths === null) {
     const entryFile = fileURLToPath(import.meta.url)
@@ -73,9 +84,17 @@ function getDesktopRuntime() {
     cachedProcessManager = new BackendProcessManager(cachedBackendPaths.logsDir)
   }
 
+  if (cachedBackendClient === null) {
+    cachedBackendClient = createDesktopBackendClient({
+      apiOrigin: cachedBackendPaths.apiOrigin,
+      apiAuthToken: cachedBackendPaths.apiAuthToken,
+    })
+  }
+
   return {
     backendPaths: cachedBackendPaths,
     processManager: cachedProcessManager,
+    backendClient: cachedBackendClient,
   }
 }
 
@@ -150,8 +169,8 @@ if (desktopAppBootstrapConfig.hasSingleInstanceLock) {
   })
 
   app.whenReady().then(async () => {
-    const { processManager } = getDesktopRuntime()
-    registerDesktopIpc(processManager)
+    const { processManager, backendClient } = getDesktopRuntime()
+    registerDesktopIpc(processManager, backendClient)
     void bootstrapBackend()
     await createWindow()
   })

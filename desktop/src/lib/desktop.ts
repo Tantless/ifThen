@@ -1,41 +1,17 @@
+import type {
+  DesktopAppInfo,
+  DesktopAvatarFilePayload,
+  DesktopBridge,
+  DesktopFileSelectionPayload,
+  DesktopServiceState,
+} from '../types/desktop'
+
 export type BootState = {
   phase: 'booting' | 'starting-api' | 'starting-worker' | 'waiting-api' | 'ready' | 'error'
   detail?: string
 }
 
-export type DesktopStatePayload = {
-  phase: BootState['phase']
-  detail?: string
-}
-
-export type DesktopFileSelectionPayload = {
-  canceled: boolean
-  filePaths: string[]
-}
-
-export type DesktopAppInfo = {
-  name: string
-  version: string
-}
-
-export type DesktopImportFilePayload = {
-  fileName: string
-  content: string
-}
-
-export type DesktopAvatarFilePayload = {
-  fileName: string
-  mimeType: string
-  dataUrl: string
-}
-
-type DesktopBridge = {
-  getServiceState: () => Promise<DesktopStatePayload>
-  pickImportFile: () => Promise<DesktopFileSelectionPayload>
-  pickAvatarFile: () => Promise<DesktopAvatarFilePayload | null>
-  getAppInfo: () => Promise<DesktopAppInfo>
-  readImportFile: () => Promise<DesktopImportFilePayload>
-}
+export type DesktopStatePayload = DesktopServiceState
 
 export function getBootLabel(state: BootState): string {
   switch (state.phase) {
@@ -66,11 +42,21 @@ export function normalizeDesktopFileSelection(input: DesktopFileSelectionPayload
 }
 
 export function shouldUseDesktopBridge(capability: string): boolean {
-  return capability === 'pick-import-file' || capability === 'pick-avatar-file' || capability === 'read-import-file'
+  return capability === 'pick-import-file' || capability === 'pick-avatar-file'
 }
 
-function getDesktopBridge(): DesktopBridge | undefined {
+export function getDesktopBridge(): DesktopBridge | undefined {
   return (globalThis as typeof globalThis & { desktop?: DesktopBridge }).desktop
+}
+
+export function requireDesktopBridge(): DesktopBridge {
+  const desktopBridge = getDesktopBridge()
+
+  if (!desktopBridge) {
+    throw new Error('desktop bridge unavailable')
+  }
+
+  return desktopBridge
 }
 
 export async function readDesktopServiceState(): Promise<BootState> {
@@ -103,18 +89,4 @@ export async function pickAvatarFile(): Promise<DesktopAvatarFilePayload | null>
   }
 
   return desktopBridge.pickAvatarFile()
-}
-
-export function createImportFileBlob(input: DesktopImportFilePayload): Blob {
-  return new Blob([input.content], { type: 'text/plain;charset=utf-8' })
-}
-
-export async function readImportFile(): Promise<DesktopImportFilePayload | null> {
-  const desktopBridge = getDesktopBridge()
-
-  if (!desktopBridge || !shouldUseDesktopBridge('read-import-file')) {
-    return null
-  }
-
-  return desktopBridge.readImportFile()
 }

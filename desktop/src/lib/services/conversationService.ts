@@ -1,96 +1,58 @@
-import { apiClient } from '../apiClient'
 import type {
   ConversationRead,
-  ImportResponse,
   JobRead,
+  ImportConversationRequest,
+  ImportResponse,
+  ListMessagesInput,
   MessageDayRead,
   MessageRead,
   PersonaProfileRead,
+  ReadSnapshotInput,
   SnapshotRead,
   TopicRead,
 } from '../../types/api'
+import { requireDesktopBridge } from '../desktop'
 
-type ListMessagesOptions = {
-  limit?: number
-  before?: number
-  after?: number
-  keyword?: string
-  date?: string
-  order?: 'asc' | 'desc'
-}
+type ListMessagesOptions = Omit<ListMessagesInput, 'conversationId'>
 
-type ImportConversationInput = {
-  file: Blob
-  fileName?: string
-  selfDisplayName: string
-  autoAnalyze?: boolean
-}
-
-function withQuery(path: string, entries: Record<string, string | number | undefined>): string {
-  const params = new URLSearchParams()
-
-  for (const [key, value] of Object.entries(entries)) {
-    if (value !== undefined) {
-      params.set(key, String(value))
-    }
-  }
-
-  const query = params.toString()
-  return query ? `${path}?${query}` : path
-}
+type ImportConversationInput = ImportConversationRequest
 
 export function listConversations(): Promise<ConversationRead[]> {
-  return apiClient.get<ConversationRead[]>('/conversations')
+  return requireDesktopBridge().conversations.list()
 }
 
 export function deleteConversation(conversationId: number): Promise<void> {
-  return apiClient.delete(`/conversations/${conversationId}`)
+  return requireDesktopBridge().conversations.delete(conversationId)
 }
 
 export function listMessages(conversationId: number, options: ListMessagesOptions = {}): Promise<MessageRead[]> {
-  return apiClient.get<MessageRead[]>(
-    withQuery(`/conversations/${conversationId}/messages`, {
-      limit: options.limit,
-      before: options.before,
-      after: options.after,
-      keyword: options.keyword,
-      date: options.date,
-      order: options.order,
-    }),
-  )
+  return requireDesktopBridge().conversations.listMessages({
+    conversationId,
+    ...options,
+  })
 }
 
 export function listMessageDays(conversationId: number): Promise<MessageDayRead[]> {
-  return apiClient.get<MessageDayRead[]>(`/conversations/${conversationId}/message-days`)
+  return requireDesktopBridge().conversations.listMessageDays(conversationId)
 }
 
 export function listTopics(conversationId: number): Promise<TopicRead[]> {
-  return apiClient.get<TopicRead[]>(`/conversations/${conversationId}/topics`)
+  return requireDesktopBridge().conversations.listTopics(conversationId)
 }
 
 export function readProfile(conversationId: number): Promise<PersonaProfileRead[]> {
-  return apiClient.get<PersonaProfileRead[]>(`/conversations/${conversationId}/profile`)
+  return requireDesktopBridge().conversations.readProfile(conversationId)
 }
 
 export function readSnapshot(conversationId: number, at?: string): Promise<SnapshotRead> {
-  return apiClient.get<SnapshotRead>(withQuery(`/conversations/${conversationId}/timeline-state`, { at }))
+  const payload: ReadSnapshotInput = { conversationId, at }
+  return requireDesktopBridge().conversations.readSnapshot(payload)
 }
 
 export function importConversation(input: ImportConversationInput): Promise<ImportResponse> {
-  const formData = new FormData()
-  const fileName =
-    input.fileName ?? (typeof File !== 'undefined' && input.file instanceof File ? input.file.name : 'qq_export.txt')
-
-  formData.append('file', input.file, fileName)
-  formData.append('self_display_name', input.selfDisplayName)
-
-  if (input.autoAnalyze !== undefined) {
-    formData.append('auto_analyze', String(input.autoAnalyze))
-  }
-
-  return apiClient.post<ImportResponse>('/imports/qq-text', formData)
+  return requireDesktopBridge().conversations.import(input)
 }
 
 export function startAnalysis(conversationId: number): Promise<JobRead> {
-  return apiClient.post<JobRead>(`/conversations/${conversationId}/start-analysis`, {})
+  return requireDesktopBridge().conversations.startAnalysis(conversationId)
 }

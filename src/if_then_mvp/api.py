@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
 from hashlib import sha256
+import os
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
 from if_then_mvp.config import get_settings
@@ -63,6 +65,7 @@ DESKTOP_RENDERER_ORIGINS = [
     "null",
 ]
 ANALYSIS_SETTINGS_MISSING_DETAIL = "Analysis model settings are incomplete"
+DESKTOP_API_TOKEN_HEADER = "x-if-then-desktop-token"
 
 
 def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
@@ -79,6 +82,17 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    desktop_api_token = os.environ.get("IF_THEN_API_AUTH_TOKEN", "").strip()
+
+    if desktop_api_token:
+        @app.middleware("http")
+        async def require_desktop_api_token(request: Request, call_next):
+            if request.url.path != "/health":
+                provided_token = request.headers.get(DESKTOP_API_TOKEN_HEADER, "").strip()
+                if provided_token != desktop_api_token:
+                    return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+            return await call_next(request)
 
     @app.get("/health")
     def health() -> dict[str, str]:

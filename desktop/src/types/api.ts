@@ -79,6 +79,36 @@ export type SettingWrite = {
   is_secret: boolean
 }
 
+export type ListMessagesInput = {
+  conversationId: number
+  limit?: number
+  before?: number
+  after?: number
+  keyword?: string
+  date?: string
+  order?: 'asc' | 'desc'
+}
+
+export type ReadSnapshotInput = {
+  conversationId: number
+  at?: string
+}
+
+export type ImportConversationRequest = {
+  selfDisplayName: string
+  autoAnalyze?: boolean
+}
+
+export type ListConversationJobsInput = {
+  conversationId: number
+  limit?: number
+}
+
+export type ListConversationSimulationJobsInput = {
+  conversationId: number
+  limit?: number
+}
+
 export type ImportResponse = {
   conversation: ConversationRead
   job: JobRead

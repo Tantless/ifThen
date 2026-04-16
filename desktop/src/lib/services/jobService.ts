@@ -1,15 +1,14 @@
-import { apiClient } from '../apiClient'
 import type { JobRead } from '../../types/api'
+import { requireDesktopBridge } from '../desktop'
 
 export function listConversationJobs(conversationId: number, limit?: number): Promise<JobRead[]> {
-  const query = limit === undefined ? '' : `?limit=${limit}`
-  return apiClient.get<JobRead[]>(`/conversations/${conversationId}/jobs${query}`)
+  return requireDesktopBridge().jobs.listConversationJobs({ conversationId, limit })
 }
 
 export function readJob(jobId: number): Promise<JobRead> {
-  return apiClient.get<JobRead>(`/jobs/${jobId}`)
+  return requireDesktopBridge().jobs.readJob(jobId)
 }
 
 export function rerunAnalysis(conversationId: number): Promise<JobRead> {
-  return apiClient.post<JobRead>(`/conversations/${conversationId}/rerun-analysis`)
+  return requireDesktopBridge().jobs.rerunAnalysis(conversationId)
 }

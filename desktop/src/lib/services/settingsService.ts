@@ -1,10 +1,10 @@
-import { apiClient } from '../apiClient'
 import type { SettingRead, SettingWrite } from '../../types/api'
+import { requireDesktopBridge } from '../desktop'
 
 export function readSettings(): Promise<SettingRead[]> {
-  return apiClient.get<SettingRead[]>('/settings')
+  return requireDesktopBridge().settings.read()
 }
 
 export function writeSetting(payload: SettingWrite): Promise<SettingRead> {
-  return apiClient.put<SettingRead>('/settings', payload)
+  return requireDesktopBridge().settings.write(payload)
 }

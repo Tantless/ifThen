@@ -42,3 +42,20 @@ def test_settings_endpoint_allows_desktop_renderer_cors_preflight(tmp_path, monk
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
     assert "PUT" in response.headers["access-control-allow-methods"]
+
+
+def test_settings_endpoint_requires_internal_desktop_token_when_configured(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("IF_THEN_API_AUTH_TOKEN", "desktop-token")
+
+    with TestClient(create_app()) as client:
+        unauthorized = client.get("/settings")
+        authorized = client.get(
+            "/settings",
+            headers={"x-if-then-desktop-token": "desktop-token"},
+        )
+
+    assert unauthorized.status_code == 401
+    assert unauthorized.json() == {"detail": "Unauthorized"}
+    assert authorized.status_code == 200
+    assert authorized.json() == []

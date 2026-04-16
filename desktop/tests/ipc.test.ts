@@ -56,31 +56,6 @@ describe('registerDesktopIpc', () => {
     fromWebContents.mockReturnValue(invokingWindow)
   })
 
-  it('invalidates the selected import file after a successful read', async () => {
-    registerDesktopIpc({
-      getState: () => ({ phase: 'ready' }),
-    } as any)
-
-    const pickImportFile = handlers.get('desktop:pick-import-file')
-    const readImportFile = handlers.get('desktop:read-import-file')
-
-    expect(pickImportFile).toBeTypeOf('function')
-    expect(readImportFile).toBeTypeOf('function')
-
-    if (!pickImportFile || !readImportFile) {
-      throw new Error('expected import IPC handlers to be registered')
-    }
-
-    await pickImportFile()
-
-    await expect(readImportFile()).resolves.toEqual({
-      fileName: 'chat.txt',
-      content: '聊天记录内容',
-    })
-    await expect(readImportFile()).rejects.toThrow('No import file has been selected')
-    expect(readFile).toHaveBeenCalledTimes(1)
-  })
-
   it('returns a data-url avatar payload after selecting an image file', async () => {
     showOpenDialog.mockResolvedValueOnce({
       canceled: false,
@@ -90,7 +65,7 @@ describe('registerDesktopIpc', () => {
 
     registerDesktopIpc({
       getState: () => ({ phase: 'ready' }),
-    } as any)
+    } as any, {} as any)
 
     const pickAvatarFile = handlers.get('desktop:pick-avatar-file')
     expect(pickAvatarFile).toBeTypeOf('function')
@@ -109,7 +84,7 @@ describe('registerDesktopIpc', () => {
   it('registers window control handlers against the invoking window', async () => {
     registerDesktopIpc({
       getState: () => ({ phase: 'ready' }),
-    } as any)
+    } as any, {} as any)
 
     const minimizeWindow = handlers.get('desktop:window-minimize')
     const toggleMaximizeWindow = handlers.get('desktop:window-toggle-maximize')
@@ -158,7 +133,7 @@ describe('registerDesktopIpc', () => {
 
     registerDesktopIpc({
       getState: () => ({ phase: 'ready' }),
-    } as any)
+    } as any, {} as any)
 
     const closeWindow = handlers.get('desktop:window-close')
 
@@ -169,5 +144,84 @@ describe('registerDesktopIpc', () => {
     }
 
     expect(() => closeWindow(invokeEvent)).toThrow('No BrowserWindow found for desktop:window-close')
+  })
+
+  it('proxies settings reads through the backend client facade', async () => {
+    const readSettings = vi.fn(async () => [
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+    ])
+
+    registerDesktopIpc({
+      getState: () => ({ phase: 'ready' }),
+    } as any, {
+      readSettings,
+    } as any)
+
+    const readSettingsHandler = handlers.get('desktop:settings-read')
+    expect(readSettingsHandler).toBeTypeOf('function')
+
+    if (!readSettingsHandler) {
+      throw new Error('expected desktop settings read handler to be registered')
+    }
+
+    await expect(readSettingsHandler()).resolves.toEqual([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+    ])
+    expect(readSettings).toHaveBeenCalledTimes(1)
+  })
+
+  it('imports conversations through the backend client after a file has been selected', async () => {
+    const importConversation = vi.fn(async () => ({
+      conversation: {
+        id: 7,
+        title: '和阿青的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '阿青',
+        source_format: 'qq_export_v5',
+        status: 'queued',
+      },
+      job: {
+        id: 31,
+        status: 'queued',
+        current_stage: 'parsing',
+        progress_percent: 0,
+        current_stage_percent: 0,
+        current_stage_total_units: 0,
+        current_stage_completed_units: 0,
+        overall_total_units: 0,
+        overall_completed_units: 0,
+        status_message: 'parsing 0/0 messages',
+      },
+    }))
+
+    registerDesktopIpc({
+      getState: () => ({ phase: 'ready' }),
+    } as any, {
+      importConversation,
+    } as any)
+
+    const pickImportFile = handlers.get('desktop:pick-import-file')
+    const importHandler = handlers.get('desktop:conversations-import')
+
+    expect(pickImportFile).toBeTypeOf('function')
+    expect(importHandler).toBeTypeOf('function')
+
+    if (!pickImportFile || !importHandler) {
+      throw new Error('expected import handlers to be registered')
+    }
+
+    await pickImportFile()
+
+    await expect(importHandler(invokeEvent, { selfDisplayName: '我', autoAnalyze: true })).resolves.toMatchObject({
+      conversation: {
+        id: 7,
+      },
+    })
+    expect(importConversation).toHaveBeenCalledWith({
+      filePath: 'C:/exports/chat.txt',
+      selfDisplayName: '我',
+      autoAnalyze: true,
+    })
   })
 })

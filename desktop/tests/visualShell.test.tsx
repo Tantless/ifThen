@@ -95,8 +95,6 @@ function installReadyDesktopBridge(options?: {
   initialIsMaximized?: boolean
   toggledIsMaximized?: boolean
   selectedImportPath?: string
-  importFileName?: string
-  importFileContent?: string
 }) {
   const windowBridge = {
     getState: vi.fn(async () => ({ isMaximized: options?.initialIsMaximized ?? false })),
@@ -109,7 +107,6 @@ function installReadyDesktopBridge(options?: {
     desktop?: {
       getServiceState: () => Promise<{ phase: 'ready'; detail?: string }>
       pickImportFile: () => Promise<{ canceled: boolean; filePaths: string[] }>
-      readImportFile: () => Promise<{ fileName: string; content: string }>
       getAppInfo: () => Promise<{ name: string; version: string }>
       window: typeof windowBridge
     }
@@ -118,10 +115,6 @@ function installReadyDesktopBridge(options?: {
     pickImportFile: async () => ({
       canceled: !options?.selectedImportPath,
       filePaths: options?.selectedImportPath ? [options.selectedImportPath] : [],
-    }),
-    readImportFile: async () => ({
-      fileName: options?.importFileName ?? 'chat.txt',
-      content: options?.importFileContent ?? '聊天记录',
     }),
     getAppInfo: async () => ({ name: 'if-then-desktop', version: '0.1.0' }),
     window: windowBridge,
@@ -659,14 +652,12 @@ describe('App frontUI integration', () => {
       desktop?: {
         getServiceState: () => Promise<{ phase: 'ready'; detail?: string }>
         pickImportFile: () => Promise<{ canceled: boolean; filePaths: string[] }>
-        readImportFile: () => Promise<{ fileName: string; content: string }>
         getAppInfo: () => Promise<{ name: string; version: string }>
         window: typeof windowBridge
       }
     }).desktop = {
       getServiceState: async () => ({ phase: 'ready' }),
       pickImportFile: async () => ({ canceled: true, filePaths: [] }),
-      readImportFile: async () => ({ fileName: 'chat.txt', content: '聊天记录' }),
       getAppInfo: async () => ({ name: 'if-then-desktop', version: '0.1.0' }),
       window: windowBridge,
     }
@@ -1263,6 +1254,7 @@ describe('App frontUI integration', () => {
   })
 
   it('点击设置右上角保存后会持久化配置并自动关闭抽屉', async () => {
+    vi.useFakeTimers()
     mockedReadSettings.mockResolvedValue([
       { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
       { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
@@ -1303,10 +1295,86 @@ describe('App frontUI integration', () => {
         await getReactProps<{ onClick?: () => Promise<void> | void }>(saveButton).onClick?.()
       }
     })
-    await flushAsyncWork(6)
+    await flushAsyncWork(2)
 
     expect(mockedWriteSetting).toHaveBeenCalledTimes(9)
+    expect(container.querySelector('.desktop-drawer')).not.toBeNull()
+
+    await act(async () => {
+      vi.advanceTimersByTime(240)
+      await Promise.resolve()
+    })
+
     expect(container.querySelector('.desktop-drawer')).toBeNull()
+    vi.useRealTimers()
+  })
+
+  it('点击抽屉外部区域会直接关闭设置且不会保存未提交改动', async () => {
+    vi.useFakeTimers()
+    mockedReadSettings.mockResolvedValue([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+      { setting_key: 'llm.simulation_base_url', setting_value: '', is_secret: false },
+      { setting_key: 'llm.simulation_api_key', setting_value: '', is_secret: true },
+      { setting_key: 'simulation.default_mode', setting_value: 'single_reply', is_secret: false },
+      { setting_key: 'simulation.default_turn_count', setting_value: '1', is_secret: false },
+    ])
+    mockedListConversations.mockResolvedValue([])
+    mockedWriteSetting.mockImplementation(async (payload) => payload)
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(8)
+
+    const openSettingsButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('配置模型') ?? false,
+    )
+    expect(openSettingsButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (openSettingsButton) {
+        getReactProps<{ onClick?: () => void }>(openSettingsButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    const baseUrlInput = container.querySelector('.desktop-drawer__input') as HTMLInputElement | null
+    expect(baseUrlInput).not.toBeNull()
+
+    await act(async () => {
+      if (baseUrlInput) {
+        getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(baseUrlInput).onChange?.({
+          target: { value: 'https://changed.example.dev/v1' },
+        })
+      }
+    })
+    await flushAsyncWork(2)
+
+    const drawerShell = container.querySelector('.desktop-drawer-shell')
+    expect(drawerShell).not.toBeNull()
+    const saveCallCountBeforeDismiss = mockedWriteSetting.mock.calls.length
+
+    await act(async () => {
+      if (drawerShell) {
+        getReactProps<{ onClick?: () => void }>(drawerShell).onClick?.()
+      }
+    })
+    await flushAsyncWork(2)
+
+    expect(mockedWriteSetting).toHaveBeenCalledTimes(saveCallCountBeforeDismiss)
+    expect(container.querySelector('.desktop-drawer')).not.toBeNull()
+
+    await act(async () => {
+      vi.advanceTimersByTime(240)
+      await Promise.resolve()
+    })
+
+    expect(container.querySelector('.desktop-drawer')).toBeNull()
+    vi.useRealTimers()
   })
 
   it('在缺少模型配置或会话时仍保留欢迎引导流程', async () => {
@@ -1452,8 +1520,6 @@ describe('App frontUI integration', () => {
     vi.useFakeTimers()
     installReadyDesktopBridge({
       selectedImportPath: 'C:\\Users\\Tantless\\Desktop\\聊天记录.txt',
-      importFileName: '聊天记录.txt',
-      importFileContent: '第一行',
     })
 
     mockedReadSettings.mockResolvedValue([
@@ -1601,8 +1667,6 @@ describe('App frontUI integration', () => {
   it('切换到导入并分析后会把 autoAnalyze=true 传给导入接口', async () => {
     installReadyDesktopBridge({
       selectedImportPath: 'C:\\Users\\Tantless\\Desktop\\聊天记录.txt',
-      importFileName: '聊天记录.txt',
-      importFileContent: '第一行',
     })
 
     mockedReadSettings.mockResolvedValue([

@@ -1,9 +1,4 @@
-export type DesktopBridge = {
-  getServiceState: () => Promise<{ phase: string; detail?: string }>
-  pickImportFile: () => Promise<{ canceled: boolean; filePaths: string[] }>
-  getAppInfo: () => Promise<{ name: string; version: string }>
-  readImportFile: () => Promise<{ fileName: string; content: string }>
-}
+import type { DesktopBridge } from './desktop'
 
 declare global {
   interface Window {

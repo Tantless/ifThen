@@ -1,18 +1,17 @@
-import { apiClient } from '../apiClient'
 import type { SimulationCreate, SimulationJobRead, SimulationRead } from '../../types/api'
+import { requireDesktopBridge } from '../desktop'
 
 export function createSimulation(payload: SimulationCreate): Promise<SimulationJobRead> {
-  return apiClient.post<SimulationJobRead>('/simulations', payload)
+  return requireDesktopBridge().simulations.create(payload)
 }
 
 export function listConversationSimulationJobs(
   conversationId: number,
   limit?: number,
 ): Promise<SimulationJobRead[]> {
-  const query = limit === undefined ? '' : `?limit=${limit}`
-  return apiClient.get<SimulationJobRead[]>(`/conversations/${conversationId}/simulation-jobs${query}`)
+  return requireDesktopBridge().simulations.listConversationJobs({ conversationId, limit })
 }
 
 export function readSimulation(simulationId: number): Promise<SimulationRead> {
-  return apiClient.get<SimulationRead>(`/simulations/${simulationId}`)
+  return requireDesktopBridge().simulations.read(simulationId)
 }

@@ -20,10 +20,8 @@ import {
 import type { FrontChatMessage, FrontSidebarTab } from './frontui/types'
 import { decideAppShellState, hasModelSettings, resolveShellHydrationStatus } from './lib/bootstrap'
 import {
-  createImportFileBlob,
   getBootLabel,
   readDesktopServiceState,
-  readImportFile,
   type BootState,
 } from './lib/desktop'
 import {
@@ -1372,6 +1370,11 @@ export default function App() {
     setSettings((current) => upsertSettings(current ?? [], [updatedSetting]))
   }
 
+  const handleCloseSettings = () => {
+    setShowSettings(false)
+    setSettingsError(null)
+  }
+
   const handleSaveSettings = async (formState: SettingsFormState) => {
     setSettingsSavePending(true)
     setSettingsError(null)
@@ -1405,7 +1408,7 @@ export default function App() {
       ])
 
       setSettings((current) => upsertSettings(current ?? [], updates))
-      setShowSettings(false)
+      handleCloseSettings()
       if ((conversations?.length ?? 0) > 0) {
         setShowWelcome(false)
       }
@@ -1443,14 +1446,7 @@ export default function App() {
         throw new Error('请先在设置中填写分析模型配置，再使用导入并分析')
       }
 
-      const importFile = await readImportFile()
-      if (!importFile) {
-        throw new Error('当前桌面环境无法读取导出文件内容')
-      }
-
       const response = await importConversation({
-        file: createImportFileBlob(importFile),
-        fileName: importFile.fileName,
         selfDisplayName: selfDisplayName.trim(),
         autoAnalyze,
       })
@@ -1968,6 +1964,7 @@ export default function App() {
         initialState={settingsFormState}
         pending={settingsSavePending}
         errorMessage={settingsError}
+        onClose={handleCloseSettings}
         onSave={handleSaveSettings}
       />
       <SelfAvatarDialog

@@ -3,8 +3,6 @@ import path from 'node:path'
 
 import type { BackendLaunchSpec } from './contracts.js'
 
-const DEFAULT_HEALTH_URL = 'http://127.0.0.1:8000/health'
-
 export type DesktopBackendPathOptions = {
   entryFile: string
   isPackaged: boolean
@@ -18,7 +16,9 @@ export type DesktopBackendPaths = {
   backendDir: string
   dataDir: string
   logsDir: string
+  apiOrigin: string
   healthUrl: string
+  apiAuthToken?: string
   rendererHtml: string
   isPackaged: boolean
 }
@@ -54,6 +54,8 @@ function buildPythonEnv(paths: DesktopBackendPaths, env: NodeJS.ProcessEnv = pro
     ...env,
     IF_THEN_DATA_DIR: env.IF_THEN_DATA_DIR ?? paths.dataDir,
     IF_THEN_DESKTOP_LOG_DIR: env.IF_THEN_DESKTOP_LOG_DIR ?? paths.logsDir,
+    IF_THEN_API_PORT: env.IF_THEN_API_PORT ?? paths.apiOrigin.split(':').at(-1),
+    IF_THEN_API_AUTH_TOKEN: env.IF_THEN_API_AUTH_TOKEN ?? paths.apiAuthToken,
   }
 
   if (paths.isPackaged) {
@@ -70,6 +72,8 @@ function buildPythonEnv(paths: DesktopBackendPaths, env: NodeJS.ProcessEnv = pro
 
 export function getDesktopBackendPaths(options: DesktopBackendPathOptions): DesktopBackendPaths {
   const env = options.env ?? process.env
+  const apiPort = env.IF_THEN_API_PORT ?? '8000'
+  const apiOrigin = `http://127.0.0.1:${apiPort}`
   const rootDir = options.isPackaged ? options.resourcesPath : resolveDesktopRepoRoot(options.entryFile)
   const dataDir =
     env.IF_THEN_DATA_DIR ?? (options.isPackaged ? path.join(options.userDataDir, 'data') : path.join(rootDir, '.data'))
@@ -79,7 +83,9 @@ export function getDesktopBackendPaths(options: DesktopBackendPathOptions): Desk
     backendDir: path.normalize(options.isPackaged ? path.join(options.resourcesPath, 'backend') : rootDir),
     dataDir: path.normalize(dataDir),
     logsDir: path.normalize(env.IF_THEN_DESKTOP_LOG_DIR ?? path.join(dataDir, 'logs')),
-    healthUrl: DEFAULT_HEALTH_URL,
+    apiOrigin,
+    healthUrl: `${apiOrigin}/health`,
+    apiAuthToken: env.IF_THEN_API_AUTH_TOKEN,
     rendererHtml: path.normalize(resolveDesktopRendererHtml(options.entryFile)),
     isPackaged: options.isPackaged,
   }

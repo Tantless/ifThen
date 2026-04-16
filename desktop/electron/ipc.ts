@@ -4,10 +4,20 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 
 import type { DesktopServiceState, ManagedServiceState } from './backend/contracts.js'
 import type { DesktopWindowState } from '../src/types/desktop.js'
+import type {
+  ImportConversationRequest,
+  ListConversationJobsInput,
+  ListConversationSimulationJobsInput,
+  ListMessagesInput,
+  ReadSnapshotInput,
+  SettingWrite,
+  SimulationCreate,
+} from '../src/types/api.js'
 import type { IpcMainInvokeEvent } from 'electron'
+import { DesktopBackendClient } from './backend/client.js'
 import { BackendProcessManager } from './backend/processManager.js'
 
-export function registerDesktopIpc(processManager: BackendProcessManager) {
+export function registerDesktopIpc(processManager: BackendProcessManager, backendClient: DesktopBackendClient) {
   let selectedImportFilePath: string | null = null
   const getEventWindow = (event: IpcMainInvokeEvent, channel: string) => {
     const focusedWindow = BrowserWindow.fromWebContents(event.sender)
@@ -17,6 +27,16 @@ export function registerDesktopIpc(processManager: BackendProcessManager) {
     }
 
     return focusedWindow
+  }
+
+  const consumeSelectedImportFilePath = () => {
+    if (!selectedImportFilePath) {
+      throw new Error('No import file has been selected')
+    }
+
+    const filePath = selectedImportFilePath
+    selectedImportFilePath = null
+    return filePath
   }
 
   ipcMain.handle('desktop:get-service-state', (): DesktopServiceState => {
@@ -79,6 +99,69 @@ export function registerDesktopIpc(processManager: BackendProcessManager) {
     version: app.getVersion(),
   }))
 
+  ipcMain.handle('desktop:settings-read', async () => backendClient.readSettings())
+
+  ipcMain.handle('desktop:settings-write', async (_event, payload: SettingWrite) => backendClient.writeSetting(payload))
+
+  ipcMain.handle('desktop:conversations-list', async () => backendClient.listConversations())
+
+  ipcMain.handle('desktop:conversations-delete', async (_event, conversationId: number) => {
+    await backendClient.deleteConversation(conversationId)
+  })
+
+  ipcMain.handle('desktop:conversations-list-messages', async (_event, payload: ListMessagesInput) =>
+    backendClient.listMessages(payload),
+  )
+
+  ipcMain.handle('desktop:conversations-list-message-days', async (_event, conversationId: number) =>
+    backendClient.listMessageDays(conversationId),
+  )
+
+  ipcMain.handle('desktop:conversations-list-topics', async (_event, conversationId: number) =>
+    backendClient.listTopics(conversationId),
+  )
+
+  ipcMain.handle('desktop:conversations-read-profile', async (_event, conversationId: number) =>
+    backendClient.readProfile(conversationId),
+  )
+
+  ipcMain.handle('desktop:conversations-read-snapshot', async (_event, payload: ReadSnapshotInput) =>
+    backendClient.readSnapshot(payload),
+  )
+
+  ipcMain.handle('desktop:conversations-import', async (_event, payload: ImportConversationRequest) =>
+    backendClient.importConversation({
+      ...payload,
+      filePath: consumeSelectedImportFilePath(),
+    }),
+  )
+
+  ipcMain.handle('desktop:conversations-start-analysis', async (_event, conversationId: number) =>
+    backendClient.startAnalysis(conversationId),
+  )
+
+  ipcMain.handle('desktop:jobs-list-conversation', async (_event, payload: ListConversationJobsInput) =>
+    backendClient.listConversationJobs(payload),
+  )
+
+  ipcMain.handle('desktop:jobs-read', async (_event, jobId: number) => backendClient.readJob(jobId))
+
+  ipcMain.handle('desktop:jobs-rerun-analysis', async (_event, conversationId: number) =>
+    backendClient.rerunAnalysis(conversationId),
+  )
+
+  ipcMain.handle('desktop:simulations-create', async (_event, payload: SimulationCreate) =>
+    backendClient.createSimulation(payload),
+  )
+
+  ipcMain.handle('desktop:simulations-list-conversation-jobs', async (_event, payload: ListConversationSimulationJobsInput) =>
+    backendClient.listConversationSimulationJobs(payload),
+  )
+
+  ipcMain.handle('desktop:simulations-read', async (_event, simulationId: number) =>
+    backendClient.readSimulation(simulationId),
+  )
+
   ipcMain.handle('desktop:window-minimize', (event) => {
     getEventWindow(event, 'desktop:window-minimize').minimize()
   })
@@ -108,19 +191,4 @@ export function registerDesktopIpc(processManager: BackendProcessManager) {
     isMaximized: getEventWindow(event, 'desktop:window-get-state').isMaximized(),
   }))
 
-  ipcMain.handle('desktop:read-import-file', async () => {
-    if (!selectedImportFilePath) {
-      throw new Error('No import file has been selected')
-    }
-
-    const filePath = selectedImportFilePath
-    selectedImportFilePath = null
-
-    const content = await readFile(filePath, 'utf8')
-
-    return {
-      fileName: path.basename(filePath),
-      content,
-    }
-  })
 }

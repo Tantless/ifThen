@@ -35,10 +35,8 @@ import {
   resolveShellHydrationStatus,
 } from '../src/lib/bootstrap'
 import {
-  createImportFileBlob,
   normalizeDesktopFileSelection,
   pickAvatarFile,
-  readImportFile,
   shouldUseDesktopBridge,
 } from '../src/lib/desktop'
 
@@ -56,41 +54,7 @@ describe('shouldUseDesktopBridge', () => {
   it('requires the bridge for file picking only', () => {
     expect(shouldUseDesktopBridge('pick-import-file')).toBe(true)
     expect(shouldUseDesktopBridge('pick-avatar-file')).toBe(true)
-    expect(shouldUseDesktopBridge('read-import-file')).toBe(true)
     expect(shouldUseDesktopBridge('read-conversations')).toBe(false)
-  })
-})
-
-describe('createImportFileBlob', () => {
-  it('builds a utf-8 text blob from imported desktop file content', async () => {
-    const blob = createImportFileBlob({
-      fileName: 'chat.txt',
-      content: '第一行\\n第二行',
-    })
-
-    await expect(blob.text()).resolves.toBe('第一行\\n第二行')
-    expect(blob.type).toBe('text/plain;charset=utf-8')
-  })
-})
-
-describe('readImportFile', () => {
-  it('returns null when the desktop bridge is unavailable', async () => {
-    await expect(readImportFile()).resolves.toBeNull()
-  })
-
-  it('reads the pending import file payload from the desktop bridge', async () => {
-    ;(globalThis as typeof globalThis & {
-      desktop?: {
-        readImportFile: () => Promise<{ fileName: string; content: string }>
-      }
-    }).desktop = {
-      readImportFile: async () => ({ fileName: 'chat.txt', content: '第一行' }),
-    }
-
-    await expect(readImportFile()).resolves.toEqual({
-      fileName: 'chat.txt',
-      content: '第一行',
-    })
   })
 })
 
@@ -164,6 +128,54 @@ describe('desktop preload bridge', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'desktop:window-toggle-maximize')
     expect(invoke).toHaveBeenNthCalledWith(3, 'desktop:window-close')
     expect(invoke).toHaveBeenNthCalledWith(4, 'desktop:window-get-state')
+  })
+
+  it('routes desktop data actions through the expected IPC channels', async () => {
+    const bridge = exposeInMainWorld.mock.calls[0]?.[1]
+
+    if (!bridge || typeof bridge !== 'object') {
+      throw new Error('expected preload to expose a desktop bridge')
+    }
+
+    const desktopBridge = bridge as DesktopBridge
+
+    invoke
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ conversation: { id: 7 }, job: { id: 9 } })
+
+    await expect(desktopBridge.settings.read()).resolves.toEqual([])
+    await expect(
+      desktopBridge.settings.write({
+        setting_key: 'llm.base_url',
+        setting_value: 'https://example.test/v1',
+        is_secret: false,
+      }),
+    ).resolves.toEqual({
+      setting_key: 'llm.base_url',
+      setting_value: 'https://example.test/v1',
+      is_secret: false,
+    })
+    await expect(desktopBridge.conversations.list()).resolves.toEqual([])
+    await expect(
+      desktopBridge.conversations.import({
+        selfDisplayName: '我',
+        autoAnalyze: true,
+      }),
+    ).resolves.toEqual({ conversation: { id: 7 }, job: { id: 9 } })
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'desktop:settings-read')
+    expect(invoke).toHaveBeenNthCalledWith(2, 'desktop:settings-write', {
+      setting_key: 'llm.base_url',
+      setting_value: 'https://example.test/v1',
+      is_secret: false,
+    })
+    expect(invoke).toHaveBeenNthCalledWith(3, 'desktop:conversations-list')
+    expect(invoke).toHaveBeenNthCalledWith(4, 'desktop:conversations-import', {
+      selfDisplayName: '我',
+      autoAnalyze: true,
+    })
   })
 })
 

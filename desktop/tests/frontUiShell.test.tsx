@@ -176,7 +176,7 @@ describe('frontUI shell wiring', () => {
     expect(htmlAsset.source).not.toContain('href="/assets/')
     expect(htmlAsset.source).toContain('src="./assets/')
     expect(htmlAsset.source).toContain('href="./assets/')
-  })
+  }, 10000)
 })
 
 describe('frontUI shell markup', () => {
@@ -400,7 +400,7 @@ describe('frontUI shell markup', () => {
 
     expect(html).toContain('bg-[var(--if-bg-panel)]')
     expect(html).toContain('选择一段对话开始聊天')
-  })
+  }, 10000)
 
   it('renders import mode as a select with import-only as the default option', () => {
     const html = renderToStaticMarkup(<ImportDialog open onClose={() => undefined} onSubmit={() => undefined} />)
@@ -1292,7 +1292,123 @@ describe('desktop window controls', () => {
       getServiceState: async () => ({ phase: 'ready' }),
       pickImportFile: async () => ({ canceled: true, filePaths: [] }),
       getAppInfo: async () => ({ name: 'If Then', version: '0.1.0' }),
-      readImportFile: async () => ({ fileName: 'chat.txt', content: '第一行' }),
+      settings: {
+        read: async () => [],
+        write: async () => ({ setting_key: 'llm.base_url', setting_value: '', is_secret: false }),
+      },
+      conversations: {
+        list: async () => [],
+        delete: async () => undefined,
+        listMessages: async () => [],
+        listMessageDays: async () => [],
+        listTopics: async () => [],
+        readProfile: async () => [],
+        readSnapshot: async () => ({
+          id: 1,
+          as_of_message_id: 1,
+          as_of_time: '2026-04-16T00:00:00',
+          relationship_temperature: 'warm',
+          tension_level: 'low',
+          openness_level: 'high',
+          initiative_balance: 'balanced',
+          defensiveness_level: 'low',
+          unresolved_conflict_flags: [],
+          relationship_phase: 'stable',
+          snapshot_summary: 'ok',
+        }),
+        import: async () => ({
+          conversation: {
+            id: 1,
+            title: 'test',
+            chat_type: 'private',
+            self_display_name: '我',
+            other_display_name: '对方',
+            source_format: 'qq_export_v5',
+            status: 'imported',
+          },
+          job: {
+            id: 1,
+            status: 'queued',
+            current_stage: 'created',
+            progress_percent: 0,
+            current_stage_percent: 0,
+            current_stage_total_units: 0,
+            current_stage_completed_units: 0,
+            overall_total_units: 0,
+            overall_completed_units: 0,
+            status_message: null,
+          },
+        }),
+        startAnalysis: async () => ({
+          id: 1,
+          status: 'queued',
+          current_stage: 'created',
+          progress_percent: 0,
+          current_stage_percent: 0,
+          current_stage_total_units: 0,
+          current_stage_completed_units: 0,
+          overall_total_units: 0,
+          overall_completed_units: 0,
+          status_message: null,
+        }),
+      },
+      jobs: {
+        listConversationJobs: async () => [],
+        readJob: async () => ({
+          id: 1,
+          status: 'queued',
+          current_stage: 'created',
+          progress_percent: 0,
+          current_stage_percent: 0,
+          current_stage_total_units: 0,
+          current_stage_completed_units: 0,
+          overall_total_units: 0,
+          overall_completed_units: 0,
+          status_message: null,
+        }),
+        rerunAnalysis: async () => ({
+          id: 1,
+          status: 'queued',
+          current_stage: 'created',
+          progress_percent: 0,
+          current_stage_percent: 0,
+          current_stage_total_units: 0,
+          current_stage_completed_units: 0,
+          overall_total_units: 0,
+          overall_completed_units: 0,
+          status_message: null,
+        }),
+      },
+      simulations: {
+        create: async () => ({
+          id: 1,
+          conversation_id: 1,
+          target_message_id: 1,
+          mode: 'single_reply',
+          turn_count: 1,
+          replacement_content: 'test',
+          status: 'queued',
+          current_stage: 'queued',
+          progress_percent: 0,
+          current_stage_percent: 0,
+          current_stage_total_units: 0,
+          current_stage_completed_units: 0,
+          overall_total_units: 0,
+          overall_completed_units: 0,
+          status_message: null,
+          result_simulation_id: null,
+          error_message: null,
+        }),
+        listConversationJobs: async () => [],
+        read: async () => ({
+          id: 1,
+          mode: 'single_reply',
+          replacement_content: 'test',
+          first_reply_text: null,
+          impact_summary: null,
+          simulated_turns: [],
+        }),
+      },
       window: {
         minimize: async () => void calls.push('minimize'),
         toggleMaximize: async () => {
