@@ -44,3 +44,10 @@ desktop/*.tgz
 
 # claude
 .claude/
+
+# agents data
+.trace/
+.trellis/
+.codex/
+.agents/
+AGENTS-CN.md
