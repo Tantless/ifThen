@@ -188,11 +188,11 @@ body {
 
 .avatar-picker__option {
   display: grid;
-  gap: 6px;
+  place-items: center;
   justify-items: center;
   border: 1px solid var(--if-divider);
   border-radius: 12px;
-  padding: 10px 8px;
+  padding: 8px;
   background: rgba(255, 255, 255, 0.84);
   cursor: pointer;
   transition: border-color var(--if-motion-fast), background-color var(--if-motion-fast), box-shadow var(--if-motion-fast);
@@ -214,11 +214,6 @@ body {
   height: 52px;
   border-radius: 14px;
   object-fit: cover;
-}
-
-.avatar-picker__option-label {
-  color: var(--if-text-secondary);
-  font-size: 12px;
 }
 
 .desktop-modal__header {

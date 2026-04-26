@@ -61,7 +61,6 @@ export function AvatarPicker({
             onClick={() => onChange(preset.url)}
           >
             <img className="avatar-picker__option-image" src={preset.url} alt={preset.name} />
-            <span className="avatar-picker__option-label">{preset.name}</span>
           </button>
         ))}
       </div>
