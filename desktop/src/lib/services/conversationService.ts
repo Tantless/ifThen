@@ -3,6 +3,7 @@ import type {
   ConversationRead,
   ImportResponse,
   JobRead,
+  MessageContextRead,
   MessageDayRead,
   MessageRead,
   PersonaProfileRead,
@@ -62,6 +63,10 @@ export function listMessages(conversationId: number, options: ListMessagesOption
 
 export function listMessageDays(conversationId: number): Promise<MessageDayRead[]> {
   return apiClient.get<MessageDayRead[]>(`/conversations/${conversationId}/message-days`)
+}
+
+export function readMessageContext(messageId: number, radius?: number): Promise<MessageContextRead> {
+  return apiClient.get<MessageContextRead>(withQuery(`/messages/${messageId}/context`, { radius }))
 }
 
 export function listTopics(conversationId: number): Promise<TopicRead[]> {

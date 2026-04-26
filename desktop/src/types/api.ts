@@ -37,6 +37,12 @@ export type MessageDayRead = {
   message_count: number
 }
 
+export type MessageContextRead = {
+  target: MessageRead
+  before: MessageRead[]
+  after: MessageRead[]
+}
+
 export type TopicRead = {
   id: number
   topic_name: string

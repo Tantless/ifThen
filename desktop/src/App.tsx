@@ -51,6 +51,7 @@ import {
   listConversations,
   listMessages,
   listTopics,
+  readMessageContext,
   readProfile,
   readSnapshot,
   startAnalysis,
@@ -131,6 +132,7 @@ const INITIAL_MESSAGE_PAGE_SIZE = 80
 const OLDER_MESSAGE_PAGE_SIZE = 50
 const CHAT_HISTORY_INITIAL_PAGE_SIZE = 20
 const CHAT_HISTORY_LOAD_MORE_PAGE_SIZE = 10
+const CHAT_HISTORY_LOCATE_CONTEXT_RADIUS = 40
 
 type MessagePaginationState = {
   hasOlder: boolean
@@ -1007,77 +1009,47 @@ export default function App() {
     setChatHistoryError(null)
 
     try {
-      let loadedMessages = messagesByConversation[conversationId] ?? []
+      const context = await readMessageContext(targetMessage.id, CHAT_HISTORY_LOCATE_CONTEXT_RADIUS)
 
-      if (loadedMessages.length === 0) {
-        const latestMessages = await listMessages(conversationId, {
-          order: 'desc',
-          limit: INITIAL_MESSAGE_PAGE_SIZE,
-        })
-        loadedMessages = [...latestMessages].reverse()
-        setMessagesByConversation((current) => ({
-          ...current,
-          [conversationId]: loadedMessages,
-        }))
-        setMessagePaginationByConversation((current) => ({
-          ...current,
-          [conversationId]: {
-            hasOlder: latestMessages.length === INITIAL_MESSAGE_PAGE_SIZE,
-            loadingOlder: false,
-          },
-        }))
-      }
-
-      while (!loadedMessages.some((message) => message.id === targetMessage.id)) {
-        const oldestSequence = loadedMessages[0]?.sequence_no
-
-        if (!oldestSequence) {
-          break
-        }
-
-        const olderMessages = await listMessages(conversationId, {
-          before: oldestSequence,
-          order: 'desc',
-          limit: OLDER_MESSAGE_PAGE_SIZE,
-        })
-        const normalizedOlderMessages = [...olderMessages].reverse()
-
-        if (normalizedOlderMessages.length === 0) {
-          setMessagePaginationByConversation((current) => ({
-            ...current,
-            [conversationId]: {
-              hasOlder: false,
-              loadingOlder: false,
-            },
-          }))
-          break
-        }
-
-        const existingMessageIds = new Set(loadedMessages.map((message) => message.id))
-        const uniqueOlderMessages = normalizedOlderMessages.filter((message) => !existingMessageIds.has(message.id))
-        loadedMessages = [...uniqueOlderMessages, ...loadedMessages]
-
-        setMessagesByConversation((current) => ({
-          ...current,
-          [conversationId]: loadedMessages,
-        }))
-        setMessagePaginationByConversation((current) => ({
-          ...current,
-          [conversationId]: {
-            hasOlder: olderMessages.length === OLDER_MESSAGE_PAGE_SIZE,
-            loadingOlder: false,
-          },
-        }))
-
-        if (olderMessages.length < OLDER_MESSAGE_PAGE_SIZE) {
-          break
-        }
-      }
-
-      if (!loadedMessages.some((message) => message.id === targetMessage.id)) {
+      if (context.target.id !== targetMessage.id || selectedConversationIdRef.current !== conversationId) {
         setChatHistoryError('未能定位到这条消息')
         return
       }
+
+      const contextMessages = [...context.before, context.target, ...context.after]
+      setMessagesByConversation((current) => {
+        const byId = new Map<number, MessageRead>()
+        for (const message of current[conversationId] ?? []) {
+          byId.set(message.id, message)
+        }
+        for (const message of contextMessages) {
+          byId.set(message.id, message)
+        }
+
+        return {
+          ...current,
+          [conversationId]: [...byId.values()].sort((a, b) => a.sequence_no - b.sequence_no || a.id - b.id),
+        }
+      })
+      setMessagePaginationByConversation((current) => {
+        const firstContextSequence = contextMessages[0]?.sequence_no ?? context.target.sequence_no
+
+        return {
+          ...current,
+          [conversationId]: {
+            hasOlder: context.before.length === CHAT_HISTORY_LOCATE_CONTEXT_RADIUS || firstContextSequence > 1,
+            loadingOlder: false,
+          },
+        }
+      })
+      setMessageLoadStateByConversation((current) => ({
+        ...current,
+        [conversationId]: { status: 'loaded' },
+      }))
+      setMessageLoadErrorByConversation((current) => ({
+        ...current,
+        [conversationId]: false,
+      }))
 
       setShowChatHistoryDialog(false)
       setJumpToMessageRequest((current) => ({
