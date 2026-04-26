@@ -69,6 +69,70 @@ class ProgressSnapshot:
     overall_completed_units: int
     overall_total_units: int
     status_message: str
+    elapsed_seconds: float | None = None
+
+
+class AnalysisPerformanceTracker:
+    def __init__(self, *, time_fn: Callable[[], float]) -> None:
+        self._time_fn = time_fn
+        self._started_at = time_fn()
+        self._finished_at: float | None = None
+        self._current_stage: str | None = None
+        self._stage_started_at: float | None = None
+        self._stage_elapsed_seconds: dict[str, float] = {}
+        self._llm_call_counts: dict[str, int] = {}
+        self._input_counts: dict[str, int] = {}
+
+    def set_input_counts(self, *, messages: int, segments: int) -> None:
+        self._input_counts = {
+            "messages": messages,
+            "segments": segments,
+        }
+
+    def start_stage(self, stage: str) -> None:
+        self._close_current_stage()
+        self._current_stage = stage
+        self._stage_started_at = self._time_fn()
+
+    def record_llm_call(self, call_type: str) -> None:
+        self._llm_call_counts[call_type] = self._llm_call_counts.get(call_type, 0) + 1
+
+    def finish(self) -> None:
+        self._close_current_stage()
+        self._finished_at = self._time_fn()
+
+    def snapshot(self) -> dict[str, object]:
+        now = self._finished_at if self._finished_at is not None else self._time_fn()
+        stage_elapsed_seconds = dict(self._stage_elapsed_seconds)
+        if self._current_stage is not None and self._stage_started_at is not None:
+            stage_elapsed_seconds[self._current_stage] = (
+                stage_elapsed_seconds.get(self._current_stage, 0.0)
+                + max(0.0, now - self._stage_started_at)
+            )
+
+        llm_call_counts = dict(self._llm_call_counts)
+        llm_call_counts["total"] = sum(self._llm_call_counts.values())
+
+        return {
+            "elapsed_seconds": _round_seconds(max(0.0, now - self._started_at)),
+            "current_stage": self._current_stage,
+            "input_counts": dict(self._input_counts),
+            "llm_call_counts": llm_call_counts,
+            "stage_elapsed_seconds": {
+                stage: _round_seconds(seconds)
+                for stage, seconds in stage_elapsed_seconds.items()
+            },
+        }
+
+    def _close_current_stage(self) -> None:
+        if self._current_stage is None or self._stage_started_at is None:
+            return
+        elapsed = max(0.0, self._time_fn() - self._stage_started_at)
+        self._stage_elapsed_seconds[self._current_stage] = (
+            self._stage_elapsed_seconds.get(self._current_stage, 0.0) + elapsed
+        )
+        self._current_stage = None
+        self._stage_started_at = None
 
 
 @dataclass(slots=True)
@@ -106,10 +170,12 @@ class ConsoleProgressReporter:
             snapshot.current_stage_completed_units,
             snapshot.current_stage_total_units,
         )
+        elapsed_seconds = getattr(snapshot, "elapsed_seconds", None)
+        elapsed_part = "" if elapsed_seconds is None else f" elapsed={elapsed_seconds:.1f}s"
         self.printer(
             f"[{timestamp}] job={snapshot.job_id} stage={snapshot.current_stage} "
             f"overall={snapshot.progress_percent}% stage_progress={stage_percent}% "
-            f"{snapshot.status_message}"
+            f"{snapshot.status_message}{elapsed_part}"
         )
         self._last_stage = snapshot.current_stage
         self._last_stage_completed_units = snapshot.current_stage_completed_units
@@ -118,6 +184,10 @@ class ConsoleProgressReporter:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _round_seconds(value: float) -> float:
+    return round(value, 3)
 
 
 def _load_next_queued_job(session) -> AnalysisJob | None:
@@ -241,6 +311,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         return False
     job_id, conversation_id = claim
     progress_reporter = progress_reporter or ConsoleProgressReporter()
+    performance_tracker = AnalysisPerformanceTracker(time_fn=progress_reporter.time_fn)
     latest_snapshot = ProgressSnapshot(
         job_id=job_id,
         current_stage="parsing",
@@ -267,6 +338,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         if batch is None:
             raise RuntimeError(f"Import batch {import_id} was not found")
 
+        performance_tracker.start_stage("parsing")
         raw_text = Path(batch.source_file_path).read_text(encoding="utf-8")
         parsed = parse_qq_export(text=raw_text, self_display_name=conversation.self_display_name)
         settings = get_settings()
@@ -281,6 +353,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             message_count=message_count,
             segment_count=segment_count,
         )
+        performance_tracker.set_input_counts(messages=message_count, segments=segment_count)
 
         _delete_existing_analysis_artifacts(session, conversation_id=conversation.id)
         latest_snapshot = _apply_progress(
@@ -291,6 +364,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             overall_completed_units=0,
             overall_total_units=overall_total_units,
             status_message=f"parsing 0/{message_count} messages",
+            performance=performance_tracker.snapshot(),
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
@@ -330,12 +404,14 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 overall_completed_units=completed_messages,
                 overall_total_units=overall_total_units,
                 status_message=f"parsing {completed_messages}/{message_count} messages",
+                performance=performance_tracker.snapshot(),
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
 
         if job.job_type == "import_only":
             conversation.status = "imported"
+            performance_tracker.finish()
             latest_snapshot = _apply_progress(
                 job,
                 current_stage="completed",
@@ -347,6 +423,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 status="completed",
                 finished_at=_utcnow(),
                 error_message=None,
+                performance=performance_tracker.snapshot(),
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
@@ -357,6 +434,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             for preview_segment in preview_segments
         ]
 
+        performance_tracker.start_stage("segmenting")
         latest_snapshot = _apply_progress(
             job,
             current_stage="segmenting",
@@ -365,6 +443,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             overall_completed_units=message_count,
             overall_total_units=overall_total_units,
             status_message=f"segmenting 0/{segment_count} segments",
+            performance=performance_tracker.snapshot(),
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
@@ -397,6 +476,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 overall_completed_units=message_count + completed_segments,
                 overall_total_units=overall_total_units,
                 status_message=f"segmenting {completed_segments}/{segment_count} segments",
+                performance=performance_tracker.snapshot(),
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
@@ -404,6 +484,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         segment_rows = session.execute(
             select(Segment).where(Segment.conversation_id == conversation.id).order_by(Segment.id.asc())
         ).scalars().all()
+        performance_tracker.start_stage("summarizing")
         latest_snapshot = _apply_progress(
             job,
             current_stage="summarizing",
@@ -412,6 +493,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             overall_completed_units=message_count + segment_count,
             overall_total_units=overall_total_units,
             status_message=f"summarizing 0/{segment_count} summaries",
+            performance=performance_tracker.snapshot(),
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
@@ -426,6 +508,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                     .order_by(Message.sequence_no.asc())
                 ).scalars()
             ]
+            performance_tracker.record_llm_call("segment_summary")
             summary = build_segment_summary(
                 llm_client=effective_llm,
                 segment_messages=segment_messages,
@@ -442,6 +525,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 overall_completed_units=message_count + segment_count + index,
                 overall_total_units=overall_total_units,
                 status_message=f"summarizing {index}/{segment_count} summaries",
+                performance=performance_tracker.snapshot(),
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
@@ -457,6 +541,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         topic_stage_total_units = (2 * segment_count) + 3
         topic_stage_base_units = message_count + (2 * segment_count)
 
+        performance_tracker.start_stage("topic_resolution")
         latest_snapshot = _apply_progress(
             job,
             current_stage="topic_persona_snapshot",
@@ -465,6 +550,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             overall_completed_units=topic_stage_base_units,
             overall_total_units=overall_total_units,
             status_message=f"topic_persona_snapshot 0/{topic_stage_total_units} tasks",
+            performance=performance_tracker.snapshot(),
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
@@ -473,6 +559,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         completed_topic_stage_units = 0
         for index, (summary, segment) in enumerate(summary_pairs, start=1):
             current_segment_summary = _segment_summary_payload(summary)
+            performance_tracker.record_llm_call("topic_assignment")
             assignment = assign_segment_topics(
                 llm_client=effective_llm,
                 current_segment_summary=current_segment_summary,
@@ -498,6 +585,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 linked_topic_ids.add(topic.id)
 
             if assignment.should_create_new_topic or not linked_topic_ids:
+                performance_tracker.record_llm_call("topic_creation")
                 creation = build_topic_creation_payload(
                     llm_client=effective_llm,
                     current_segment_summary=current_segment_summary,
@@ -535,10 +623,13 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                     f"topic_persona_snapshot {completed_topic_stage_units}/{topic_stage_total_units} "
                     f"tasks (topic resolution {index}/{segment_count})"
                 ),
+                performance=performance_tracker.snapshot(),
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
 
+        performance_tracker.start_stage("topic_merge_review")
+        performance_tracker.record_llm_call("topic_merge_review")
         merge_review = review_topic_merges(
             llm_client=effective_llm,
             topics=[_topic_prompt_payload(topic) for topic in topics_by_id.values()],
@@ -561,11 +652,14 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 f"topic_persona_snapshot {completed_topic_stage_units}/{topic_stage_total_units} "
                 "tasks (topic merge review)"
             ),
+            performance=performance_tracker.snapshot(),
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
 
+        performance_tracker.start_stage("persona")
         for role in ("self", "other"):
+            performance_tracker.record_llm_call("persona")
             payload = build_persona_payload(
                 llm_client=effective_llm,
                 subject_role=role,
@@ -596,12 +690,15 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                     f"topic_persona_snapshot {completed_topic_stage_units}/{topic_stage_total_units} "
                     f"tasks (persona {role})"
                 ),
+                performance=performance_tracker.snapshot(),
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
 
+        performance_tracker.start_stage("snapshots")
         prior_snapshot_summary = None
         for index, (summary, segment) in enumerate(summary_pairs, start=1):
+            performance_tracker.record_llm_call("relationship_snapshot")
             snapshot = build_snapshot_payload(
                 llm_client=effective_llm,
                 segment_summary={"summary_text": summary.summary_text},
@@ -629,11 +726,14 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                     f"topic_persona_snapshot {total_completed}/{topic_stage_total_units} "
                     f"tasks (snapshots {index}/{segment_count})"
                 ),
+                performance=performance_tracker.snapshot(),
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
 
+        performance_tracker.start_stage("finalizing")
         conversation.status = "ready"
+        performance_tracker.finish()
         latest_snapshot = _apply_progress(
             job,
             current_stage="completed",
@@ -645,17 +745,21 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             status="completed",
             finished_at=_utcnow(),
             error_message=None,
+            performance=performance_tracker.snapshot(),
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
         return True
     except Exception as exc:
         session.rollback()
+        performance_tracker.finish()
+        failed_performance = performance_tracker.snapshot()
         _cleanup_failed_job_artifacts(
             job_id=job_id,
             conversation_id=conversation_id,
             latest_snapshot=latest_snapshot,
             error_message=str(exc),
+            performance=failed_performance,
         )
         failed_snapshot = ProgressSnapshot(
             job_id=job_id,
@@ -666,6 +770,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             overall_completed_units=latest_snapshot.overall_completed_units,
             overall_total_units=latest_snapshot.overall_total_units,
             status_message=f"failed {latest_snapshot.status_message}: {exc}",
+            elapsed_seconds=_performance_elapsed_seconds(failed_performance),
         )
         progress_reporter.maybe_emit(failed_snapshot)
         return True
@@ -1154,6 +1259,15 @@ def _calculate_percent(completed_units: int, total_units: int) -> int:
     return min(100, int((completed_units * 100) / total_units))
 
 
+def _performance_elapsed_seconds(performance: dict[str, object] | None) -> float | None:
+    if performance is None:
+        return None
+    elapsed_seconds = performance.get("elapsed_seconds")
+    if isinstance(elapsed_seconds, int | float):
+        return float(elapsed_seconds)
+    return None
+
+
 def _apply_progress(
     job: AnalysisJob,
     *,
@@ -1166,7 +1280,8 @@ def _apply_progress(
     status: str | None = None,
     finished_at: datetime | None = None,
     error_message: str | None = None,
-    ) -> ProgressSnapshot:
+    performance: dict[str, object] | None = None,
+) -> ProgressSnapshot:
     payload = dict(job.payload_json or {})
     payload["progress"] = {
         "current_stage_total_units": current_stage_total_units,
@@ -1175,6 +1290,8 @@ def _apply_progress(
         "overall_completed_units": overall_completed_units,
         "status_message": status_message,
     }
+    if performance is not None:
+        payload["performance"] = performance
     job.payload_json = payload
     job.current_stage = current_stage
     job.progress_percent = _calculate_percent(overall_completed_units, overall_total_units)
@@ -1192,6 +1309,7 @@ def _apply_progress(
         overall_completed_units=overall_completed_units,
         overall_total_units=overall_total_units,
         status_message=status_message,
+        elapsed_seconds=_performance_elapsed_seconds(performance),
     )
 
 
@@ -1330,6 +1448,7 @@ def _cleanup_failed_job_artifacts(
     conversation_id: int,
     latest_snapshot: ProgressSnapshot,
     error_message: str,
+    performance: dict[str, object] | None = None,
 ) -> None:
     session = get_sessionmaker()()
     try:
@@ -1347,6 +1466,7 @@ def _cleanup_failed_job_artifacts(
                 status="failed",
                 finished_at=_utcnow(),
                 error_message=error_message,
+                performance=performance,
             )
         conversation = session.get(Conversation, conversation_id)
         if conversation is not None:

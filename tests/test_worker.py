@@ -108,6 +108,24 @@ class SlowSummaryLLM:
         return response_model(**{key: value for key, value in payload_map.items() if key in response_model.model_fields})
 
 
+class TimedLLM(FakeLLM):
+    def __init__(self, advance_time: callable) -> None:
+        self.advance_time = advance_time
+
+    def chat_json(self, *, system_prompt, user_prompt, response_model):
+        self.advance_time(
+            {
+                "SegmentSummaryPayload": 2.0,
+                "TopicAssignmentPayload": 3.0,
+                "TopicCreationPayload": 5.0,
+                "TopicMergeReviewPayload": 7.0,
+                "PersonaPayload": 11.0,
+                "SnapshotPayload": 13.0,
+            }.get(response_model.__name__, 1.0)
+        )
+        return super().chat_json(system_prompt=system_prompt, user_prompt=user_prompt, response_model=response_model)
+
+
 class MultiTopicLLM:
     def __init__(self) -> None:
         self.summary_index = 0
@@ -478,6 +496,55 @@ def test_run_next_job_parses_messages_and_creates_analysis_artifacts(tmp_path, m
         assert progress["status_message"].startswith("completed ")
         conversation = session.query(Conversation).one()
         assert conversation.status == "ready"
+
+
+def test_run_next_job_records_analysis_performance_diagnostics(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    fixture_path = tmp_path / "timed_segments.txt"
+    _write_multi_segment_fixture(fixture_path)
+    init_db()
+    _seed_job(fixture_path=fixture_path)
+
+    current_time = {"value": 0.0}
+    lines: list[str] = []
+
+    def advance_time(seconds: float) -> None:
+        current_time["value"] += seconds
+
+    reporter = ConsoleProgressReporter(
+        printer=lines.append,
+        time_fn=lambda: current_time["value"],
+        max_interval_seconds=30,
+    )
+
+    processed = run_next_job(
+        llm_client=TimedLLM(advance_time),
+        progress_reporter=reporter,
+    )
+
+    assert processed is True
+
+    with session_scope() as session:
+        job = session.query(AnalysisJob).one()
+        performance = job.payload_json["performance"]
+        assert performance["input_counts"] == {"messages": 6, "segments": 3}
+        assert performance["llm_call_counts"] == {
+            "segment_summary": 3,
+            "topic_assignment": 3,
+            "topic_creation": 1,
+            "topic_merge_review": 1,
+            "persona": 2,
+            "relationship_snapshot": 3,
+            "total": 13,
+        }
+        assert performance["elapsed_seconds"] == 88.0
+        assert performance["stage_elapsed_seconds"]["summarizing"] == 6.0
+        assert performance["stage_elapsed_seconds"]["topic_resolution"] == 14.0
+        assert performance["stage_elapsed_seconds"]["topic_merge_review"] == 7.0
+        assert performance["stage_elapsed_seconds"]["persona"] == 22.0
+        assert performance["stage_elapsed_seconds"]["snapshots"] == 39.0
+
+    assert any("elapsed=88.0s" in line for line in lines)
 
 
 def test_run_next_job_completes_import_only_without_analysis_artifacts(tmp_path, monkeypatch):
