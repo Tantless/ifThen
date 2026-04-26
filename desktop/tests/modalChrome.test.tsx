@@ -27,6 +27,29 @@ describe('desktop modal chrome', () => {
 
     expect(welcome).toContain('desktop-modal__panel')
     expect(importDialog).toContain('desktop-modal__panel')
+    expect(importDialog).toContain('desktop-modal__panel--import')
+  })
+
+  it('keeps shared modals viewport-bound and gives import dialog more horizontal room', () => {
+    const stylesheet = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+
+    expect(stylesheet).toMatch(/\.desktop-modal\s*\{[^}]*padding:\s*clamp\(12px,\s*3vw,\s*24px\);/s)
+    expect(stylesheet).toMatch(/\.desktop-modal\s*\{[^}]*overflow-y:\s*auto;/s)
+    expect(stylesheet).toMatch(/\.desktop-modal__panel\s*\{[^}]*width:\s*min\(640px,\s*100%\);/s)
+    expect(stylesheet).toMatch(/\.desktop-modal__panel\s*\{[^}]*max-height:\s*calc\(100dvh - 24px\);/s)
+    expect(stylesheet).toMatch(/\.desktop-modal__panel\s*\{[^}]*overflow-y:\s*auto;/s)
+    expect(stylesheet).toMatch(/\.desktop-modal__panel--import\s*\{[^}]*width:\s*min\(860px,\s*100%\);/s)
+  })
+
+  it('renders avatar choices as filled square image buttons', () => {
+    const stylesheet = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+
+    expect(stylesheet).toMatch(/\.avatar-picker__grid\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(58px,\s*1fr\)\);/s)
+    expect(stylesheet).toMatch(/\.avatar-picker__option\s*\{[^}]*aspect-ratio:\s*1;/s)
+    expect(stylesheet).toMatch(/\.avatar-picker__option\s*\{[^}]*padding:\s*0;/s)
+    expect(stylesheet).toMatch(/\.avatar-picker__option\s*\{[^}]*overflow:\s*hidden;/s)
+    expect(stylesheet).toMatch(/\.avatar-picker__option-image\s*\{[^}]*width:\s*100%;/s)
+    expect(stylesheet).toMatch(/\.avatar-picker__option-image\s*\{[^}]*height:\s*100%;/s)
   })
 
   it('keeps import-only as the only actionable mode until analysis model settings are configured', () => {
