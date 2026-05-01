@@ -11,6 +11,14 @@ class ConversationRead(BaseModel):
     status: str
 
 
+class JobStageRead(BaseModel):
+    id: str
+    label: str
+    status: str
+    completed_units: int = 0
+    total_units: int = 0
+
+
 class JobRead(BaseModel):
     id: int
     status: str
@@ -22,6 +30,7 @@ class JobRead(BaseModel):
     overall_total_units: int = 0
     overall_completed_units: int = 0
     status_message: str | None = None
+    stages: list[JobStageRead] = Field(default_factory=list)
 
 
 class MessageRead(BaseModel):

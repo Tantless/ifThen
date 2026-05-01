@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from queue import Empty, Queue
+from threading import BoundedSemaphore
 from typing import Callable
 
 from sqlalchemy import select, update
 
 from if_then_mvp.analysis import (
+    SegmentSummaryPayload,
+    SnapshotPayload,
     assign_segment_topics,
     build_topic_creation_payload,
     build_persona_payload,
@@ -57,6 +62,15 @@ _STAGE_THRESHOLDS = {
     "completed": 1,
     "failed": 1,
 }
+_ANALYSIS_STAGE_DEFINITIONS = (
+    ("parsing", "数据清洗"),
+    ("segmenting", "对话分段"),
+    ("summarizing", "片段摘要"),
+    ("topic_resolution", "话题整理"),
+    ("persona", "人设归纳"),
+    ("snapshots", "关系快照"),
+    ("completed", "完成"),
+)
 
 
 @dataclass(slots=True)
@@ -69,6 +83,131 @@ class ProgressSnapshot:
     overall_completed_units: int
     overall_total_units: int
     status_message: str
+    elapsed_seconds: float | None = None
+
+
+@dataclass(slots=True)
+class AnalysisStageProgress:
+    stage_id: str
+    label: str
+    status: str
+    completed_units: int
+    total_units: int
+
+
+class LLMConcurrencyLimiter:
+    def __init__(self, max_concurrent_calls: int) -> None:
+        self._semaphore = BoundedSemaphore(max(1, max_concurrent_calls))
+
+    def __enter__(self) -> "LLMConcurrencyLimiter":
+        self._semaphore.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        self._semaphore.release()
+        return False
+
+
+@dataclass(frozen=True, slots=True)
+class SegmentSummaryWorkItem:
+    index: int
+    segment_id: int
+    segment_messages: list[dict[str, str]]
+
+
+@dataclass(frozen=True, slots=True)
+class SegmentSummaryResult:
+    index: int
+    segment_id: int
+    summary: SegmentSummaryPayload
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotWorkItem:
+    index: int
+    conversation_id: int
+    segment_id: int
+    as_of_message_id: int
+    as_of_time: str
+    summary_text: str
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotProgressEvent:
+    index: int
+    conversation_id: int
+    segment_id: int
+    as_of_message_id: int
+    as_of_time: str
+    snapshot: SnapshotPayload
+
+
+class AnalysisPerformanceTracker:
+    def __init__(self, *, time_fn: Callable[[], float]) -> None:
+        self._time_fn = time_fn
+        self._started_at = time_fn()
+        self._finished_at: float | None = None
+        self._current_stage: str | None = None
+        self._stage_started_at: float | None = None
+        self._stage_elapsed_seconds: dict[str, float] = {}
+        self._llm_call_counts: dict[str, int] = {}
+        self._input_counts: dict[str, int] = {}
+
+    def set_input_counts(self, *, messages: int, segments: int) -> None:
+        self._input_counts = {
+            "messages": messages,
+            "segments": segments,
+        }
+
+    def start_stage(self, stage: str) -> None:
+        self._close_current_stage()
+        self._current_stage = stage
+        self._stage_started_at = self._time_fn()
+
+    def record_llm_call(self, call_type: str) -> None:
+        self._llm_call_counts[call_type] = self._llm_call_counts.get(call_type, 0) + 1
+
+    def add_stage_elapsed(self, stage: str, elapsed_seconds: float) -> None:
+        self._stage_elapsed_seconds[stage] = (
+            self._stage_elapsed_seconds.get(stage, 0.0) + max(0.0, elapsed_seconds)
+        )
+
+    def finish(self) -> None:
+        self._close_current_stage()
+        self._finished_at = self._time_fn()
+
+    def snapshot(self) -> dict[str, object]:
+        now = self._finished_at if self._finished_at is not None else self._time_fn()
+        stage_elapsed_seconds = dict(self._stage_elapsed_seconds)
+        if self._current_stage is not None and self._stage_started_at is not None:
+            stage_elapsed_seconds[self._current_stage] = (
+                stage_elapsed_seconds.get(self._current_stage, 0.0)
+                + max(0.0, now - self._stage_started_at)
+            )
+
+        llm_call_counts = dict(self._llm_call_counts)
+        llm_call_counts["total"] = sum(self._llm_call_counts.values())
+
+        return {
+            "elapsed_seconds": _round_seconds(max(0.0, now - self._started_at)),
+            "current_stage": self._current_stage,
+            "input_counts": dict(self._input_counts),
+            "llm_call_counts": llm_call_counts,
+            "stage_elapsed_seconds": {
+                stage: _round_seconds(seconds)
+                for stage, seconds in stage_elapsed_seconds.items()
+            },
+        }
+
+    def _close_current_stage(self) -> None:
+        if self._current_stage is None or self._stage_started_at is None:
+            return
+        elapsed = max(0.0, self._time_fn() - self._stage_started_at)
+        self._stage_elapsed_seconds[self._current_stage] = (
+            self._stage_elapsed_seconds.get(self._current_stage, 0.0) + elapsed
+        )
+        self._current_stage = None
+        self._stage_started_at = None
 
 
 @dataclass(slots=True)
@@ -106,10 +245,12 @@ class ConsoleProgressReporter:
             snapshot.current_stage_completed_units,
             snapshot.current_stage_total_units,
         )
+        elapsed_seconds = getattr(snapshot, "elapsed_seconds", None)
+        elapsed_part = "" if elapsed_seconds is None else f" elapsed={elapsed_seconds:.1f}s"
         self.printer(
             f"[{timestamp}] job={snapshot.job_id} stage={snapshot.current_stage} "
             f"overall={snapshot.progress_percent}% stage_progress={stage_percent}% "
-            f"{snapshot.status_message}"
+            f"{snapshot.status_message}{elapsed_part}"
         )
         self._last_stage = snapshot.current_stage
         self._last_stage_completed_units = snapshot.current_stage_completed_units
@@ -118,6 +259,10 @@ class ConsoleProgressReporter:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _round_seconds(value: float) -> float:
+    return round(value, 3)
 
 
 def _load_next_queued_job(session) -> AnalysisJob | None:
@@ -241,6 +386,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         return False
     job_id, conversation_id = claim
     progress_reporter = progress_reporter or ConsoleProgressReporter()
+    performance_tracker = AnalysisPerformanceTracker(time_fn=progress_reporter.time_fn)
     latest_snapshot = ProgressSnapshot(
         job_id=job_id,
         current_stage="parsing",
@@ -251,6 +397,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         overall_total_units=0,
         status_message="parsing 0/0 messages",
     )
+    stage_progress: dict[str, AnalysisStageProgress] | None = None
 
     session = get_sessionmaker()()
     try:
@@ -267,6 +414,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         if batch is None:
             raise RuntimeError(f"Import batch {import_id} was not found")
 
+        performance_tracker.start_stage("parsing")
         raw_text = Path(batch.source_file_path).read_text(encoding="utf-8")
         parsed = parse_qq_export(text=raw_text, self_display_name=conversation.self_display_name)
         settings = get_settings()
@@ -277,12 +425,20 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         )
         message_count = len(parsed.messages)
         segment_count = len(preview_segments)
+        llm_max_concurrency = _resolve_llm_max_concurrency(settings)
+        llm_limiter = LLMConcurrencyLimiter(llm_max_concurrency)
+        stage_progress = _build_analysis_stage_progress(
+            message_count=message_count,
+            segment_count=segment_count,
+        )
         overall_total_units = _calculate_overall_total_units(
             message_count=message_count,
             segment_count=segment_count,
         )
+        performance_tracker.set_input_counts(messages=message_count, segments=segment_count)
 
         _delete_existing_analysis_artifacts(session, conversation_id=conversation.id)
+        _update_analysis_stage(stage_progress, "parsing", status="running", completed_units=0)
         latest_snapshot = _apply_progress(
             job,
             current_stage="parsing",
@@ -291,6 +447,8 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             overall_completed_units=0,
             overall_total_units=overall_total_units,
             status_message=f"parsing 0/{message_count} messages",
+            performance=performance_tracker.snapshot(),
+            stage_progress=stage_progress,
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
@@ -322,6 +480,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             for row in persisted_rows:
                 sequence_to_message_id[row.sequence_no] = row.id
             completed_messages = min(batch_start + len(batch_messages), message_count)
+            _update_analysis_stage(stage_progress, "parsing", completed_units=completed_messages)
             latest_snapshot = _apply_progress(
                 job,
                 current_stage="parsing",
@@ -330,12 +489,17 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 overall_completed_units=completed_messages,
                 overall_total_units=overall_total_units,
                 status_message=f"parsing {completed_messages}/{message_count} messages",
+                performance=performance_tracker.snapshot(),
+                stage_progress=stage_progress,
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
 
         if job.job_type == "import_only":
             conversation.status = "imported"
+            performance_tracker.finish()
+            _update_analysis_stage(stage_progress, "parsing", status="completed", completed_units=message_count)
+            _update_analysis_stage(stage_progress, "completed", status="completed", completed_units=1)
             latest_snapshot = _apply_progress(
                 job,
                 current_stage="completed",
@@ -347,6 +511,8 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 status="completed",
                 finished_at=_utcnow(),
                 error_message=None,
+                performance=performance_tracker.snapshot(),
+                stage_progress=stage_progress,
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
@@ -357,6 +523,9 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             for preview_segment in preview_segments
         ]
 
+        performance_tracker.start_stage("segmenting")
+        _update_analysis_stage(stage_progress, "parsing", status="completed", completed_units=message_count)
+        _update_analysis_stage(stage_progress, "segmenting", status="running", completed_units=0)
         latest_snapshot = _apply_progress(
             job,
             current_stage="segmenting",
@@ -365,6 +534,8 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             overall_completed_units=message_count,
             overall_total_units=overall_total_units,
             status_message=f"segmenting 0/{segment_count} segments",
+            performance=performance_tracker.snapshot(),
+            stage_progress=stage_progress,
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
@@ -389,6 +560,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 )
             session.flush()
             completed_segments = min(batch_start + len(batch_segments), segment_count)
+            _update_analysis_stage(stage_progress, "segmenting", completed_units=completed_segments)
             latest_snapshot = _apply_progress(
                 job,
                 current_stage="segmenting",
@@ -397,6 +569,8 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 overall_completed_units=message_count + completed_segments,
                 overall_total_units=overall_total_units,
                 status_message=f"segmenting {completed_segments}/{segment_count} segments",
+                performance=performance_tracker.snapshot(),
+                stage_progress=stage_progress,
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
@@ -404,6 +578,9 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         segment_rows = session.execute(
             select(Segment).where(Segment.conversation_id == conversation.id).order_by(Segment.id.asc())
         ).scalars().all()
+        performance_tracker.start_stage("summarizing")
+        _update_analysis_stage(stage_progress, "segmenting", status="completed", completed_units=segment_count)
+        _update_analysis_stage(stage_progress, "summarizing", status="running", completed_units=0)
         latest_snapshot = _apply_progress(
             job,
             current_stage="summarizing",
@@ -412,39 +589,78 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             overall_completed_units=message_count + segment_count,
             overall_total_units=overall_total_units,
             status_message=f"summarizing 0/{segment_count} summaries",
+            performance=performance_tracker.snapshot(),
+            stage_progress=stage_progress,
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
 
-        previous_snapshot_summary = None
-        for index, segment in enumerate(segment_rows, start=1):
-            segment_messages = [
-                {"speaker_role": message.speaker_role, "content_text": message.content_text}
-                for message in session.execute(
-                    select(Message)
-                    .where(Message.id.in_(segment.source_message_ids))
-                    .order_by(Message.sequence_no.asc())
-                ).scalars()
-            ]
-            summary = build_segment_summary(
-                llm_client=effective_llm,
-                segment_messages=segment_messages,
-                previous_snapshot_summary=previous_snapshot_summary,
-            )
-            session.add(SegmentSummary(segment_id=segment.id, **summary.model_dump()))
-            previous_snapshot_summary = summary.summary_text
-            session.flush()
-            latest_snapshot = _apply_progress(
-                job,
-                current_stage="summarizing",
-                current_stage_completed_units=index,
-                current_stage_total_units=segment_count,
-                overall_completed_units=message_count + segment_count + index,
-                overall_total_units=overall_total_units,
-                status_message=f"summarizing {index}/{segment_count} summaries",
-            )
-            session.commit()
-            progress_reporter.maybe_emit(latest_snapshot)
+        summary_work_items = _load_segment_summary_work_items(session, segment_rows)
+        completed_summaries = 0
+        summary_worker_count = min(llm_max_concurrency, max(1, segment_count))
+        summary_executor = ThreadPoolExecutor(max_workers=summary_worker_count)
+        should_wait_for_summary_executor = True
+        try:
+            pending_summary_work_items = iter(summary_work_items)
+            summary_futures = {}
+
+            for _ in range(summary_worker_count):
+                work_item = next(pending_summary_work_items, None)
+                if work_item is None:
+                    break
+                performance_tracker.record_llm_call("segment_summary")
+                future = summary_executor.submit(
+                    _build_segment_summary_result,
+                    llm_client=effective_llm,
+                    work_item=work_item,
+                    llm_limiter=llm_limiter,
+                )
+                summary_futures[future] = work_item
+
+            while summary_futures:
+                future = next(as_completed(summary_futures))
+                summary_futures.pop(future)
+                result = future.result()
+                completed_summaries += 1
+                session.add(SegmentSummary(segment_id=result.segment_id, **result.summary.model_dump()))
+                session.flush()
+                _update_analysis_stage(stage_progress, "summarizing", completed_units=completed_summaries)
+                latest_snapshot = _apply_progress(
+                    job,
+                    current_stage="summarizing",
+                    current_stage_completed_units=completed_summaries,
+                    current_stage_total_units=segment_count,
+                    overall_completed_units=message_count + segment_count + completed_summaries,
+                    overall_total_units=overall_total_units,
+                    status_message=f"summarizing {completed_summaries}/{segment_count} summaries",
+                    performance=performance_tracker.snapshot(),
+                    stage_progress=stage_progress,
+                )
+                session.commit()
+                progress_reporter.maybe_emit(latest_snapshot)
+
+                work_item = next(pending_summary_work_items, None)
+                if work_item is not None:
+                    performance_tracker.record_llm_call("segment_summary")
+                    summary_futures[
+                        summary_executor.submit(
+                            _build_segment_summary_result,
+                            llm_client=effective_llm,
+                            work_item=work_item,
+                            llm_limiter=llm_limiter,
+                        )
+                    ] = work_item
+        except Exception:
+            should_wait_for_summary_executor = False
+            for pending_future in summary_futures:
+                pending_future.cancel()
+            summary_executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        finally:
+            if should_wait_for_summary_executor:
+                summary_executor.shutdown(wait=True, cancel_futures=True)
+
+        _update_analysis_stage(stage_progress, "summarizing", status="completed", completed_units=segment_count)
 
         summary_pairs = session.execute(
             select(SegmentSummary, Segment)
@@ -456,7 +672,14 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
         evidence_segment_ids = [segment.id for _summary, segment in summary_pairs]
         topic_stage_total_units = (2 * segment_count) + 3
         topic_stage_base_units = message_count + (2 * segment_count)
+        snapshot_work_items = _build_snapshot_work_items(summary_pairs)
+        snapshot_progress_queue: Queue[SnapshotProgressEvent] = Queue()
+        for _work_item in snapshot_work_items:
+            performance_tracker.record_llm_call("relationship_snapshot")
 
+        performance_tracker.start_stage("topic_resolution")
+        _update_analysis_stage(stage_progress, "topic_resolution", status="running", completed_units=0)
+        _update_analysis_stage(stage_progress, "snapshots", status="running", completed_units=0)
         latest_snapshot = _apply_progress(
             job,
             current_stage="topic_persona_snapshot",
@@ -465,126 +688,129 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             overall_completed_units=topic_stage_base_units,
             overall_total_units=overall_total_units,
             status_message=f"topic_persona_snapshot 0/{topic_stage_total_units} tasks",
+            performance=performance_tracker.snapshot(),
+            stage_progress=stage_progress,
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
 
-        topics_by_id: dict[int, Topic] = {}
-        completed_topic_stage_units = 0
-        for index, (summary, segment) in enumerate(summary_pairs, start=1):
-            current_segment_summary = _segment_summary_payload(summary)
-            assignment = assign_segment_topics(
+        with ThreadPoolExecutor(max_workers=1) as snapshot_executor:
+            snapshot_future = snapshot_executor.submit(
+                _run_snapshot_branch,
                 llm_client=effective_llm,
-                current_segment_summary=current_segment_summary,
-                existing_topics=[_topic_prompt_payload(topic) for topic in topics_by_id.values()],
+                llm_limiter=llm_limiter,
+                work_items=snapshot_work_items,
+                progress_queue=snapshot_progress_queue,
+                time_fn=progress_reporter.time_fn,
             )
-            matched_topics = _normalize_topic_matches(
-                matched_topics=assignment.matched_topics,
-                existing_topic_ids=set(topics_by_id.keys()),
-            )
-            linked_topic_ids: set[int] = set()
 
-            for match in matched_topics:
-                topic = topics_by_id[match.topic_id]
-                created = _ensure_topic_link(
-                    session,
-                    topic_id=topic.id,
-                    segment_id=segment.id,
-                    link_reason=match.link_reason,
-                    score=match.score,
+            topics_by_id: dict[int, Topic] = {}
+            completed_topic_stage_units = 0
+            for index, (summary, segment) in enumerate(summary_pairs, start=1):
+                current_segment_summary = _segment_summary_payload(summary)
+                performance_tracker.record_llm_call("topic_assignment")
+                with llm_limiter:
+                    assignment = assign_segment_topics(
+                        llm_client=effective_llm,
+                        current_segment_summary=current_segment_summary,
+                        existing_topics=[_topic_prompt_payload(topic) for topic in topics_by_id.values()],
+                    )
+                matched_topics = _normalize_topic_matches(
+                    matched_topics=assignment.matched_topics,
+                    existing_topic_ids=set(topics_by_id.keys()),
                 )
-                if created:
-                    _touch_topic_with_segment(topic, segment)
-                linked_topic_ids.add(topic.id)
+                linked_topic_ids: set[int] = set()
 
-            if assignment.should_create_new_topic or not linked_topic_ids:
-                creation = build_topic_creation_payload(
-                    llm_client=effective_llm,
-                    current_segment_summary=current_segment_summary,
-                )
-                topic = Topic(
-                    conversation_id=conversation.id,
-                    topic_name=creation.topic_name,
-                    topic_summary=creation.topic_summary,
-                    first_seen_at=segment.start_time,
-                    last_seen_at=segment.end_time,
-                    segment_count=1,
-                    topic_status=creation.topic_status,
-                )
-                session.add(topic)
+                for match in matched_topics:
+                    topic = topics_by_id[match.topic_id]
+                    created = _ensure_topic_link(
+                        session,
+                        topic_id=topic.id,
+                        segment_id=segment.id,
+                        link_reason=match.link_reason,
+                        score=match.score,
+                    )
+                    if created:
+                        _touch_topic_with_segment(topic, segment)
+                    linked_topic_ids.add(topic.id)
+
+                if assignment.should_create_new_topic or not linked_topic_ids:
+                    performance_tracker.record_llm_call("topic_creation")
+                    with llm_limiter:
+                        creation = build_topic_creation_payload(
+                            llm_client=effective_llm,
+                            current_segment_summary=current_segment_summary,
+                        )
+                    topic = Topic(
+                        conversation_id=conversation.id,
+                        topic_name=creation.topic_name,
+                        topic_summary=creation.topic_summary,
+                        first_seen_at=segment.start_time,
+                        last_seen_at=segment.end_time,
+                        segment_count=1,
+                        topic_status=creation.topic_status,
+                    )
+                    session.add(topic)
+                    session.flush()
+                    topics_by_id[topic.id] = topic
+                    _ensure_topic_link(
+                        session,
+                        topic_id=topic.id,
+                        segment_id=segment.id,
+                        link_reason=creation.relevance_reason,
+                        score=1.0,
+                    )
+
                 session.flush()
-                topics_by_id[topic.id] = topic
-                _ensure_topic_link(
-                    session,
-                    topic_id=topic.id,
-                    segment_id=segment.id,
-                    link_reason=creation.relevance_reason,
-                    score=1.0,
+                completed_topic_stage_units = index
+                _update_analysis_stage(stage_progress, "topic_resolution", completed_units=index)
+                _drain_snapshot_progress_events(
+                    session=session,
+                    progress_queue=snapshot_progress_queue,
+                    stage_progress=stage_progress,
                 )
+                latest_snapshot = _apply_progress(
+                    job,
+                    current_stage="topic_persona_snapshot",
+                    current_stage_completed_units=completed_topic_stage_units,
+                    current_stage_total_units=topic_stage_total_units,
+                    overall_completed_units=topic_stage_base_units + completed_topic_stage_units,
+                    overall_total_units=overall_total_units,
+                    status_message=(
+                        f"topic_persona_snapshot {completed_topic_stage_units}/{topic_stage_total_units} "
+                        f"tasks (topic resolution {index}/{segment_count})"
+                    ),
+                    performance=performance_tracker.snapshot(),
+                    stage_progress=stage_progress,
+                )
+                session.commit()
+                progress_reporter.maybe_emit(latest_snapshot)
 
+            performance_tracker.start_stage("topic_merge_review")
+            performance_tracker.record_llm_call("topic_merge_review")
+            with llm_limiter:
+                merge_review = review_topic_merges(
+                    llm_client=effective_llm,
+                    topics=[_topic_prompt_payload(topic) for topic in topics_by_id.values()],
+                )
+            topics_by_id = _apply_topic_merges(
+                session,
+                topics_by_id=topics_by_id,
+                merge_decisions=merge_review.merges,
+            )
             session.flush()
-            completed_topic_stage_units = index
-            latest_snapshot = _apply_progress(
-                job,
-                current_stage="topic_persona_snapshot",
-                current_stage_completed_units=completed_topic_stage_units,
-                current_stage_total_units=topic_stage_total_units,
-                overall_completed_units=topic_stage_base_units + completed_topic_stage_units,
-                overall_total_units=overall_total_units,
-                status_message=(
-                    f"topic_persona_snapshot {completed_topic_stage_units}/{topic_stage_total_units} "
-                    f"tasks (topic resolution {index}/{segment_count})"
-                ),
-            )
-            session.commit()
-            progress_reporter.maybe_emit(latest_snapshot)
-
-        merge_review = review_topic_merges(
-            llm_client=effective_llm,
-            topics=[_topic_prompt_payload(topic) for topic in topics_by_id.values()],
-        )
-        topics_by_id = _apply_topic_merges(
-            session,
-            topics_by_id=topics_by_id,
-            merge_decisions=merge_review.merges,
-        )
-        session.flush()
-        completed_topic_stage_units += 1
-        latest_snapshot = _apply_progress(
-            job,
-            current_stage="topic_persona_snapshot",
-            current_stage_completed_units=completed_topic_stage_units,
-            current_stage_total_units=topic_stage_total_units,
-            overall_completed_units=topic_stage_base_units + completed_topic_stage_units,
-            overall_total_units=overall_total_units,
-            status_message=(
-                f"topic_persona_snapshot {completed_topic_stage_units}/{topic_stage_total_units} "
-                "tasks (topic merge review)"
-            ),
-        )
-        session.commit()
-        progress_reporter.maybe_emit(latest_snapshot)
-
-        for role in ("self", "other"):
-            payload = build_persona_payload(
-                llm_client=effective_llm,
-                subject_role=role,
-                segment_summaries=segment_summaries,
-            )
-            session.add(
-                PersonaProfile(
-                    conversation_id=conversation.id,
-                    subject_role=role,
-                    global_persona_summary=payload.global_persona_summary,
-                    style_traits=payload.style_traits,
-                    conflict_traits=payload.conflict_traits,
-                    relationship_specific_patterns=payload.relationship_specific_patterns,
-                    evidence_segment_ids=evidence_segment_ids,
-                    confidence=payload.confidence,
-                )
-            )
             completed_topic_stage_units += 1
-            session.flush()
+            _update_analysis_stage(
+                stage_progress,
+                "topic_resolution",
+                status="completed",
+                completed_units=stage_progress["topic_resolution"].total_units,
+            )
+            _drain_snapshot_progress_events(
+                session=session,
+                progress_queue=snapshot_progress_queue,
+                stage_progress=stage_progress,
+            )
             latest_snapshot = _apply_progress(
                 job,
                 current_stage="topic_persona_snapshot",
@@ -594,46 +820,117 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
                 overall_total_units=overall_total_units,
                 status_message=(
                     f"topic_persona_snapshot {completed_topic_stage_units}/{topic_stage_total_units} "
-                    f"tasks (persona {role})"
+                    "tasks (topic merge review)"
                 ),
+                performance=performance_tracker.snapshot(),
+                stage_progress=stage_progress,
             )
             session.commit()
             progress_reporter.maybe_emit(latest_snapshot)
 
-        prior_snapshot_summary = None
-        for index, (summary, segment) in enumerate(summary_pairs, start=1):
-            snapshot = build_snapshot_payload(
-                llm_client=effective_llm,
-                segment_summary={"summary_text": summary.summary_text},
-                prior_snapshot=prior_snapshot_summary,
-            )
-            session.add(
-                RelationshipSnapshot(
-                    conversation_id=conversation.id,
-                    as_of_message_id=segment.end_message_id,
-                    as_of_time=segment.end_time,
-                    **snapshot.model_dump(),
+            performance_tracker.start_stage("persona")
+            _update_analysis_stage(stage_progress, "persona", status="running", completed_units=0)
+            with ThreadPoolExecutor(max_workers=min(2, llm_max_concurrency)) as persona_executor:
+                persona_futures = {}
+                for role in ("self", "other"):
+                    performance_tracker.record_llm_call("persona")
+                    persona_futures[
+                        persona_executor.submit(
+                            _build_persona_payload_with_limiter,
+                            llm_client=effective_llm,
+                            llm_limiter=llm_limiter,
+                            subject_role=role,
+                            segment_summaries=segment_summaries,
+                        )
+                    ] = role
+
+                completed_personas = 0
+                for future in as_completed(persona_futures):
+                    role = persona_futures[future]
+                    payload = future.result()
+                    session.add(
+                        PersonaProfile(
+                            conversation_id=conversation.id,
+                            subject_role=role,
+                            global_persona_summary=payload.global_persona_summary,
+                            style_traits=payload.style_traits,
+                            conflict_traits=payload.conflict_traits,
+                            relationship_specific_patterns=payload.relationship_specific_patterns,
+                            evidence_segment_ids=evidence_segment_ids,
+                            confidence=payload.confidence,
+                        )
+                    )
+                    completed_topic_stage_units += 1
+                    completed_personas += 1
+                    session.flush()
+                    _update_analysis_stage(stage_progress, "persona", completed_units=completed_personas)
+                    _drain_snapshot_progress_events(
+                        session=session,
+                        progress_queue=snapshot_progress_queue,
+                        stage_progress=stage_progress,
+                    )
+                    latest_snapshot = _apply_progress(
+                        job,
+                        current_stage="topic_persona_snapshot",
+                        current_stage_completed_units=completed_topic_stage_units,
+                        current_stage_total_units=topic_stage_total_units,
+                        overall_completed_units=topic_stage_base_units + completed_topic_stage_units,
+                        overall_total_units=overall_total_units,
+                        status_message=(
+                            f"topic_persona_snapshot {completed_topic_stage_units}/{topic_stage_total_units} "
+                            f"tasks (persona {role})"
+                        ),
+                        performance=performance_tracker.snapshot(),
+                        stage_progress=stage_progress,
+                    )
+                    session.commit()
+                    progress_reporter.maybe_emit(latest_snapshot)
+
+            _update_analysis_stage(stage_progress, "persona", status="completed", completed_units=2)
+
+            while not snapshot_future.done():
+                try:
+                    event = snapshot_progress_queue.get(timeout=0.2)
+                except Empty:
+                    continue
+                _consume_snapshot_progress_event(
+                    session=session,
+                    event=event,
+                    stage_progress=stage_progress,
                 )
-            )
-            prior_snapshot_summary = snapshot.snapshot_summary
-            session.flush()
-            total_completed = completed_topic_stage_units + index
-            latest_snapshot = _apply_progress(
-                job,
-                current_stage="topic_persona_snapshot",
-                current_stage_completed_units=total_completed,
-                current_stage_total_units=topic_stage_total_units,
-                overall_completed_units=topic_stage_base_units + total_completed,
-                overall_total_units=overall_total_units,
-                status_message=(
-                    f"topic_persona_snapshot {total_completed}/{topic_stage_total_units} "
-                    f"tasks (snapshots {index}/{segment_count})"
-                ),
-            )
-            session.commit()
-            progress_reporter.maybe_emit(latest_snapshot)
+                session.flush()
+                total_completed = completed_topic_stage_units + stage_progress["snapshots"].completed_units
+                latest_snapshot = _apply_progress(
+                    job,
+                    current_stage="topic_persona_snapshot",
+                    current_stage_completed_units=total_completed,
+                    current_stage_total_units=topic_stage_total_units,
+                    overall_completed_units=topic_stage_base_units + total_completed,
+                    overall_total_units=overall_total_units,
+                    status_message=(
+                        f"topic_persona_snapshot {total_completed}/{topic_stage_total_units} "
+                        f"tasks (snapshots {stage_progress['snapshots'].completed_units}/{segment_count})"
+                    ),
+                    performance=performance_tracker.snapshot(),
+                    stage_progress=stage_progress,
+                )
+                session.commit()
+                progress_reporter.maybe_emit(latest_snapshot)
 
+            snapshot_elapsed_seconds = snapshot_future.result()
+            performance_tracker.add_stage_elapsed("snapshots", snapshot_elapsed_seconds)
+            _drain_snapshot_progress_events(
+                session=session,
+                progress_queue=snapshot_progress_queue,
+                stage_progress=stage_progress,
+            )
+            _update_analysis_stage(stage_progress, "snapshots", status="completed", completed_units=segment_count)
+            session.commit()
+
+        performance_tracker.start_stage("finalizing")
         conversation.status = "ready"
+        performance_tracker.finish()
+        _update_analysis_stage(stage_progress, "completed", status="completed", completed_units=1)
         latest_snapshot = _apply_progress(
             job,
             current_stage="completed",
@@ -645,17 +942,27 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             status="completed",
             finished_at=_utcnow(),
             error_message=None,
+            performance=performance_tracker.snapshot(),
+            stage_progress=stage_progress,
         )
         session.commit()
         progress_reporter.maybe_emit(latest_snapshot)
         return True
     except Exception as exc:
         session.rollback()
+        performance_tracker.finish()
+        failed_performance = performance_tracker.snapshot()
+        if stage_progress is not None:
+            for stage_id, stage in list(stage_progress.items()):
+                if stage.status == "running":
+                    _update_analysis_stage(stage_progress, stage_id, status="failed")
         _cleanup_failed_job_artifacts(
             job_id=job_id,
             conversation_id=conversation_id,
             latest_snapshot=latest_snapshot,
             error_message=str(exc),
+            performance=failed_performance,
+            stage_progress=stage_progress,
         )
         failed_snapshot = ProgressSnapshot(
             job_id=job_id,
@@ -666,6 +973,7 @@ def run_next_job(*, llm_client=None, progress_reporter: ConsoleProgressReporter 
             overall_completed_units=latest_snapshot.overall_completed_units,
             overall_total_units=latest_snapshot.overall_total_units,
             status_message=f"failed {latest_snapshot.status_message}: {exc}",
+            elapsed_seconds=_performance_elapsed_seconds(failed_performance),
         )
         progress_reporter.maybe_emit(failed_snapshot)
         return True
@@ -1144,14 +1452,223 @@ def _materialize_segment_draft(
     )
 
 
+def _resolve_llm_max_concurrency(settings) -> int:
+    return max(1, int(getattr(settings, "analysis_llm_max_concurrency", 4) or 1))
+
+
+def _load_segment_summary_work_items(session, segment_rows: list[Segment]) -> list[SegmentSummaryWorkItem]:
+    work_items: list[SegmentSummaryWorkItem] = []
+    for index, segment in enumerate(segment_rows, start=1):
+        segment_messages = [
+            {"speaker_role": message.speaker_role, "content_text": message.content_text}
+            for message in session.execute(
+                select(Message)
+                .where(Message.id.in_(segment.source_message_ids))
+                .order_by(Message.sequence_no.asc())
+            ).scalars()
+        ]
+        work_items.append(
+            SegmentSummaryWorkItem(
+                index=index,
+                segment_id=segment.id,
+                segment_messages=segment_messages,
+            )
+        )
+    return work_items
+
+
+def _build_segment_summary_result(
+    *,
+    llm_client,
+    work_item: SegmentSummaryWorkItem,
+    llm_limiter: LLMConcurrencyLimiter,
+) -> SegmentSummaryResult:
+    with llm_limiter:
+        summary = build_segment_summary(
+            llm_client=llm_client,
+            segment_messages=work_item.segment_messages,
+            previous_snapshot_summary=None,
+        )
+    return SegmentSummaryResult(
+        index=work_item.index,
+        segment_id=work_item.segment_id,
+        summary=summary,
+    )
+
+
+def _build_persona_payload_with_limiter(
+    *,
+    llm_client,
+    llm_limiter: LLMConcurrencyLimiter,
+    subject_role: str,
+    segment_summaries: list[dict],
+):
+    with llm_limiter:
+        return build_persona_payload(
+            llm_client=llm_client,
+            subject_role=subject_role,
+            segment_summaries=segment_summaries,
+        )
+
+
+def _build_snapshot_work_items(summary_pairs) -> list[SnapshotWorkItem]:
+    return [
+        SnapshotWorkItem(
+            index=index,
+            conversation_id=segment.conversation_id,
+            segment_id=segment.id,
+            as_of_message_id=segment.end_message_id,
+            as_of_time=segment.end_time,
+            summary_text=summary.summary_text,
+        )
+        for index, (summary, segment) in enumerate(summary_pairs, start=1)
+    ]
+
+
+def _run_snapshot_branch(
+    *,
+    llm_client,
+    llm_limiter: LLMConcurrencyLimiter,
+    work_items: list[SnapshotWorkItem],
+    progress_queue: Queue[SnapshotProgressEvent],
+    time_fn: Callable[[], float],
+) -> float:
+    started_at = time_fn()
+    prior_snapshot_summary = None
+    for work_item in work_items:
+        with llm_limiter:
+            snapshot = build_snapshot_payload(
+                llm_client=llm_client,
+                segment_summary={"summary_text": work_item.summary_text},
+                prior_snapshot=prior_snapshot_summary,
+            )
+        prior_snapshot_summary = snapshot.snapshot_summary
+        progress_queue.put(
+            SnapshotProgressEvent(
+                index=work_item.index,
+                conversation_id=work_item.conversation_id,
+                segment_id=work_item.segment_id,
+                as_of_message_id=work_item.as_of_message_id,
+                as_of_time=work_item.as_of_time,
+                snapshot=snapshot,
+            )
+        )
+    return max(0.0, time_fn() - started_at)
+
+
+def _drain_snapshot_progress_events(
+    *,
+    session,
+    progress_queue: Queue[SnapshotProgressEvent],
+    stage_progress: dict[str, AnalysisStageProgress],
+) -> int:
+    drained_count = 0
+    while True:
+        try:
+            event = progress_queue.get_nowait()
+        except Empty:
+            return drained_count
+
+        _consume_snapshot_progress_event(
+            session=session,
+            event=event,
+            stage_progress=stage_progress,
+        )
+        drained_count += 1
+
+
+def _consume_snapshot_progress_event(
+    *,
+    session,
+    event: SnapshotProgressEvent,
+    stage_progress: dict[str, AnalysisStageProgress],
+) -> None:
+    session.add(
+        RelationshipSnapshot(
+            conversation_id=event.conversation_id,
+            as_of_message_id=event.as_of_message_id,
+            as_of_time=event.as_of_time,
+            **event.snapshot.model_dump(),
+        )
+    )
+    _update_analysis_stage(stage_progress, "snapshots", completed_units=event.index)
+
+
 def _calculate_overall_total_units(*, message_count: int, segment_count: int) -> int:
     return message_count + (4 * segment_count) + 3
+
+
+def _build_analysis_stage_progress(
+    *,
+    message_count: int,
+    segment_count: int,
+) -> dict[str, AnalysisStageProgress]:
+    stage_totals = {
+        "parsing": message_count,
+        "segmenting": segment_count,
+        "summarizing": segment_count,
+        "topic_resolution": segment_count + 1,
+        "persona": 2,
+        "snapshots": segment_count,
+        "completed": 1,
+    }
+    return {
+        stage_id: AnalysisStageProgress(
+            stage_id=stage_id,
+            label=label,
+            status="waiting",
+            completed_units=0,
+            total_units=stage_totals[stage_id],
+        )
+        for stage_id, label in _ANALYSIS_STAGE_DEFINITIONS
+    }
+
+
+def _update_analysis_stage(
+    stage_progress: dict[str, AnalysisStageProgress],
+    stage_id: str,
+    *,
+    status: str | None = None,
+    completed_units: int | None = None,
+    total_units: int | None = None,
+) -> None:
+    current = stage_progress[stage_id]
+    stage_progress[stage_id] = AnalysisStageProgress(
+        stage_id=current.stage_id,
+        label=current.label,
+        status=status if status is not None else current.status,
+        completed_units=completed_units if completed_units is not None else current.completed_units,
+        total_units=total_units if total_units is not None else current.total_units,
+    )
+
+
+def _analysis_stage_payloads(stage_progress: dict[str, AnalysisStageProgress]) -> list[dict[str, object]]:
+    return [
+        {
+            "id": stage.stage_id,
+            "label": stage.label,
+            "status": stage.status,
+            "completed_units": stage.completed_units,
+            "total_units": stage.total_units,
+        }
+        for stage_id, _label in _ANALYSIS_STAGE_DEFINITIONS
+        for stage in (stage_progress[stage_id],)
+    ]
 
 
 def _calculate_percent(completed_units: int, total_units: int) -> int:
     if total_units <= 0:
         return 0
     return min(100, int((completed_units * 100) / total_units))
+
+
+def _performance_elapsed_seconds(performance: dict[str, object] | None) -> float | None:
+    if performance is None:
+        return None
+    elapsed_seconds = performance.get("elapsed_seconds")
+    if isinstance(elapsed_seconds, int | float):
+        return float(elapsed_seconds)
+    return None
 
 
 def _apply_progress(
@@ -1166,7 +1683,9 @@ def _apply_progress(
     status: str | None = None,
     finished_at: datetime | None = None,
     error_message: str | None = None,
-    ) -> ProgressSnapshot:
+    performance: dict[str, object] | None = None,
+    stage_progress: dict[str, AnalysisStageProgress] | None = None,
+) -> ProgressSnapshot:
     payload = dict(job.payload_json or {})
     payload["progress"] = {
         "current_stage_total_units": current_stage_total_units,
@@ -1175,6 +1694,10 @@ def _apply_progress(
         "overall_completed_units": overall_completed_units,
         "status_message": status_message,
     }
+    if performance is not None:
+        payload["performance"] = performance
+    if stage_progress is not None:
+        payload["progress"]["stages"] = _analysis_stage_payloads(stage_progress)
     job.payload_json = payload
     job.current_stage = current_stage
     job.progress_percent = _calculate_percent(overall_completed_units, overall_total_units)
@@ -1192,6 +1715,7 @@ def _apply_progress(
         overall_completed_units=overall_completed_units,
         overall_total_units=overall_total_units,
         status_message=status_message,
+        elapsed_seconds=_performance_elapsed_seconds(performance),
     )
 
 
@@ -1330,6 +1854,8 @@ def _cleanup_failed_job_artifacts(
     conversation_id: int,
     latest_snapshot: ProgressSnapshot,
     error_message: str,
+    performance: dict[str, object] | None = None,
+    stage_progress: dict[str, AnalysisStageProgress] | None = None,
 ) -> None:
     session = get_sessionmaker()()
     try:
@@ -1347,6 +1873,8 @@ def _cleanup_failed_job_artifacts(
                 status="failed",
                 finished_at=_utcnow(),
                 error_message=error_message,
+                performance=performance,
+                stage_progress=stage_progress,
             )
         conversation = session.get(Conversation, conversation_id)
         if conversation is not None:

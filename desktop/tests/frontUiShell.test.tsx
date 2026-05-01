@@ -341,7 +341,8 @@ describe('frontUI shell markup', () => {
     expect(html).toContain('发送(S)')
     expect(html).toContain('摘要生成 42%')
     expect(html).toContain('front-progress')
-    expect(html).toContain('front-progress__fill')
+    expect(html).toContain('查看分析进度详情')
+    expect(html).not.toContain('front-progress__fill')
   })
 
   it('composes the titleBar slot before the main content body with WindowTitleBar controls intact', () => {

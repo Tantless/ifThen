@@ -1,4 +1,5 @@
 from pathlib import Path
+from threading import Event, Lock
 
 from if_then_mvp.db import init_db, session_scope
 from if_then_mvp.models import (
@@ -65,6 +66,52 @@ class ExplodingLLM:
         raise RuntimeError("boom")
 
 
+class FailingFirstSummaryLLM(FakeLLM):
+    def __init__(self) -> None:
+        self.summary_call_count = 0
+
+    def chat_json(self, *, system_prompt, user_prompt, response_model):
+        if response_model.__name__ == "SegmentSummaryPayload":
+            self.summary_call_count += 1
+            raise RuntimeError("summary boom")
+        return super().chat_json(system_prompt=system_prompt, user_prompt=user_prompt, response_model=response_model)
+
+
+class ConcurrencyTrackingLLM(FakeLLM):
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._snapshot_entered = Event()
+        self._topic_entered = Event()
+        self._snapshot_waited = False
+        self._topic_waited = False
+        self._active_call_count = 0
+        self.max_active_call_count = 0
+
+    def chat_json(self, *, system_prompt, user_prompt, response_model):
+        response_name = response_model.__name__
+        with self._lock:
+            self._active_call_count += 1
+            self.max_active_call_count = max(self.max_active_call_count, self._active_call_count)
+            should_wait_for_topic = response_name == "SnapshotPayload" and not self._snapshot_waited
+            should_wait_for_snapshot = response_name == "TopicAssignmentPayload" and not self._topic_waited
+            if should_wait_for_topic:
+                self._snapshot_waited = True
+            if should_wait_for_snapshot:
+                self._topic_waited = True
+
+        try:
+            if should_wait_for_topic:
+                self._snapshot_entered.set()
+                self._topic_entered.wait(0.2)
+            if should_wait_for_snapshot:
+                self._topic_entered.set()
+                self._snapshot_entered.wait(0.2)
+            return super().chat_json(system_prompt=system_prompt, user_prompt=user_prompt, response_model=response_model)
+        finally:
+            with self._lock:
+                self._active_call_count -= 1
+
+
 class SlowSummaryLLM:
     def __init__(self, advance_time: callable) -> None:
         self.advance_time = advance_time
@@ -106,6 +153,24 @@ class SlowSummaryLLM:
             "snapshot_summary": "双方刚建立联系，整体轻松。",
         }
         return response_model(**{key: value for key, value in payload_map.items() if key in response_model.model_fields})
+
+
+class TimedLLM(FakeLLM):
+    def __init__(self, advance_time: callable) -> None:
+        self.advance_time = advance_time
+
+    def chat_json(self, *, system_prompt, user_prompt, response_model):
+        self.advance_time(
+            {
+                "SegmentSummaryPayload": 2.0,
+                "TopicAssignmentPayload": 3.0,
+                "TopicCreationPayload": 5.0,
+                "TopicMergeReviewPayload": 7.0,
+                "PersonaPayload": 11.0,
+                "SnapshotPayload": 13.0,
+            }.get(response_model.__name__, 1.0)
+        )
+        return super().chat_json(system_prompt=system_prompt, user_prompt=user_prompt, response_model=response_model)
 
 
 class MultiTopicLLM:
@@ -480,6 +545,65 @@ def test_run_next_job_parses_messages_and_creates_analysis_artifacts(tmp_path, m
         assert conversation.status == "ready"
 
 
+def test_run_next_job_records_analysis_performance_diagnostics(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    fixture_path = tmp_path / "timed_segments.txt"
+    _write_multi_segment_fixture(fixture_path)
+    init_db()
+    _seed_job(fixture_path=fixture_path)
+
+    current_time = {"value": 0.0}
+    lines: list[str] = []
+
+    def advance_time(seconds: float) -> None:
+        current_time["value"] += seconds
+
+    reporter = ConsoleProgressReporter(
+        printer=lines.append,
+        time_fn=lambda: current_time["value"],
+        max_interval_seconds=30,
+    )
+
+    processed = run_next_job(
+        llm_client=TimedLLM(advance_time),
+        progress_reporter=reporter,
+    )
+
+    assert processed is True
+
+    with session_scope() as session:
+        job = session.query(AnalysisJob).one()
+        performance = job.payload_json["performance"]
+        assert performance["input_counts"] == {"messages": 6, "segments": 3}
+        assert performance["llm_call_counts"] == {
+            "segment_summary": 3,
+            "topic_assignment": 3,
+            "topic_creation": 1,
+            "topic_merge_review": 1,
+            "persona": 2,
+            "relationship_snapshot": 3,
+            "total": 13,
+        }
+        assert performance["elapsed_seconds"] == 88.0
+        assert performance["stage_elapsed_seconds"]["summarizing"] >= 0
+        assert performance["stage_elapsed_seconds"]["topic_resolution"] >= 0
+        assert performance["stage_elapsed_seconds"]["topic_merge_review"] >= 0
+        assert performance["stage_elapsed_seconds"]["persona"] >= 0
+        assert performance["stage_elapsed_seconds"]["snapshots"] >= 0
+        stages = job.payload_json["progress"]["stages"]
+        assert [(stage["id"], stage["status"]) for stage in stages] == [
+            ("parsing", "completed"),
+            ("segmenting", "completed"),
+            ("summarizing", "completed"),
+            ("topic_resolution", "completed"),
+            ("persona", "completed"),
+            ("snapshots", "completed"),
+            ("completed", "completed"),
+        ]
+
+    assert any("elapsed=88.0s" in line for line in lines)
+
+
 def test_run_next_job_completes_import_only_without_analysis_artifacts(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     fixture_path = Path("tests/fixtures/qq_export_sample.txt")
@@ -577,6 +701,40 @@ def test_run_next_job_marks_job_failed_when_stage_raises(tmp_path, monkeypatch):
         assert session.query(RelationshipSnapshot).count() == 0
         conversation = session.query(Conversation).one()
         assert conversation.status == "failed"
+
+
+def test_run_next_job_stops_submitting_summary_calls_after_first_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    monkeypatch.setenv("IF_THEN_ANALYSIS_LLM_MAX_CONCURRENCY", "1")
+    fixture_path = tmp_path / "summary_failure_segments.txt"
+    _write_multi_segment_fixture(fixture_path)
+    init_db()
+    _seed_job(fixture_path=fixture_path)
+    llm = FailingFirstSummaryLLM()
+
+    processed = run_next_job(llm_client=llm)
+
+    assert processed is True
+    assert llm.summary_call_count == 1
+    with session_scope() as session:
+        job = session.query(AnalysisJob).one()
+        assert job.status == "failed"
+        assert "summary boom" in job.error_message
+
+
+def test_run_next_job_respects_llm_concurrency_limit_across_analysis_branches(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    monkeypatch.setenv("IF_THEN_ANALYSIS_LLM_MAX_CONCURRENCY", "1")
+    fixture_path = tmp_path / "serialized_branch_segments.txt"
+    _write_multi_segment_fixture(fixture_path)
+    init_db()
+    _seed_job(fixture_path=fixture_path)
+    llm = ConcurrencyTrackingLLM()
+
+    processed = run_next_job(llm_client=llm)
+
+    assert processed is True
+    assert llm.max_active_call_count == 1
 
 
 def test_run_next_job_builds_worker_client_from_saved_settings(tmp_path, monkeypatch):

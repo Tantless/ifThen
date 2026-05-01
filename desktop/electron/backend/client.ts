@@ -9,9 +9,11 @@ import type {
   ListConversationJobsInput,
   ListConversationSimulationJobsInput,
   ListMessagesInput,
+  MessageContextRead,
   MessageDayRead,
   MessageRead,
   PersonaProfileRead,
+  ReadMessageContextInput,
   ReadSnapshotInput,
   SettingRead,
   SettingWrite,
@@ -80,6 +82,14 @@ export class DesktopBackendClient {
 
   async listMessageDays(conversationId: number): Promise<MessageDayRead[]> {
     return this.getJson<MessageDayRead[]>(`/conversations/${conversationId}/message-days`)
+  }
+
+  async readMessageContext(payload: ReadMessageContextInput): Promise<MessageContextRead> {
+    return this.getJson<MessageContextRead>(
+      withQuery(`/messages/${payload.messageId}/context`, {
+        radius: payload.radius,
+      }),
+    )
   }
 
   async listTopics(conversationId: number): Promise<TopicRead[]> {

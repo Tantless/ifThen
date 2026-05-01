@@ -37,6 +37,7 @@ from if_then_mvp.schemas import (
     ConversationRead,
     ImportResponse,
     JobRead,
+    JobStageRead,
     MessageDayRead,
     MessageContextRead,
     MessageRead,
@@ -687,6 +688,7 @@ def _job_to_read(job: AnalysisJob) -> JobRead:
     current_stage_completed_units = int(progress.get("current_stage_completed_units", 0) or 0)
     overall_total_units = int(progress.get("overall_total_units", 0) or 0)
     overall_completed_units = int(progress.get("overall_completed_units", 0) or 0)
+    stages = _job_progress_stages_to_read(progress.get("stages"))
 
     return JobRead(
         id=job.id,
@@ -699,7 +701,33 @@ def _job_to_read(job: AnalysisJob) -> JobRead:
         overall_total_units=overall_total_units,
         overall_completed_units=overall_completed_units,
         status_message=progress.get("status_message"),
+        stages=stages,
     )
+
+
+def _job_progress_stages_to_read(raw_stages: object) -> list[JobStageRead]:
+    if not isinstance(raw_stages, list):
+        return []
+
+    stages: list[JobStageRead] = []
+    for raw_stage in raw_stages:
+        if not isinstance(raw_stage, dict):
+            continue
+        stage_id = raw_stage.get("id")
+        label = raw_stage.get("label")
+        status = raw_stage.get("status")
+        if not isinstance(stage_id, str) or not isinstance(label, str) or not isinstance(status, str):
+            continue
+        stages.append(
+            JobStageRead(
+                id=stage_id,
+                label=label,
+                status=status,
+                completed_units=int(raw_stage.get("completed_units", 0) or 0),
+                total_units=int(raw_stage.get("total_units", 0) or 0),
+            )
+        )
+    return stages
 
 
 def _build_runtime_llm_client(session) -> ChatJSONClient:

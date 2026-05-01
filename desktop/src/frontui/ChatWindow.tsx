@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { Folder, History, MessageSquare, MoreHorizontal, Phone, Scissors, Smile } from 'lucide-react'
 
-import type { FrontAnalysisProgress, FrontChatMessage, FrontChatWindowState } from './types'
+import type { FrontAnalysisProgress, FrontAnalysisStage, FrontChatMessage, FrontChatWindowState } from './types'
 
 const TOP_LOAD_TRIGGER_PX = 24
 const TOP_LOAD_REARM_PX = 72
@@ -81,6 +81,7 @@ export function FrontChatWindow({
   const [historyLoadHint, setHistoryLoadHint] = useState<'hidden' | 'loading' | 'loaded'>('hidden')
   const [contextMenu, setContextMenu] = useState<{ messageId: number; x: number; y: number } | null>(null)
   const [showCompletionMotion, setShowCompletionMotion] = useState(false)
+  const [showAnalysisProgressDetails, setShowAnalysisProgressDetails] = useState(false)
   const [jumpHighlightMessageId, setJumpHighlightMessageId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -172,6 +173,12 @@ export function FrontChatWindow({
       clearJumpHighlightTimer()
     }
   }, [])
+
+  useEffect(() => {
+    if (!analysisProgress) {
+      setShowAnalysisProgressDetails(false)
+    }
+  }, [analysisProgress])
 
   useEffect(() => {
     clearHistoryLoadHintTimer()
@@ -399,7 +406,12 @@ export function FrontChatWindow({
             </button>
           </div>
         </div>
-        {analysisProgress ? <HeaderProgressBar progress={analysisProgress} /> : null}
+        {analysisProgress ? (
+          <HeaderProgressStatus
+            progress={analysisProgress}
+            onOpenDetails={() => setShowAnalysisProgressDetails(true)}
+          />
+        ) : null}
         {showStartAnalysisButton && onStartAnalysis ? (
           <div className="border-t border-[color:var(--if-divider)] bg-[var(--if-bg-panel)] px-5 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -712,28 +724,124 @@ export function FrontChatWindow({
           </button>
         </div>
       </div>
+      {analysisProgress && showAnalysisProgressDetails ? (
+        <AnalysisProgressDialog
+          progress={analysisProgress}
+          onClose={() => setShowAnalysisProgressDetails(false)}
+        />
+      ) : null}
     </div>
   )
 }
 
-function HeaderProgressBar({ progress }: { progress: FrontAnalysisProgress }) {
-  const fillClass = progress.tone === 'failed' ? 'bg-[var(--if-danger)]' : 'bg-[var(--if-accent)]'
+function HeaderProgressStatus({ progress, onOpenDetails }: { progress: FrontAnalysisProgress; onOpenDetails: () => void }) {
   const textClass = progress.tone === 'failed' ? 'text-[var(--if-danger)]' : 'text-[var(--if-text-secondary)]'
 
   return (
-    <div className="front-progress border-t border-[color:var(--if-divider)] px-5 py-3">
-      <div className={`front-progress__meta mb-2 flex items-center justify-between text-[12px] ${textClass}`}>
-        <span className="truncate font-medium">{progress.label}</span>
-        <span className="ml-3 whitespace-nowrap">{progress.percent}%</span>
-      </div>
-      <div className="front-progress__track h-[5px] overflow-hidden rounded-full bg-[rgba(94,84,72,0.14)]">
-        <div
-          className={`front-progress__fill h-full rounded-full transition-all duration-300 ${fillClass}`}
-          style={{ width: `${progress.percent}%` }}
-        />
-      </div>
+    <button
+      type="button"
+      className="front-progress flex w-full cursor-pointer items-center justify-between gap-3 border-t border-[color:var(--if-divider)] bg-[var(--if-bg-panel)] px-5 py-3 text-left transition-colors duration-150 hover:bg-white/72 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[rgba(7,193,96,0.18)]"
+      onClick={onOpenDetails}
+      aria-label="查看分析进度详情"
+    >
+      <span className={`min-w-0 truncate text-[12px] font-medium ${textClass}`}>{progress.label}</span>
+      <span className="shrink-0 rounded-[8px] border border-[color:var(--if-divider)] bg-white/72 px-2 py-0.5 text-[11px] text-[var(--if-text-tertiary)]">
+        详情
+      </span>
+    </button>
+  )
+}
+
+function AnalysisProgressDialog({ progress, onClose }: { progress: FrontAnalysisProgress; onClose: () => void }) {
+  const stages = progress.stages?.length ? progress.stages : buildFallbackProgressStages(progress)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(33,33,33,0.28)] p-4 backdrop-blur-[3px]" role="dialog" aria-modal="true" aria-labelledby="analysis-progress-title">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="关闭分析进度详情" onClick={onClose} />
+      <section className="relative z-10 flex max-h-[calc(100vh-32px)] w-[min(560px,100%)] flex-col overflow-hidden rounded-[12px] border border-[color:var(--if-divider-strong)] bg-[var(--if-bg-window)] shadow-[var(--if-shadow-dialog)]">
+        <header className="flex min-h-14 items-center justify-between border-b border-[color:var(--if-divider)] px-5">
+          <div className="min-w-0">
+            <h2 id="analysis-progress-title" className="m-0 text-[15px] font-semibold text-[var(--if-text-primary)]">
+              分析进度
+            </h2>
+            <p className="mt-1 text-[12px] text-[var(--if-text-secondary)]">{progress.label}</p>
+          </div>
+          <button
+            type="button"
+            className="rounded-[8px] border border-transparent px-2 py-1 text-[13px] text-[var(--if-text-secondary)] transition-colors duration-150 hover:border-[color:var(--if-divider)] hover:bg-white/72 hover:text-[var(--if-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(7,193,96,0.18)]"
+            onClick={onClose}
+          >
+            关闭
+          </button>
+        </header>
+        <div className="custom-scrollbar min-h-0 overflow-y-auto p-5">
+          <ol className="grid gap-3">
+            {stages.map((stage) => (
+              <AnalysisProgressStageRow key={stage.id} stage={stage} />
+            ))}
+          </ol>
+        </div>
+      </section>
     </div>
   )
+}
+
+function AnalysisProgressStageRow({ stage }: { stage: FrontAnalysisStage }) {
+  const statusLabel = resolveStageStatusLabel(stage)
+  const statusClass =
+    stage.status === 'failed'
+      ? 'text-[var(--if-danger)]'
+      : stage.status === 'running'
+        ? 'text-[var(--if-accent)]'
+        : 'text-[var(--if-text-tertiary)]'
+  const unitLabel = stage.totalUnits > 0 ? `${stage.completedUnits}/${stage.totalUnits}` : statusLabel
+
+  return (
+    <li className="rounded-[8px] border border-[color:var(--if-divider)] bg-white/70 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 truncate text-[13px] font-medium text-[var(--if-text-primary)]">{stage.label}</p>
+          <p className={`mt-1 text-[12px] ${statusClass}`}>{statusLabel}</p>
+        </div>
+        <span className="shrink-0 text-[12px] text-[var(--if-text-secondary)]">{unitLabel}</span>
+      </div>
+      {stage.status === 'running' ? (
+        <div className="mt-3 h-[5px] overflow-hidden rounded-full bg-[rgba(94,84,72,0.14)]">
+          <div className="h-full rounded-full bg-[var(--if-accent)] transition-all duration-300" style={{ width: `${stage.percent}%` }} />
+        </div>
+      ) : null}
+    </li>
+  )
+}
+
+function resolveStageStatusLabel(stage: FrontAnalysisStage): string {
+  switch (stage.status) {
+    case 'waiting':
+      return '等待中'
+    case 'running':
+      return `进行中 ${stage.percent}%`
+    case 'completed':
+      return '已完成'
+    case 'failed':
+      return '失败'
+    default: {
+      const _exhaustive: never = stage.status
+      return _exhaustive
+    }
+  }
+}
+
+function buildFallbackProgressStages(progress: FrontAnalysisProgress): FrontAnalysisStage[] {
+  return [
+    {
+      id: 'current',
+      label: progress.label,
+      status: progress.tone === 'failed' ? 'failed' : 'running',
+      completedUnits: progress.percent,
+      totalUnits: 100,
+      percent: progress.percent,
+    },
+  ]
 }
 
 function MonitorLogo() {

@@ -6,9 +6,11 @@ import type {
   ListConversationJobsInput,
   ListConversationSimulationJobsInput,
   ListMessagesInput,
+  MessageContextRead,
   MessageDayRead,
   MessageRead,
   PersonaProfileRead,
+  ReadMessageContextInput,
   ReadSnapshotInput,
   SettingRead,
   SettingWrite,
@@ -61,6 +63,7 @@ export type DesktopConversationsBridge = {
   delete: (conversationId: number) => Promise<void>
   listMessages: (payload: ListMessagesInput) => Promise<MessageRead[]>
   listMessageDays: (conversationId: number) => Promise<MessageDayRead[]>
+  readMessageContext: (payload: ReadMessageContextInput) => Promise<MessageContextRead>
   listTopics: (conversationId: number) => Promise<TopicRead[]>
   readProfile: (conversationId: number) => Promise<PersonaProfileRead[]>
   readSnapshot: (payload: ReadSnapshotInput) => Promise<SnapshotRead>

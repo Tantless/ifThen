@@ -1,3 +1,11 @@
+export type JobStageRead = {
+  id: string
+  label: string
+  status: string
+  completed_units: number
+  total_units: number
+}
+
 export type ConversationRead = {
   id: number
   title: string
@@ -19,6 +27,7 @@ export type JobRead = {
   overall_total_units: number
   overall_completed_units: number
   status_message: string | null
+  stages?: JobStageRead[]
 }
 
 export type MessageRead = {
@@ -35,6 +44,17 @@ export type MessageRead = {
 export type MessageDayRead = {
   date: string
   message_count: number
+}
+
+export type MessageContextRead = {
+  target: MessageRead
+  before: MessageRead[]
+  after: MessageRead[]
+}
+
+export type ReadMessageContextInput = {
+  messageId: number
+  radius?: number
 }
 
 export type TopicRead = {

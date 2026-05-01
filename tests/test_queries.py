@@ -180,6 +180,7 @@ def test_query_endpoints_return_conversation_artifacts(tmp_path, monkeypatch):
             "overall_total_units": 11,
             "overall_completed_units": 11,
             "status_message": "completed 11/11 units",
+            "stages": [],
         }
 
         messages_response = client.get("/conversations/1/messages")
@@ -466,6 +467,7 @@ def test_conversation_jobs_endpoint_returns_latest_jobs_first(tmp_path, monkeypa
             "overall_total_units": 10,
             "overall_completed_units": 0,
             "status_message": "job 3 queued",
+            "stages": [],
         },
         {
             "id": 2,
@@ -478,6 +480,7 @@ def test_conversation_jobs_endpoint_returns_latest_jobs_first(tmp_path, monkeypa
             "overall_total_units": 10,
             "overall_completed_units": 6,
             "status_message": "job 2 running",
+            "stages": [],
         },
     ]
 

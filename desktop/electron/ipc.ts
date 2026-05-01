@@ -9,6 +9,7 @@ import type {
   ListConversationJobsInput,
   ListConversationSimulationJobsInput,
   ListMessagesInput,
+  ReadMessageContextInput,
   ReadSnapshotInput,
   SettingWrite,
   SimulationCreate,
@@ -115,6 +116,10 @@ export function registerDesktopIpc(processManager: BackendProcessManager, backen
 
   ipcMain.handle('desktop:conversations-list-message-days', async (_event, conversationId: number) =>
     backendClient.listMessageDays(conversationId),
+  )
+
+  ipcMain.handle('desktop:conversations-read-message-context', async (_event, payload: ReadMessageContextInput) =>
+    backendClient.readMessageContext(payload),
   )
 
   ipcMain.handle('desktop:conversations-list-topics', async (_event, conversationId: number) =>

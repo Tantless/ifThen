@@ -1,9 +1,19 @@
 export type FrontSidebarTab = 'chat' | 'contacts' | 'files'
 
+export type FrontAnalysisStage = {
+  id: string
+  label: string
+  status: 'waiting' | 'running' | 'completed' | 'failed'
+  completedUnits: number
+  totalUnits: number
+  percent: number
+}
+
 export type FrontAnalysisProgress = {
   label: string
   percent: number
   tone: 'running' | 'failed'
+  stages?: FrontAnalysisStage[]
 }
 
 export type FrontChatListItem = {

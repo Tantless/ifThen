@@ -131,7 +131,7 @@ export function FrontChatList({
                   <span className="ml-2 whitespace-nowrap text-[11px] text-[var(--if-text-tertiary)]">{item.timestampLabel}</span>
                 </div>
                 <p className="w-full truncate text-[12px] text-[var(--if-text-secondary)]">{item.previewText}</p>
-                {item.progress ? <ProgressBar progress={item.progress} compact /> : null}
+                {item.progress ? <ProgressStatus progress={item.progress} compact /> : null}
               </div>
             </button>
           )
@@ -141,23 +141,14 @@ export function FrontChatList({
   )
 }
 
-function ProgressBar({ progress, compact = false }: { progress: FrontAnalysisProgress; compact?: boolean }) {
+function ProgressStatus({ progress, compact = false }: { progress: FrontAnalysisProgress; compact?: boolean }) {
   const trackClass = compact ? 'mt-2' : 'mt-3'
-  const fillClass = progress.tone === 'failed' ? 'bg-[var(--if-danger)]' : 'bg-[var(--if-accent)]'
   const textClass = progress.tone === 'failed' ? 'text-[var(--if-danger)]' : 'text-[var(--if-text-secondary)]'
 
   return (
-    <div className={`front-progress ${trackClass}`}>
-      <div className={`front-progress__meta mb-1 flex items-center justify-between text-[11px] ${textClass}`}>
-        <span className="truncate">{progress.label}</span>
-        <span className="ml-2 whitespace-nowrap">{progress.percent}%</span>
-      </div>
-      <div className="front-progress__track h-[3px] overflow-hidden rounded-full bg-[rgba(94,84,72,0.14)]">
-        <div
-          className={`front-progress__fill h-full rounded-full transition-all duration-300 ${fillClass}`}
-          style={{ width: `${progress.percent}%` }}
-        />
-      </div>
+    <div className={`front-progress ${trackClass} flex items-center justify-between gap-2 text-[11px] ${textClass}`}>
+      <span className="truncate">{progress.label}</span>
+      <span className="shrink-0 text-[var(--if-text-tertiary)]">{progress.tone === 'failed' ? '失败' : '分析中'}</span>
     </div>
   )
 }

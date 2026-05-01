@@ -224,4 +224,32 @@ describe('registerDesktopIpc', () => {
       autoAnalyze: true,
     })
   })
+
+  it('proxies message context reads through the backend client facade', async () => {
+    const readMessageContext = vi.fn(async () => ({
+      target: { id: 12 },
+      before: [],
+      after: [],
+    }))
+
+    registerDesktopIpc({
+      getState: () => ({ phase: 'ready' }),
+    } as any, {
+      readMessageContext,
+    } as any)
+
+    const readMessageContextHandler = handlers.get('desktop:conversations-read-message-context')
+    expect(readMessageContextHandler).toBeTypeOf('function')
+
+    if (!readMessageContextHandler) {
+      throw new Error('expected message context IPC handler to be registered')
+    }
+
+    await expect(readMessageContextHandler(invokeEvent, { messageId: 12, radius: 30 })).resolves.toEqual({
+      target: { id: 12 },
+      before: [],
+      after: [],
+    })
+    expect(readMessageContext).toHaveBeenCalledWith({ messageId: 12, radius: 30 })
+  })
 })

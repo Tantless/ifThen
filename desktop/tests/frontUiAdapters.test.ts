@@ -114,6 +114,73 @@ describe('buildFrontChatItem', () => {
     })
   })
 
+  it('prefers structured stage progress when the job exposes concurrent stages', () => {
+    const item = buildFrontChatItem({
+      conversation: {
+        id: 11,
+        title: '并行分析会话',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '阿青',
+        source_format: 'qq_export_v5',
+        status: 'analyzing',
+      },
+      latestJob: {
+        id: 15,
+        status: 'running',
+        current_stage: 'topic_persona_snapshot',
+        progress_percent: 97,
+        current_stage_percent: 80,
+        current_stage_total_units: 20,
+        current_stage_completed_units: 16,
+        overall_total_units: 100,
+        overall_completed_units: 97,
+        status_message: 'legacy status',
+        stages: [
+          {
+            id: 'topic_resolution',
+            label: '话题整理',
+            status: 'running',
+            completed_units: 12,
+            total_units: 47,
+          },
+          {
+            id: 'snapshots',
+            label: '关系快照',
+            status: 'running',
+            completed_units: 7,
+            total_units: 47,
+          },
+        ],
+      },
+      isActive: false,
+    })
+
+    expect(item.progress).toMatchObject({
+      label: '话题整理 / 关系快照 · 15%',
+      percent: 15,
+      tone: 'running',
+      stages: [
+        {
+          id: 'topic_resolution',
+          label: '话题整理',
+          status: 'running',
+          completedUnits: 12,
+          totalUnits: 47,
+          percent: 26,
+        },
+        {
+          id: 'snapshots',
+          label: '关系快照',
+          status: 'running',
+          completedUnits: 7,
+          totalUnits: 47,
+          percent: 15,
+        },
+      ],
+    })
+  })
+
   it('maps failed jobs into a red progress indicator for the list', () => {
     expect(
       buildFrontChatItem({

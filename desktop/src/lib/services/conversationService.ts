@@ -4,9 +4,11 @@ import type {
   ImportConversationRequest,
   ImportResponse,
   ListMessagesInput,
+  MessageContextRead,
   MessageDayRead,
   MessageRead,
   PersonaProfileRead,
+  ReadMessageContextInput,
   ReadSnapshotInput,
   SnapshotRead,
   TopicRead,
@@ -34,6 +36,11 @@ export function listMessages(conversationId: number, options: ListMessagesOption
 
 export function listMessageDays(conversationId: number): Promise<MessageDayRead[]> {
   return requireDesktopBridge().conversations.listMessageDays(conversationId)
+}
+
+export function readMessageContext(messageId: number, radius?: number): Promise<MessageContextRead> {
+  const payload: ReadMessageContextInput = { messageId, radius }
+  return requireDesktopBridge().conversations.readMessageContext(payload)
 }
 
 export function listTopics(conversationId: number): Promise<TopicRead[]> {

@@ -143,6 +143,7 @@ describe('desktop preload bridge', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce({ setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false })
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ target: { id: 12 }, before: [], after: [] })
       .mockResolvedValueOnce({ conversation: { id: 7 }, job: { id: 9 } })
 
     await expect(desktopBridge.settings.read()).resolves.toEqual([])
@@ -159,6 +160,12 @@ describe('desktop preload bridge', () => {
     })
     await expect(desktopBridge.conversations.list()).resolves.toEqual([])
     await expect(
+      desktopBridge.conversations.readMessageContext({
+        messageId: 12,
+        radius: 30,
+      }),
+    ).resolves.toEqual({ target: { id: 12 }, before: [], after: [] })
+    await expect(
       desktopBridge.conversations.import({
         selfDisplayName: '我',
         autoAnalyze: true,
@@ -172,7 +179,11 @@ describe('desktop preload bridge', () => {
       is_secret: false,
     })
     expect(invoke).toHaveBeenNthCalledWith(3, 'desktop:conversations-list')
-    expect(invoke).toHaveBeenNthCalledWith(4, 'desktop:conversations-import', {
+    expect(invoke).toHaveBeenNthCalledWith(4, 'desktop:conversations-read-message-context', {
+      messageId: 12,
+      radius: 30,
+    })
+    expect(invoke).toHaveBeenNthCalledWith(5, 'desktop:conversations-import', {
       selfDisplayName: '我',
       autoAnalyze: true,
     })

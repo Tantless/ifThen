@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('desktop', {
     listMessages: (payload) => ipcRenderer.invoke('desktop:conversations-list-messages', payload),
     /** @param {number} conversationId */
     listMessageDays: (conversationId) => ipcRenderer.invoke('desktop:conversations-list-message-days', conversationId),
+    /** @param {import('../src/types/api.js').ReadMessageContextInput} payload */
+    readMessageContext: (payload) => ipcRenderer.invoke('desktop:conversations-read-message-context', payload),
     /** @param {number} conversationId */
     listTopics: (conversationId) => ipcRenderer.invoke('desktop:conversations-list-topics', conversationId),
     /** @param {number} conversationId */
