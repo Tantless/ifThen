@@ -1,0 +1,4 @@
+{"file": ".agents/skills/finish-work/SKILL.md", "reason": "Finish work checklist"}
+{"file": ".agents/skills/check/SKILL.md", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Review data flow across renderer IPC main and backend"}
+{"file": ".trellis/spec/frontend/quality.md", "reason": "Review renderer changes against frontend quality rules"}

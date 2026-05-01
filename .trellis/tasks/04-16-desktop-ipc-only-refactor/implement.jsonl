@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/ipc-electron.md", "reason": "Renderer to main IPC patterns and context isolation"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer transport refactor touches UI IPC main and external process"}
+{"file": ".trellis/spec/frontend/quality.md", "reason": "Frontend maintainability and forbidden patterns"}
+{"file": ".trellis/spec/backend/environment.md", "reason": "Desktop dev/prod environment boundaries"}

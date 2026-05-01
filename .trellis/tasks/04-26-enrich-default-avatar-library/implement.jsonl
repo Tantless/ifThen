@@ -1,0 +1,3 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis\\spec\\guides\\code-reuse-thinking-guide.md", "reason": "Modifying shared avatar preset constants; search and reuse existing avatar preset entry point"}

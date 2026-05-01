@@ -1,0 +1,4 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/components.md", "reason": "Drawer shell and click target semantics"}
+{"file": ".trellis/spec/frontend/quality.md", "reason": "Keep component change scoped and maintainable"}
