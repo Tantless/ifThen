@@ -1,0 +1,6 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis\\spec\\frontend\\react-pitfalls.md", "reason": "React state and modal behavior constraints"}
+{"file": ".trellis\\spec\\frontend\\components.md", "reason": "Accessible clickable status area and modal UI"}
+{"file": ".trellis\\spec\\frontend\\type-safety.md", "reason": "Frontend API and progress type changes"}
+{"file": ".trellis\\spec\\guides\\cross-layer-thinking-guide.md", "reason": "Backend to API to frontend progress contract"}
+{"file": ".trellis\\spec\\shared\\code-quality.md", "reason": "Mandatory quality rules"}
