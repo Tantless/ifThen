@@ -13,6 +13,7 @@ import {
   listConversations,
   listMessages,
   listTopics,
+  readMessageContext,
   readProfile,
   readSnapshot,
   startAnalysis,
@@ -28,6 +29,7 @@ vi.mock('../src/lib/services/conversationService', () => ({
   listMessages: vi.fn(),
   listMessageDays: vi.fn(),
   listTopics: vi.fn(),
+  readMessageContext: vi.fn(),
   readProfile: vi.fn(),
   readSnapshot: vi.fn(),
   importConversation: vi.fn(),
@@ -57,6 +59,7 @@ const mockedListConversations = vi.mocked(listConversations)
 const mockedListMessages = vi.mocked(listMessages)
 const mockedListMessageDays = vi.mocked(listMessageDays)
 const mockedListTopics = vi.mocked(listTopics)
+const mockedReadMessageContext = vi.mocked(readMessageContext)
 const mockedReadProfile = vi.mocked(readProfile)
 const mockedReadSnapshot = vi.mocked(readSnapshot)
 const mockedImportConversation = vi.mocked(importConversation)
@@ -194,6 +197,7 @@ beforeEach(() => {
   mockedListMessages.mockResolvedValue([])
   mockedListMessageDays.mockResolvedValue([])
   mockedListTopics.mockResolvedValue([])
+  mockedReadMessageContext.mockRejectedValue(new Error('not used in visual shell tests'))
   mockedReadProfile.mockResolvedValue([])
   mockedReadSnapshot.mockResolvedValue({
     id: 1,
@@ -2065,7 +2069,7 @@ describe('App frontUI integration', () => {
     expect(container.textContent).toContain('默认结果 220')
   })
 
-  it('从聊天记录结果定位时会补齐更早消息并滚动到目标位置', async () => {
+  it('从聊天记录结果定位时会读取目标上下文并滚动到当前窗口之后的消息', async () => {
     const scrollTargets: string[] = []
 
     mockedReadSettings.mockResolvedValue([
@@ -2103,15 +2107,15 @@ describe('App frontUI integration', () => {
       { date: '2026-04-08', message_count: 80 },
     ])
 
-    const recentMessages: MessageRead[] = Array.from({ length: 80 }, (_, index) => {
-      const sequence = 120 - index
+    const loadedMarch7Messages: MessageRead[] = Array.from({ length: 80 }, (_, index) => {
+      const sequence = 3000 - index
       return {
         id: sequence,
         sequence_no: sequence,
         speaker_name: sequence % 2 === 0 ? '我' : '阿青',
         speaker_role: sequence % 2 === 0 ? 'self' : 'other',
-        timestamp: `2026-04-08T10:${String(index).padStart(2, '0')}:00`,
-        content_text: `最近消息 ${sequence}`,
+        timestamp: `2025-03-07T10:${String(index).padStart(2, '0')}:00`,
+        content_text: `3月7日消息 ${sequence}`,
         message_type: 'text',
         resource_items: null,
       } satisfies MessageRead
@@ -2129,34 +2133,38 @@ describe('App frontUI integration', () => {
       },
     ]
     const locateTarget: MessageRead = {
-      id: 10,
-      sequence_no: 10,
+      id: 90755,
+      sequence_no: 90755,
       speaker_name: '我',
       speaker_role: 'self',
-      timestamp: '2026-04-07T09:10:00',
+      timestamp: '2026-03-31T21:27:53',
       content_text: '需要定位的目标消息',
       message_type: 'text',
       resource_items: null,
     }
-    const olderMessages: MessageRead[] = Array.from({ length: 40 }, (_, index) => {
-      const sequence = 40 - index
+    const targetContextBefore: MessageRead[] = Array.from({ length: 40 }, (_, index) => {
+      const sequence = 90715 + index
       return {
         id: sequence,
         sequence_no: sequence,
         speaker_name: sequence % 2 === 0 ? '我' : '阿青',
         speaker_role: sequence % 2 === 0 ? 'self' : 'other',
-        timestamp: `2026-04-07T09:${String(index).padStart(2, '0')}:00`,
-        content_text: sequence === 10 ? '需要定位的目标消息' : `更早消息 ${sequence}`,
+        timestamp: `2026-03-31T21:${String(index).padStart(2, '0')}:00`,
+        content_text: `目标附近消息 ${sequence}`,
         message_type: 'text',
         resource_items: null,
       } satisfies MessageRead
     })
 
     mockedListMessages
-      .mockResolvedValueOnce(recentMessages)
+      .mockResolvedValueOnce(loadedMarch7Messages)
       .mockResolvedValueOnce(historyDefault)
       .mockResolvedValueOnce([locateTarget])
-      .mockResolvedValueOnce(olderMessages)
+    mockedReadMessageContext.mockResolvedValue({
+      before: targetContextBefore,
+      target: locateTarget,
+      after: [],
+    })
 
     const { root, container } = setupDom()
 
@@ -2207,22 +2215,15 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(12)
 
+    expect(mockedReadMessageContext).toHaveBeenCalledWith(90755, 40)
     expect(
       mockedListMessages.mock.calls.some(
-        (call) =>
-          call[0] === 7 &&
-          typeof call[1] === 'object' &&
-          call[1] !== null &&
-          'before' in call[1] &&
-          'order' in call[1] &&
-          'limit' in call[1] &&
-          (call[1] as { order?: string }).order === 'desc' &&
-          (call[1] as { limit?: number }).limit === 50,
+        (call) => typeof call[1] === 'object' && call[1] !== null && 'before' in call[1],
       ),
-    ).toBe(true)
+    ).toBe(false)
     expect(container.textContent).toContain('需要定位的目标消息')
     expect(container.textContent).not.toContain('聊天记录 - 阿青')
-    expect(scrollTargets).toContain('message-10')
+    expect(scrollTargets).toContain('message-90755')
   })
 
   it('snapshot 标签在历史视图下直接走后端最新快照，不依赖消息时间戳', async () => {
