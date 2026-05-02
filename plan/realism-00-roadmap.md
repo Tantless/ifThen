@@ -4,6 +4,8 @@
 
 当前项目已经完成“导入聊天记录 -> 分析 -> 改写 -> 反事实推演 -> 桌面展示”的闭环，也已经完成分析性能优化。下一阶段的主要矛盾是：我们要更充分地利用全量聊天历史里体现的人格、偏好、关系约束，但又不能破坏反事实推演的 cutoff-safe 原则。
 
+2026-05-02 方向更新：真实性主线从“模型自动续写短链”转向“实时分支对话”。用户改写历史消息后继续扮演 self，LLM 只扮演 other；旧 `single_reply` / `short_thread` 保留为兼容入口，不再作为主要产品体验。
+
 核心目标：在尽量不增加完整分析耗时的前提下，提高推演和实时会话的拟真性。
 
 ## 总原则
@@ -13,6 +15,7 @@
 - 优先复用现有 messages、segment summaries、topics、persona profiles、relationship snapshots。
 - 推演阶段允许做按需检索、排序、预算控制和 prompt 约束。
 - 真实感优先来自：证据分层、检索准确、persona 可执行、用户参与实时分支会话。
+- 实时分支对话优先于多轮自动推演；LLM 不再代写用户后续 self 消息。
 
 ## 阶段拆分
 
@@ -22,27 +25,27 @@
 
 目标：先生成可提交、可导入、可标注的合成拟真长消息测试集，避免在没有样本基础时直接进入评估集建设。
 
-### 阶段 1：评估与证据边界
+### 阶段 1：评估与产品主线切换
 
 - `realism-01-baseline-and-evaluation.md`
+- `realism-06-realtime-branch-backend.md`
+- `realism-07-realtime-branch-frontend.md`
+
+目标：先用固定样例描述当前失真，然后把改写后的主体验切到实时分支会话，避免 LLM 同时扮演双方造成的核心失真。
+
+### 阶段 2：证据边界与泄漏护栏
+
 - `realism-02-layered-evidence-context.md`
 - `realism-05-prompt-guardrails.md`
 
-目标：基于前置合成语料先证明当前哪里不真实，并建立“未来证据可用于建模、不可用于角色台词”的硬合同。
+目标：为实时分支会话建立“cutoff 前角色可知、cutoff 后 modeler-only、分支内新事实”的硬合同。
 
-### 阶段 2：检索与人格增强
+### 阶段 3：检索与人格增强
 
 - `realism-03-retrieval-ranking-budget.md`
 - `realism-04-persona-style-enrichment.md`
 
 目标：在不明显增加分析耗时的前提下，让模型拿到更完整、更相关、更像本人的约束。
-
-### 阶段 3：实时分支会话
-
-- `realism-06-realtime-branch-backend.md`
-- `realism-07-realtime-branch-frontend.md`
-
-目标：把短链自动推演升级为用户真实参与的分支会话，LLM 只扮演对方，避免模型同时代写双方导致失真。
 
 ### 阶段 4：验收与上线
 
@@ -59,18 +62,19 @@
 - [ ] 检索上下文能解释模型为什么应该保守、推进或收束。
 - [ ] 不显著增加完整分析 pipeline 耗时。
 - [ ] `single_reply` / `short_thread` 旧入口在迁移期仍可用。
+- [ ] 实时分支会话成为改写后的主入口，LLM 只生成 other 消息。
 - [ ] 实时分支会话中同一会话只允许一个 LLM 回复任务运行。
 
 ## 建议 PR 顺序
 
 1. PR1-pre：构筑合成拟真长消息测试集。（已完成）
 2. PR1：建立评估样例和当前失败分类。
-3. PR2：扩展 context pack，加入分层证据结构。
-4. PR3：修改 prompt，加入未来证据使用和泄漏护栏。
-5. PR4：实现检索排序和上下文预算。
-6. PR5：加入 persona/style 低成本统计。
-7. PR6：新增实时分支会话后端模型和接口。
-8. PR7：新增实时分支会话前端体验。
+3. PR2：新增实时分支会话后端模型和接口。
+4. PR3：新增实时分支会话前端体验。
+5. PR4：扩展 context pack，加入分层证据结构和会话级 memory pack。
+6. PR5：修改 prompt，加入未来证据使用、只生成 other、运行中消息合并的护栏。
+7. PR6：实现检索排序和上下文预算。
+8. PR7：加入 persona/style 低成本统计。
 9. PR8：补齐质量验收、回归脚本和 rollout 文档。
 
 ## 不做
@@ -79,3 +83,4 @@
 - 不让未来原时间线事实进入角色台词。
 - 不让实时分支会话中的多个 LLM 回复并行生成。
 - 不为了拟真性重跑一套昂贵的全量 LLM 分析链路。
+- 不把 `short_thread` 继续作为主体验扩展。

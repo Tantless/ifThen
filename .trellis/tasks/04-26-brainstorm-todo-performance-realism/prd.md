@@ -30,15 +30,19 @@ Discuss and prioritize the ideas in `plan/TODO.md` around reducing analysis wait
 * Treat future original-timeline facts as modeler-only evidence, never as character-known facts or directly quotable reply content.
 * Prefer retrieval-time ranking and deterministic style statistics over adding new LLM-heavy analysis stages.
 * Move the primary product experience toward real-time branch chat where the user writes `self` messages and the LLM only writes `other` messages.
+* Treat `single_reply` / `short_thread` as migration-period compatibility and regression surfaces, not the future primary experience.
+* Use `persona_other` as the main generation constraint and `persona_self` as supporting context for interpreting user/self behavior.
+* Support burst self messages by combining them into one reply window; if a new self message arrives before an LLM reply is committed, supersede the stale reply job and regenerate from the merged input.
 
 ## Acceptance Criteria
 
-* [ ] A recommended MVP direction is selected.
-* [ ] `plan/TODO.md` marks the performance item complete and breaks realism into executable TODOs.
-* [ ] The chosen direction has explicit in-scope and out-of-scope items.
-* [ ] Implementation can be decomposed into small PR-sized steps.
-* [ ] Any realism change defines how future facts are labeled and constrained.
-* [ ] The recommended MVP specifies how to improve realism without adding a large full-analysis cost.
+* [x] A recommended MVP direction is selected.
+* [x] `plan/TODO.md` marks the performance item complete and breaks realism into executable TODOs.
+* [x] The chosen direction has explicit in-scope and out-of-scope items.
+* [x] Implementation can be decomposed into small PR-sized steps.
+* [x] Any realism change defines how future facts are labeled and constrained.
+* [x] The recommended MVP specifies how to improve realism without adding a large full-analysis cost.
+* [x] The real-time MVP defines stale reply cancellation/superseding behavior.
 
 ## Definition of Done
 
@@ -75,8 +79,8 @@ The current README and prompts emphasize not leaking future information. The use
 ## Priority Decision
 
 1. Completed priority: performance pipeline optimization and diagnostics.
-2. Active first priority: layered evidence retrieval for realism, because it can reuse existing analysis outputs and should not materially slow full analysis.
-3. Active second priority: real-time branch chat as the main product direction, because it improves perceived realism and avoids asking the model to invent both sides of a long branch.
+2. Active first priority: real-time branch chat as the main product direction, because it improves perceived realism and avoids asking the model to invent both sides of a long branch.
+3. Active second priority: realtime-safe context and memory pack design, because long-term memory must be available without blocking every reply on heavy analysis.
 4. Active third priority: deterministic style/persona enrichment, because it can make replies more like the real person without extra LLM analysis stages.
 5. Lower priority: embedding-based retrieval, because it adds dependency/index complexity and should wait until structured topic/snapshot retrieval proves insufficient.
 
@@ -124,13 +128,16 @@ Status: completed in the performance task and recorded in `plan/TODO.md`.
 
 * Add persistent branch session and branch message records linked to the target message and rewrite.
 * Add append-message endpoints where the user can only add `self` messages and the LLM job only appends `other` messages.
-* Enforce one active LLM job per branch session; later user messages wait for the next input window instead of spawning parallel replies.
+* Enforce one active LLM job per branch session; later user messages supersede stale uncommitted replies instead of spawning parallel replies.
+* Track session `input_revision` so old LLM results cannot write into a newer branch state.
 * Carry forward branch state after every `other` reply so each next turn starts from the latest counterfactual state.
+* Persist a session-level memory pack at branch creation so each real-time reply can use stable context without re-running heavy full-analysis work.
 
 ### 6. Real-Time Branch Chat Frontend
 
 * Replace the primary short-thread experience with an interactive branch chat view while preserving `single_reply` / `short_thread` compatibility.
-* Batch user messages after a short idle window, currently proposed as 5 seconds.
+* Batch user messages after a short idle window, currently proposed for MVP as 1.5 to 2 seconds.
+* If a new user message arrives while the LLM reply is running but not yet committed, mark that reply stale and trigger a new reply over the merged self messages.
 * Show delayed split bubbles for generated `other` replies and a lightweight typing state while the LLM is waiting/generating.
 * Keep all generated branch bubbles visually distinct from original timeline bubbles.
 
@@ -138,12 +145,28 @@ Status: completed in the performance task and recorded in `plan/TODO.md`.
 
 * Future evidence leakage tests: future facts may affect risk and probability but must not appear as character-known content.
 * Persona adherence tests: generated length, tone, and directness should respect persona/style constraints.
-* Concurrency tests: branch session rejects or queues overlapping LLM reply jobs.
+* Concurrency tests: branch session never commits stale reply jobs after `input_revision` changes.
 * Regression tests for existing `single_reply` and `short_thread` behavior during migration.
+
+## Research Notes
+
+### What similar realtime systems suggest
+
+* OpenAI Realtime models keep an ongoing session/conversation and support interrupting an in-progress response, including truncating assistant audio/text so the conversation state matches what the user actually observed: https://platform.openai.com/docs/guides/realtime-model-capabilities
+* OpenAI Realtime cost guidance documents session truncation and retention-ratio truncation, which maps to our need for stable memory packs plus rolling transcript windows rather than sending unbounded history every turn: https://platform.openai.com/docs/guides/realtime-costs
+* Google Gemini Live API documents realtime bidirectional sessions, session resumption, and context-window compression, which supports the same pattern: durable session state, resume after disconnect, and summarize older context when windows grow: https://ai.google.dev/gemini-api/docs/live
+* Anthropic prompt caching guidance emphasizes keeping large reusable context stable and earlier in the prompt, with dynamic turn content later. That maps to our branch memory pack prefix plus latest transcript suffix: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+
+### Mapping to this project
+
+* The product should own durable branch memory locally. Provider session memory can be used later, but branch sessions/messages/revisions must live in SQLite so the desktop app can resume and audit behavior.
+* The hot path should use cached or preassembled context: target rewrite, cutoff-safe nearby history, relationship snapshot, both personas, style stats, and selected evidence digests.
+* Long-term memory should enter as compact evidence classes, not raw full history. Realtime response quality depends more on the right few constraints than on sending all messages.
+* Stale replies must be guarded by data model state, not only frontend timers. The backend needs input revisions or equivalent optimistic concurrency.
 
 ## Feasible Approaches
 
-### Approach A: Layered Evidence First, Then Real-Time Branch Chat (Recommended)
+### Approach A: Layered Evidence First, Then Real-Time Branch Chat
 
 How it works:
 
@@ -162,22 +185,23 @@ Cons:
 * Users still experience the old short-thread flow until the branch chat PRs land.
 * Requires careful tests around evidence labels and prompt wording.
 
-### Approach B: Real-Time Branch Chat First
+### Approach B: Real-Time Branch Chat First (Recommended)
 
 How it works:
 
 * Build branch sessions, append-message APIs, serial LLM jobs, and chat UI first.
 * Keep existing cutoff-safe context pack initially.
-* Add future evidence and style retrieval after the interaction model works.
+* Add a session-level memory pack immediately, then enrich future evidence and style retrieval after the interaction model works.
 
 Pros:
 
 * Fastest path to the product direction the user described.
 * Immediately avoids the biggest realism issue in short-thread mode: the model inventing both sides.
+* Creates the right architecture for cancellation, interruption, and long-term memory before tuning prompts.
 
 Cons:
 
-* The model may still miss future objective constraints at first.
+* The model may still miss future objective constraints until layered evidence lands.
 * Larger backend/frontend surface area before the leakage contract is hardened.
 
 ### Approach C: Retrieval and Persona Only
@@ -200,15 +224,15 @@ Cons:
 ## Recommended MVP Scope
 
 * Mark the performance TODO complete.
-* Define and test the layered evidence contract.
-* Add retrieval-time future evidence digests from existing topics/segment summaries/snapshots.
-* Update simulation prompts to use future evidence only as modeler-only constraints.
-* Add deterministic style statistics if it can be implemented without extra LLM calls.
-* Create the first backend shape for real-time branch sessions, but keep full UI migration as a follow-up if scope needs to stay small.
+* Build the first real-time branch session backend: `BranchSession`, `BranchMessage`, `BranchReplyJob`, append self message, generate other reply, and stale reply superseding.
+* Build the first real-time branch UI: rewrite enters branch chat, self messages use an idle window, other reply shows typing and split bubbles.
+* Use the current cutoff-safe context pack plus a session-level memory pack that includes `persona_other` as primary and `persona_self` as supporting context.
+* Keep future evidence modeler-only; if layered evidence is not complete in the first realtime PR, the prompt must state that no cutoff-after facts may appear as role-known content.
+* Preserve `/simulations` and current desktop short-thread rendering as compatibility while the primary entry moves to branch sessions.
 
 ## Open Questions
 
-* Which MVP direction should be selected: Approach A layered evidence first, Approach B real-time branch chat first, or Approach C retrieval/persona only?
+* What idle window should the MVP use before starting an LLM reply: 1.5-2 seconds for stronger realtime feel, or 3-5 seconds for better burst-message capture?
 
 ## Out of Scope
 
@@ -217,3 +241,4 @@ Cons:
 * Re-running full analysis with additional LLM stages solely for realism.
 * Letting future original-timeline facts appear in generated character dialogue.
 * Parallelizing LLM replies inside the same real-time branch session.
+* Continuing to expand multi-turn auto-generated `short_thread` as the primary product direction.
