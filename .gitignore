@@ -47,7 +47,13 @@ desktop/*.tgz
 
 # agents data
 .trace/
-.trellis/
 .codex/
 .agents/
 AGENTS-CN.md
+
+model_env.env
+
+# graph
+graphify-out/
+.graphify_chunks.json
+.graphify_python
