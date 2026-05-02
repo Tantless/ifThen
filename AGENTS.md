@@ -115,6 +115,19 @@ example:
 - xx
 ```
 
+## 6. AI 工作流闭环
+
+**Trellis PRD 收敛确认后，必须把需求文档和交付记录绑定到同一个 `PRDS/` 文档。**
+
+开发前：
+- 当 Trellis 的 PRD 文档已经收敛并确认后，先在 `PRDS/` 下创建对应 PRD 文件。
+- 文件命名规范为 `PRD{index}-{十个字以内的功能简述}.md`，其中 `{index}` 使用三位递增编号；例如：`PRD001-分析流程优化.md`。
+- 文件内容必须包含 Trellis 已收敛完毕的终版 PRD，并使用章节标题 `## prd-{功能}-{完成情况}`。
+
+确认完成工作后：
+- 在同一个 PRD 文件下写入章节 `## 工作记录及完成情况`。
+- 工作记录应说明本次任务完成了什么、如何完成，以及与终版 PRD 的对应完成情况，确保后续可以从需求确认追溯到实际交付。
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
