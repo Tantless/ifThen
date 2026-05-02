@@ -33,6 +33,8 @@ Discuss and prioritize the ideas in `plan/TODO.md` around reducing analysis wait
 * Treat `single_reply` / `short_thread` as migration-period compatibility and regression surfaces, not the future primary experience.
 * Use `persona_other` as the main generation constraint and `persona_self` as supporting context for interpreting user/self behavior.
 * Support burst self messages by combining them into one reply window; if a new self message arrives before an LLM reply is committed, supersede the stale reply job and regenerate from the merged input.
+* Use the committed synthetic realism corpus as the privacy-safe source for baseline evaluation samples.
+* Preserve a fixed realism baseline fixture with current failure snapshots, failure taxonomy labels, and modeler-only evidence boundaries.
 
 ## Acceptance Criteria
 
@@ -43,6 +45,8 @@ Discuss and prioritize the ideas in `plan/TODO.md` around reducing analysis wait
 * [x] Any realism change defines how future facts are labeled and constrained.
 * [x] The recommended MVP specifies how to improve realism without adding a large full-analysis cost.
 * [x] The real-time MVP defines stale reply cancellation/superseding behavior.
+* [x] The realism baseline has 10+ fixed samples with cutoff, original text, rewrite, current output snapshot, and failure labels.
+* [x] The baseline samples cover the current failure taxonomy and can be traced back to committed synthetic source conversations.
 
 ## Definition of Done
 
@@ -99,9 +103,10 @@ Status: completed in the performance task and recorded in `plan/TODO.md`.
 
 ### 1. Realism Baseline and Failure Taxonomy
 
-* Create a small fixed evaluation set from real imported conversations and current simulation outputs.
-* Categorize failures: future fact blindness, future fact leakage, over-optimistic relationship shift, persona mismatch, unnatural verbosity, poor topic retrieval, and short-thread incoherence.
-* Add regression checks around prompt/context packs where possible, especially for future fact leakage.
+* Status: completed with privacy-safe synthetic fixtures instead of real private conversations.
+* Created 12 fixed evaluation samples from committed synthetic conversations and current simulation failure snapshots.
+* Categorized failures: future fact blindness, future fact leakage, over-optimistic relationship shift, persona mismatch, unnatural verbosity, poor topic retrieval, short-thread incoherence, and relationship state jumps.
+* Added regression checks around baseline fixture integrity, source-message traceability, explicit future leakage labeling, and report generation.
 
 ### 2. Layered Evidence Context Pack
 
@@ -234,6 +239,14 @@ Cons:
 
 * MVP idle window: use 1.5 to 2 seconds for stronger realtime feel.
 * Burst-message fallback: if the user sends another self message before an LLM reply is committed, supersede the stale reply job and regenerate from the merged self input.
+* Realism baseline source: use committed synthetic conversations rather than real private chats, so the evaluation set can live in the repository.
+
+## Implementation Status
+
+* Performance pipeline optimization: completed.
+* `realism-01-pre` synthetic corpus: completed.
+* `realism-01` baseline and failure taxonomy: completed with `tests/fixtures/realism_baseline/cases.json`, `tests/test_realism_baseline_fixtures.py`, and `scripts/report_realism_baseline.py`.
+* Next implementation target: `realism-06` realtime branch backend minimum loop.
 
 ## Out of Scope
 

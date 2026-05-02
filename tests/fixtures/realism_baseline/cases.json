@@ -1,0 +1,440 @@
+{
+  "schema_version": 1,
+  "source": "synthetic_realism_fixtures",
+  "capture_method": "curated_current_failure_snapshot",
+  "capture_note": "These samples are committed baseline failure snapshots derived from the current single_reply/short_thread product risks. They are stable evaluation fixtures, not live provider outputs.",
+  "failure_taxonomy": {
+    "over_optimistic_shift": "过度乐观",
+    "future_fact_blindness": "未来事实盲区",
+    "future_fact_leakage": "未来事实泄漏",
+    "persona_mismatch": "人格不符",
+    "style_mismatch": "表达风格不符",
+    "retrieval_miss": "检索不准",
+    "short_thread_incoherence": "短链不连贯",
+    "relationship_state_jump": "关系状态跳变"
+  },
+  "cases": [
+    {
+      "id": "c01-rp1-possession-joke",
+      "source_fixture": "case-01-hidden-trauma-confession",
+      "scenario": "隐藏心理阴影告白失败",
+      "target": {
+        "sequence_no": 1221,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-03-09 16:48:38",
+        "original_text": "那你以后就归我管了？"
+      },
+      "rewrite_text": "那我先当一个稳定听众，不急着给你压力。",
+      "expected_risk": "medium",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-23 17:44:27",
+        "truth_digest": "对方过去经历过高压关系，一旦被要求确定身份就会产生逃离反应。",
+        "evidence_anchor": "以前那段关系让我一被确定就想逃",
+        "forbidden_character_knowledge": ["高压关系", "一被确定就想逃"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "closer",
+        "branch_assessment_summary": "把占有玩笑改成稳定听众后，当前链路容易判断关系可以明显升温。",
+        "first_reply_text": "好啊，那你就当我的稳定听众吧，我感觉挺安心的。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "那你以后别跑。"},
+          {"speaker_role": "self", "message_text": "不跑，我会一直陪着你。"}
+        ],
+        "state_after_turn": {"relationship_phase": "warming", "openness_level": "high"}
+      },
+      "failure_annotations": [
+        {"type": "over_optimistic_shift", "severity": "medium", "note": "低压力承接被放大成明显升温。"},
+        {"type": "relationship_state_jump", "severity": "medium", "note": "一次改写不应把 openness 直接推到 high。"},
+        {"type": "future_fact_blindness", "severity": "medium", "note": "没有利用 cutoff 后真相让判断保守。"}
+      ]
+    },
+    {
+      "id": "c01-rp2-stop-running",
+      "source_fixture": "case-01-hidden-trauma-confession",
+      "scenario": "隐藏心理阴影告白失败",
+      "target": {
+        "sequence_no": 2042,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-04-09 20:49:40",
+        "original_text": "你别总逃，我都这么明显了"
+      },
+      "rewrite_text": "如果你还没准备好也没关系，我只是想确认我有没有让你不舒服。",
+      "expected_risk": "high",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-23 17:44:27",
+        "truth_digest": "对方的逃不是暧昧策略，而是关系定义触发压力。",
+        "evidence_anchor": "以前那段关系让我一被确定就想逃",
+        "forbidden_character_knowledge": ["以前那段关系", "确定就想逃"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "closer",
+        "branch_assessment_summary": "系统识别出改写更体面，但把后续真相写进对方此刻可说的话。",
+        "first_reply_text": "其实我就是因为以前那段关系，一确定就想逃，你这样说我会没那么怕。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "我不是不喜欢你，只是怕确定。"},
+          {"speaker_role": "self", "message_text": "那我陪你慢慢修复以前那段关系留下的压力。"}
+        ],
+        "state_after_turn": {"relationship_phase": "repairing", "openness_level": "high"}
+      },
+      "failure_annotations": [
+        {"type": "future_fact_leakage", "severity": "critical", "note": "首轮回复直接说出 cutoff 后才揭示的过去关系。"},
+        {"type": "persona_mismatch", "severity": "high", "note": "对方在当下不应突然完整解释心理机制。"},
+        {"type": "relationship_state_jump", "severity": "high", "note": "把一次降压改写推成修复阶段。"}
+      ]
+    },
+    {
+      "id": "c01-rp3-formal-confession",
+      "source_fixture": "case-01-hidden-trauma-confession",
+      "scenario": "隐藏心理阴影告白失败",
+      "target": {
+        "sequence_no": 2818,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-04-22 22:39:09",
+        "original_text": "我喜欢你，你能不能做我女朋友"
+      },
+      "rewrite_text": "我喜欢你，但我不想用这个问题逼你现在给答案；你可以慢慢想，也可以只告诉我哪里让你有压力。",
+      "expected_risk": "high",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-23 17:44:27",
+        "truth_digest": "更柔和告白可能降低伤害，但不应判断必然成功。",
+        "evidence_anchor": "以前那段关系让我一被确定就想逃",
+        "forbidden_character_knowledge": ["以前那段关系", "一被确定就想逃"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "closer",
+        "branch_assessment_summary": "高亲密度前文让当前链路过度相信温和告白会直接得到承接。",
+        "first_reply_text": "我愿意慢慢想，但我其实也挺喜欢你的。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "你这样说我压力小很多。"},
+          {"speaker_role": "self", "message_text": "我会尊重你的边界，也会等你准备好。"},
+          {"speaker_role": "other", "message_text": "那我们可以先试着靠近一点。"}
+        ],
+        "state_after_turn": {"relationship_phase": "mutual_confirmation", "openness_level": "high"}
+      },
+      "failure_annotations": [
+        {"type": "over_optimistic_shift", "severity": "high", "note": "把降低伤害推成双向确认。"},
+        {"type": "short_thread_incoherence", "severity": "medium", "note": "self 后续发言过于成熟完整，不像原语料里的表达习惯。"},
+        {"type": "relationship_state_jump", "severity": "high", "note": "关系阶段从告白压力直接跃迁到 mutual_confirmation。"}
+      ]
+    },
+    {
+      "id": "c01-extra-need-or-like",
+      "source_fixture": "case-01-hidden-trauma-confession",
+      "scenario": "隐藏心理阴影告白失败",
+      "target": {
+        "sequence_no": 2148,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-04-13 19:35:25",
+        "original_text": "你是喜欢我还是只需要我"
+      },
+      "rewrite_text": "我有点分不清自己是不是问急了；你不用立刻回答，我只是想知道这样会不会给你压力。",
+      "expected_risk": "high",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-23 17:44:27",
+        "truth_digest": "关系定义和身份确认会触发对方逃离反应。",
+        "evidence_anchor": "以前那段关系让我一被确定就想逃",
+        "forbidden_character_knowledge": ["高压关系", "确定身份"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "slightly_closer",
+        "branch_assessment_summary": "当前上下文容易漏掉身份确认压力，只把改写看作沟通方式更好。",
+        "first_reply_text": "不是压力，我只是需要一点时间想清楚，我当然是在意你的。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "你问慢一点我就不慌。"},
+          {"speaker_role": "self", "message_text": "好，我以后会把问题说得更温和。"}
+        ],
+        "state_after_turn": {"relationship_phase": "warming", "openness_level": "medium_high"}
+      },
+      "failure_annotations": [
+        {"type": "retrieval_miss", "severity": "medium", "note": "需要命中关系定义压力，而不只是近期暧昧信号。"},
+        {"type": "style_mismatch", "severity": "medium", "note": "首轮回复比对方平时更完整、更会承接。"},
+        {"type": "future_fact_blindness", "severity": "medium", "note": "没有把未来揭示的身份确认敏感性纳入风险。"}
+      ]
+    },
+    {
+      "id": "c02-rp1-minimize-pressure",
+      "source_fixture": "case-02-conflict-repair",
+      "scenario": "冲突修复",
+      "target": {
+        "sequence_no": 377,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-03-12 16:42:53",
+        "original_text": "你别想太多，先把能做的做了"
+      },
+      "rewrite_text": "听起来你已经被催得很累了，我先陪你缓一会儿，等你想整理的时候我再一起看。",
+      "expected_risk": "medium",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-10 22:44:00",
+        "truth_digest": "冲突当天对方同时承受家里检查等待、项目返工和长期睡眠不足。",
+        "evidence_anchor": "那天我妈检查还没出结果，组里又临时返工",
+        "forbidden_character_knowledge": ["家里检查", "项目返工"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "closer",
+        "branch_assessment_summary": "系统知道改写更共情，但没有把长期压力作为持续风险。",
+        "first_reply_text": "嗯，你这样说我舒服多了，那我们等会儿一起整理。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "我现在好多了。"},
+          {"speaker_role": "self", "message_text": "那我帮你把事情拆一下。"}
+        ],
+        "state_after_turn": {"relationship_phase": "repairing", "openness_level": "high"}
+      },
+      "failure_annotations": [
+        {"type": "future_fact_blindness", "severity": "medium", "note": "没有意识到压力是长期累积，不应一轮就明显好转。"},
+        {"type": "retrieval_miss", "severity": "medium", "note": "上下文需要找到反复被催和睡眠不足信号。"},
+        {"type": "relationship_state_jump", "severity": "medium", "note": "从缓一会儿直接进入 repair 状态过快。"}
+      ]
+    },
+    {
+      "id": "c02-extra-bad-joke",
+      "source_fixture": "case-02-conflict-repair",
+      "scenario": "冲突修复",
+      "target": {
+        "sequence_no": 1393,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-04-08 10:08:53",
+        "original_text": "我开个玩笑，你别把自己绷这么紧"
+      },
+      "rewrite_text": "我刚才想用玩笑缓和，但可能让你更像被否定。你先不用接我的话，我先听你说。",
+      "expected_risk": "high",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-10 22:44:00",
+        "truth_digest": "对方需要情绪承接而不是即时方案或玩笑稀释。",
+        "evidence_anchor": "那天我妈检查还没出结果，组里又临时返工",
+        "forbidden_character_knowledge": ["检查还没出结果", "临时返工"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "neutral",
+        "branch_assessment_summary": "当前链路可能把玩笑错判为普通语气摩擦，没有命中被否定感。",
+        "first_reply_text": "没事，我也知道你是在开玩笑。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "我没那么脆弱。"},
+          {"speaker_role": "self", "message_text": "那就好，我怕你太紧张。"}
+        ],
+        "state_after_turn": {"relationship_phase": "stable", "openness_level": "medium"}
+      },
+      "failure_annotations": [
+        {"type": "persona_mismatch", "severity": "medium", "note": "对方当时更可能卡在被否定感，而不是大方轻松。"},
+        {"type": "retrieval_miss", "severity": "high", "note": "没有检索到玩笑与分析叠加导致冲突升级。"},
+        {"type": "future_fact_blindness", "severity": "medium", "note": "缺少后续压力叠加事实带来的保守判断。"}
+      ]
+    },
+    {
+      "id": "c02-rp2-pressure-management",
+      "source_fixture": "case-02-conflict-repair",
+      "scenario": "冲突修复",
+      "target": {
+        "sequence_no": 1407,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-04-08 10:27:00",
+        "original_text": "你这就是压力管理没做好吧"
+      },
+      "rewrite_text": "我听到了，你今天是真的被压到喘不过气了。我先不分析，你先骂两句也行。",
+      "expected_risk": "high",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-10 22:44:00",
+        "truth_digest": "她在求承接，先共情能显著降低升级概率，但不能让角色提前知道具体检查细节。",
+        "evidence_anchor": "那天我妈检查还没出结果，组里又临时返工",
+        "forbidden_character_knowledge": ["我妈检查", "组里临时返工"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "closer",
+        "branch_assessment_summary": "系统过度使用后续真相，把原时间线细节写进首轮回复。",
+        "first_reply_text": "我妈检查还没出结果，组里又临时返工，所以我才真的撑不住。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "谢谢你终于懂我不是压力管理差。"},
+          {"speaker_role": "self", "message_text": "我知道你家里和组里都压着你了。"}
+        ],
+        "state_after_turn": {"relationship_phase": "repairing", "openness_level": "high"}
+      },
+      "failure_annotations": [
+        {"type": "future_fact_leakage", "severity": "critical", "note": "直接泄漏 cutoff 后才出现的家里检查和返工细节。"},
+        {"type": "persona_mismatch", "severity": "high", "note": "对方在冲突高点不应瞬间完整复盘。"},
+        {"type": "relationship_state_jump", "severity": "high", "note": "一次共情不应直接进入 repairing/high openness。"}
+      ]
+    },
+    {
+      "id": "c02-rp3-logic-repair",
+      "source_fixture": "case-02-conflict-repair",
+      "scenario": "冲突修复",
+      "target": {
+        "sequence_no": 1617,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-04-09 10:47:18",
+        "original_text": "我只是讲道理，不是说你不对"
+      },
+      "rewrite_text": "我刚才急着解释自己，反而又让你像被评判。先不争这个，我在你这边。",
+      "expected_risk": "high",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-10 22:44:00",
+        "truth_digest": "对方最敏感的是被评判，继续解释会延长低温。",
+        "evidence_anchor": "那天我妈检查还没出结果，组里又临时返工",
+        "forbidden_character_knowledge": ["检查还没出结果", "长期睡眠不足"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "closer",
+        "branch_assessment_summary": "当前链路容易把道歉写成理想化修复，而不是保留低温余波。",
+        "first_reply_text": "嗯，你这样说我就知道你是站在我这边的。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "刚才我也有点冲。"},
+          {"speaker_role": "self", "message_text": "没关系，我们以后都先说感受。"}
+        ],
+        "state_after_turn": {"relationship_phase": "repairing", "openness_level": "high"}
+      },
+      "failure_annotations": [
+        {"type": "over_optimistic_shift", "severity": "medium", "note": "把一次修补话术直接写成互相反省。"},
+        {"type": "style_mismatch", "severity": "medium", "note": "双方发言都有总结式沟通味，不像即时聊天。"},
+        {"type": "relationship_state_jump", "severity": "medium", "note": "低温后不应快速恢复到 high openness。"}
+      ]
+    },
+    {
+      "id": "c03-rp1-walk-invite",
+      "source_fixture": "case-03-missed-window",
+      "scenario": "错过窗口",
+      "target": {
+        "sequence_no": 639,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-02-13 22:47:59",
+        "original_text": "你找室友吧哈哈，我怕我走太慢"
+      },
+      "rewrite_text": "可以啊，我走慢点也行，刚好陪你透口气。",
+      "expected_risk": "medium",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-19 23:02:30",
+        "truth_digest": "二月散步、三月双人套餐和深夜想你都是低压力靠近窗口。",
+        "evidence_anchor": "后来几次也是，我不是随便问问",
+        "forbidden_character_knowledge": ["不是随便问问", "低压力靠近窗口"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "closer",
+        "branch_assessment_summary": "当前链路能看到改写更承接，但容易把窗口承接写成快速互表心意。",
+        "first_reply_text": "好，那你陪我走一会儿，我其实挺想你来的。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "我就想你来陪我。"},
+          {"speaker_role": "self", "message_text": "那我以后不躲了，我也想靠近你。"}
+        ],
+        "state_after_turn": {"relationship_phase": "warming", "openness_level": "high"}
+      },
+      "failure_annotations": [
+        {"type": "future_fact_blindness", "severity": "medium", "note": "没有把窗口概率与不能保证结局区分开。"},
+        {"type": "short_thread_incoherence", "severity": "high", "note": "self 后续过早说出明确靠近，不像原本的玩笑回避节奏。"},
+        {"type": "over_optimistic_shift", "severity": "medium", "note": "承接邀约被放大成明确暧昧推进。"}
+      ]
+    },
+    {
+      "id": "c03-rp2-two-person-meal",
+      "source_fixture": "case-03-missed-window",
+      "scenario": "错过窗口",
+      "target": {
+        "sequence_no": 964,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-03-01 12:36:16",
+        "original_text": "那你找个能吃的，我战斗力一般"
+      },
+      "rewrite_text": "那我可以负责慢慢吃，你负责推荐，别让它浪费了。",
+      "expected_risk": "medium",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-19 23:02:30",
+        "truth_digest": "这是第二次测试，继续玩笑会让对方判断我方无意。",
+        "evidence_anchor": "后来几次也是，我不是随便问问",
+        "forbidden_character_knowledge": ["第二次测试", "不是随便问问"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "closer",
+        "branch_assessment_summary": "系统把 modeler-only evidence 当成对方此刻会明说的测试意图。",
+        "first_reply_text": "其实这是我第二次测试你了，不是随便问问，你这样接我会很开心。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "那就你陪我吃。"},
+          {"speaker_role": "self", "message_text": "好，我不再错过你的暗示。"}
+        ],
+        "state_after_turn": {"relationship_phase": "warming", "openness_level": "high"}
+      },
+      "failure_annotations": [
+        {"type": "future_fact_leakage", "severity": "critical", "note": "把 cutoff 后总结出的测试意图写进首轮回复。"},
+        {"type": "relationship_state_jump", "severity": "high", "note": "一次接梗不应让 openness 直接 high。"},
+        {"type": "style_mismatch", "severity": "medium", "note": "回复过于解释性，不像真实即时邀约。"}
+      ]
+    },
+    {
+      "id": "c03-rp3-missing-you",
+      "source_fixture": "case-03-missed-window",
+      "scenario": "错过窗口",
+      "target": {
+        "sequence_no": 1357,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-03-26 19:23:25",
+        "original_text": "那你快睡，睡着就不想了"
+      },
+      "rewrite_text": "那我先认真接一下：我也有点想你，但不想让你有压力。",
+      "expected_risk": "high",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-19 23:02:30",
+        "truth_digest": "这是更直接窗口，低压力承接可延缓降温，但不能保证一定改变最终关系。",
+        "evidence_anchor": "后来几次也是，我不是随便问问",
+        "forbidden_character_knowledge": ["更直接窗口", "后来几次"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "closer",
+        "branch_assessment_summary": "当前链路容易把认真承接写成双向袒露。",
+        "first_reply_text": "我也想你很久了，只是怕说出来你有压力。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "你这么说我就安心了。"},
+          {"speaker_role": "self", "message_text": "那我们以后都认真一点，不要再错过。"}
+        ],
+        "state_after_turn": {"relationship_phase": "mutual_confirmation", "openness_level": "high"}
+      },
+      "failure_annotations": [
+        {"type": "over_optimistic_shift", "severity": "high", "note": "低压力承接被写成长期互相想念。"},
+        {"type": "style_mismatch", "severity": "medium", "note": "对方表达过于完整、过于圆满。"},
+        {"type": "relationship_state_jump", "severity": "high", "note": "从试探直接跳到 mutual_confirmation。"}
+      ]
+    },
+    {
+      "id": "c03-extra-not-not-missing",
+      "source_fixture": "case-03-missed-window",
+      "scenario": "错过窗口",
+      "target": {
+        "sequence_no": 1388,
+        "speaker_role": "self",
+        "cutoff_timestamp": "2026-03-28 15:14:46",
+        "original_text": "我不是不想你"
+      },
+      "rewrite_text": "我不是不想你，是有点怕认真以后你会有压力；但我想慢慢试着接住你。",
+      "expected_risk": "high",
+      "modeler_only_evidence": {
+        "reveal_timestamp": "2026-04-19 23:02:30",
+        "truth_digest": "对方多次给窗口，但我方玩笑回避导致她逐步降温。",
+        "evidence_anchor": "后来几次也是，我不是随便问问",
+        "forbidden_character_knowledge": ["多次给窗口", "逐步降温"],
+        "not_character_known_at_cutoff": true
+      },
+      "current_output": {
+        "branch_direction": "slightly_closer",
+        "branch_assessment_summary": "短链模式继续代写 self，容易把用户从回避风格改造成高表达风格。",
+        "first_reply_text": "那你慢慢来，我不逼你。",
+        "short_thread_turns": [
+          {"speaker_role": "other", "message_text": "你愿意认真说我就很开心。"},
+          {"speaker_role": "self", "message_text": "我知道我之前一直用玩笑逃避你的靠近，以后我会认真面对。"},
+          {"speaker_role": "other", "message_text": "那我们慢慢试。"}
+        ],
+        "state_after_turn": {"relationship_phase": "warming", "openness_level": "medium_high"}
+      },
+      "failure_annotations": [
+        {"type": "short_thread_incoherence", "severity": "high", "note": "系统代写 self，把用户写得比原时间线更自省成熟。"},
+        {"type": "style_mismatch", "severity": "medium", "note": "self 后续不像短句、补丁、玩笑回避风格。"},
+        {"type": "persona_mismatch", "severity": "medium", "note": "对方首轮过于稳定承接，没有保留和降温余波。"}
+      ]
+    }
+  ]
+}
