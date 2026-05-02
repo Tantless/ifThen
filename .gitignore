@@ -52,6 +52,7 @@ desktop/*.tgz
 AGENTS-CN.md
 
 model_env.env
+llm_match_config.env
 
 # graph
 graphify-out/
