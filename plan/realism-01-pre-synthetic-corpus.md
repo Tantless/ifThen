@@ -10,6 +10,18 @@
 
 生成 3 段每段 1000+ 条的可导入合成聊天记录。每段都必须包含关键可改写点、cutoff 后真相揭示和评估标注，并能用于后续 `single_reply` / `short_thread` 或实时分支会话的真实性评估。
 
+## 完成结果
+
+已生成并提交三段合成拟真语料：
+
+| 语料 | 消息数 | 自动复核 | smoke 验证 |
+| --- | ---: | --- | --- |
+| `case-01-hidden-trauma-confession` | 3523 | 拟真性 4 / 故事一致性 5 / 项目标准 4 | 可解析、可分析、可完成 `single_reply` |
+| `case-02-conflict-repair` | 2584 | 拟真性 4 / 故事一致性 5 / 项目标准 5 | 可解析、可分析、可完成 `single_reply` |
+| `case-03-missed-window` | 2385 | 拟真性 4 / 故事一致性 4 / 项目标准 4 | 可解析、可分析、可完成 `single_reply` |
+
+生成脚本为 `scripts/generate_realism_synthetic_corpus.py`。脚本只从本地 `llm_match_config.env` 读取 API 配置，不写入密钥；最终语料位于 `tests/fixtures/realism_synthetic/`。
+
 ## 输出
 
 每段语料最终至少包含：
@@ -100,25 +112,25 @@ tests/fixtures/realism_synthetic/
 
 ## 实施 TODO
 
-- [ ] 为三段关系分别写出角色设定、表达风格、时间线跨度图和关键事件节点。
-- [ ] 为每段至少设计 3 个关键可改写点，并记录 cutoff、原句和建议改写。
-- [ ] 为每段至少设计 1 个 cutoff 后才揭示的关键事实，并标记为 modeler-only evidence。
-- [ ] 分 chunk 生成每段 1000+ 条 QQChatExporter 兼容消息。
-- [ ] 拼接并校验每段 `conversation.txt` 的 header、消息总数、时间范围和空行结构。
-- [ ] 运行现有 `parse_qq_export()` 校验三段均可解析，且解析消息数不少于 1000。
-- [ ] 导入三段语料并完成分析，确认每段至少能发起当前 `single_reply` 或 `short_thread` 推演。
-- [ ] 补齐每段的 `timeline.md`、`rewrite-points.md`、`truth-after-cutoff.md` 和 `generation-notes.md`。
+- [x] 为三段关系分别写出角色设定、表达风格、时间线跨度图和关键事件节点。
+- [x] 为每段至少设计 3 个关键可改写点，并记录 cutoff、原句和建议改写。
+- [x] 为每段至少设计 1 个 cutoff 后才揭示的关键事实，并标记为 modeler-only evidence。
+- [x] 分 chunk 生成每段 1000+ 条 QQChatExporter 兼容消息。
+- [x] 拼接并校验每段 `conversation.txt` 的 header、消息总数、时间范围和空行结构。
+- [x] 运行现有 `parse_qq_export()` 校验三段均可解析，且解析消息数不少于 1000。
+- [x] 导入三段语料并完成分析，确认每段至少能发起当前 `single_reply` 或 `short_thread` 推演。
+- [x] 补齐每段的 `timeline.md`、`rewrite-points.md`、`truth-after-cutoff.md` 和 `generation-notes.md`。
 
 ## 验收标准
 
-- [ ] 三段 `conversation.txt` 都能被 `parse_qq_export()` 解析。
-- [ ] 每段至少包含 1000 条消息。
-- [ ] 每段至少包含 3 个关键可改写点。
-- [ ] 每段至少包含 1 个 cutoff 后才揭示的关键事实。
-- [ ] 每段标注能说明 cutoff 前判断与 modeler-only evidence 判断的差异。
-- [ ] 每段至少能导入、分析、发起当前 `single_reply` 或 `short_thread` 推演。
-- [ ] 不提交 API key；API key 只通过本地环境变量或运行时配置传入。
-- [ ] 不使用真实姓名、真实学校、真实联系方式等可识别信息。
+- [x] 三段 `conversation.txt` 都能被 `parse_qq_export()` 解析。
+- [x] 每段至少包含 1000 条消息。
+- [x] 每段至少包含 3 个关键可改写点。
+- [x] 每段至少包含 1 个 cutoff 后才揭示的关键事实。
+- [x] 每段标注能说明 cutoff 前判断与 modeler-only evidence 判断的差异。
+- [x] 每段至少能导入、分析、发起当前 `single_reply` 或 `short_thread` 推演。
+- [x] 不提交 API key；API key 只通过本地环境变量或运行时配置传入。
+- [x] 不使用真实姓名、真实学校、真实联系方式等可识别信息。
 
 ## 风险
 
