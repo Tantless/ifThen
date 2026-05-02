@@ -128,6 +128,31 @@ example:
 - 在同一个 PRD 文件下写入章节 `## 工作记录及完成情况`。
 - 工作记录应说明本次任务完成了什么、如何完成，以及与终版 PRD 的对应完成情况，确保后续可以从需求确认追溯到实际交付。
 
+## 临时路线图：真实性提升 Realism Roadmap
+
+**用途：** 在真实性路线图完成前，为上下文压缩保留当前执行顺序。`realism-00` 规划的全部步骤完成后，删除此临时块。
+
+当前必须先做：
+- `realism-01-pre-synthetic-corpus`：LLM 构筑拟真长消息测试集。
+
+主路线图阶段顺序：
+1. `realism-01-pre`：构筑 3 段可导入的合成拟真长消息测试集。
+2. `realism-01`：建立拟真性基线与失败样例集。
+3. `realism-02`：实现分层证据上下文。
+4. `realism-03`：实现检索排序与上下文预算。
+5. `realism-04`：增强人格与表达风格。
+6. `realism-05`：补齐推演 prompt 与泄漏护栏。
+7. `realism-06`：建设实时分支会话后端。
+8. `realism-07`：建设实时聊天前端交互。
+9. `realism-08`：沉淀质量验收与回归策略。
+
+`realism-01-pre` 完成条件：
+- [ ] 生成 3 段每段 1000+ 条消息的合成聊天记录。
+- [ ] 每段 `conversation.txt` 均可被现有导入解析器解析。
+- [ ] 每段包含关键可改写点、cutoff 后真相揭示和评估标注。
+- [ ] 样例能证明“只截断历史会误判，而利用后续客观事实作为 modeler-only evidence 能更真实”。
+- [ ] 不提交 API key，不使用真实姓名、真实学校、真实联系方式等可识别信息。
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

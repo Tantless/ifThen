@@ -16,27 +16,30 @@
 
 1. [真实性路线图](./realism-00-roadmap.md)
    - 汇总阶段目标、依赖顺序、交付边界和总验收标准。
-2. [拟真性基线与失败样例集](./realism-01-baseline-and-evaluation.md)
+2. [LLM 构筑拟真长消息测试集](./realism-01-pre-synthetic-corpus.md)
+   - 先生成 3 段可导入的 1000+ 消息合成语料，为基线评估提供样本基础。
+3. [拟真性基线与失败样例集](./realism-01-baseline-and-evaluation.md)
    - 建立可复测样例，明确当前推演到底哪里不真实。
-3. [分层证据上下文](./realism-02-layered-evidence-context.md)
+4. [分层证据上下文](./realism-02-layered-evidence-context.md)
    - 将 cutoff 前事实、未来原时间线证据、分支事实分开，避免未来泄漏。
-4. [检索排序与上下文预算](./realism-03-retrieval-ranking-budget.md)
+5. [检索排序与上下文预算](./realism-03-retrieval-ranking-budget.md)
    - 在不增加主分析耗时的前提下，让推演拿到少而准的上下文。
-5. [人格与表达风格增强](./realism-04-persona-style-enrichment.md)
+6. [人格与表达风格增强](./realism-04-persona-style-enrichment.md)
    - 用现有 persona 加低成本统计，让回复更像真实对方。
-6. [推演 Prompt 与泄漏护栏](./realism-05-prompt-guardrails.md)
+7. [推演 Prompt 与泄漏护栏](./realism-05-prompt-guardrails.md)
    - 让未来事实只影响概率和风险，不进入角色台词。
-7. [实时分支会话后端](./realism-06-realtime-branch-backend.md)
+8. [实时分支会话后端](./realism-06-realtime-branch-backend.md)
    - 建立用户扮演 self、LLM 只扮演 other 的持久分支会话。
-8. [实时聊天前端交互](./realism-07-realtime-branch-frontend.md)
+9. [实时聊天前端交互](./realism-07-realtime-branch-frontend.md)
    - 实现输入窗口、串行回复、拆泡延迟和 typing 状态。
-9. [质量验收与回归策略](./realism-08-quality-and-rollout.md)
+10. [质量验收与回归策略](./realism-08-quality-and-rollout.md)
    - 统一泄漏、persona、并发、兼容性和上线验收。
 
 ## 当前推荐执行顺序
 
 第一批最小闭环：
 
+- [ ] 完成 `realism-01-pre`，拿到 3 段可导入的合成拟真长消息测试集。
 - [ ] 完成 `realism-01`，拿到失败样例与评估标准。
 - [ ] 完成 `realism-02`，让 context pack 支持分层证据。
 - [ ] 完成 `realism-05`，把未来证据使用规则写进 prompt 和测试。
