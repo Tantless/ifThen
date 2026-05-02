@@ -133,13 +133,13 @@ example:
 **用途：** 在真实性路线图完成前，为上下文压缩保留当前执行顺序。`realism-00` 规划的全部步骤完成后，删除此临时块。
 
 当前必须先做：
-- `realism-06`：建设实时分支会话后端，LLM 只回复 other。
-- 随后继续 `realism-07`，把改写后体验切到实时分支对话。
+- `realism-07`：建设实时聊天前端交互，支持运行中消息合并与旧回复丢弃。
+- 随后继续 `realism-02`，为实时分支补齐分层证据上下文和会话级 memory pack 增强。
 
 主路线图阶段顺序：
 1. `realism-01-pre`：构筑 3 段可导入的合成拟真长消息测试集。（已完成）
 2. `realism-01`：建立拟真性基线与失败样例集。（已完成）
-3. `realism-06`：建设实时分支会话后端，LLM 只回复 other。
+3. `realism-06`：建设实时分支会话后端，LLM 只回复 other。（已完成）
 4. `realism-07`：建设实时聊天前端交互，支持运行中消息合并与旧回复丢弃。
 5. `realism-02`：实现分层证据上下文和实时会话 memory pack。
 6. `realism-03`：实现检索排序与上下文预算。
@@ -159,6 +159,13 @@ example:
 - [x] 每个样例包含 cutoff、原文、改写、当前输出快照和失败标注。
 - [x] 样例覆盖过度乐观、未来事实盲区、未来事实泄漏、人格不符、表达风格不符、检索不准、短链不连贯和关系状态跳变。
 - [x] 样例能回指到可提交合成语料，不提交真实隐私聊天原文。
+
+`realism-06` 完成条件：
+- [x] 新增 `BranchSession`、`BranchMessage`、`BranchReplyJob` 持久化模型。
+- [x] 新增创建 branch session、追加 self 消息、创建/查询 reply job 的后端 API。
+- [x] worker 处理 branch reply job 时只生成并写入 other 消息。
+- [x] 同一 branch session 的 active reply job 会被新输入或新 job supersede。
+- [x] LLM 返回后基于 `input_revision` 重新校验，过期结果不能写入分支。
 
 ---
 

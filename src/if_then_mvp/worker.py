@@ -9,7 +9,7 @@ from queue import Empty, Queue
 from threading import BoundedSemaphore
 from typing import Callable
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from if_then_mvp.analysis import (
     SegmentSummaryPayload,
@@ -21,10 +21,18 @@ from if_then_mvp.analysis import (
     build_snapshot_payload,
     review_topic_merges,
 )
+from if_then_mvp.branch_sessions import (
+    apply_branch_reply_job_progress,
+    claim_next_branch_reply_job,
+    utcnow as branch_utcnow,
+)
 from if_then_mvp.config import get_settings
 from if_then_mvp.db import get_sessionmaker
 from if_then_mvp.models import (
     AnalysisJob,
+    BranchMessage,
+    BranchReplyJob,
+    BranchSession,
     Conversation,
     ImportBatch,
     Message,
@@ -42,7 +50,7 @@ from if_then_mvp.parser import ParsedMessage, parse_qq_export
 from if_then_mvp.retrieval import build_context_pack
 from if_then_mvp.runtime_llm import build_runtime_llm_client, load_runtime_settings_map
 from if_then_mvp.segmentation import ParsedTimelineMessage, SegmentDraft, merge_isolated_segments, split_into_segments
-from if_then_mvp.simulation import assess_branch, generate_first_reply, simulate_short_thread
+from if_then_mvp.simulation import assess_branch, generate_branch_reply, generate_first_reply, simulate_short_thread
 from if_then_mvp.simulation_jobs import (
     SimulationProgressSnapshot,
     apply_simulation_job_progress,
@@ -1186,10 +1194,148 @@ def run_next_simulation_job(*, llm_client=None) -> bool:
         session.close()
 
 
+def run_next_branch_reply_job(*, llm_client=None) -> bool:
+    effective_llm = llm_client
+    if effective_llm is None:
+        try:
+            effective_llm = _build_worker_runtime_llm_client()
+        except RuntimeError:
+            return False
+
+    session = get_sessionmaker()()
+    job_id: int | None = None
+    try:
+        job = claim_next_branch_reply_job(session)
+        if job is None:
+            return False
+        job_id = job.id
+
+        branch_session = session.get(BranchSession, job.branch_session_id)
+        if branch_session is None:
+            raise RuntimeError(f"Branch session {job.branch_session_id} was not found")
+
+        transcript = _load_branch_transcript(session, branch_session_id=branch_session.id)
+        pending_self_messages = _pending_self_messages_since_last_other(transcript)
+        if not pending_self_messages:
+            raise RuntimeError("Branch reply job has no pending self messages")
+
+        memory_pack = branch_session.session_memory_pack or branch_session.context_pack_snapshot
+        current_state = branch_session.current_branch_state or {}
+        apply_branch_reply_job_progress(
+            job,
+            current_stage="generating",
+            current_stage_completed_units=0,
+            current_stage_total_units=1,
+            overall_completed_units=0,
+            overall_total_units=1,
+            status_message="generating 0/1 reply",
+            status="running",
+            error_message=None,
+        )
+        session.commit()
+
+        reply = generate_branch_reply(
+            llm_client=effective_llm,
+            session_memory_pack=memory_pack,
+            branch_transcript=transcript,
+            pending_self_messages=pending_self_messages,
+            current_branch_state=current_state,
+        )
+        if not reply.message_text.strip():
+            raise RuntimeError("Branch reply text is empty")
+
+        session.rollback()
+        session.expire_all()
+        fresh_job = session.get(BranchReplyJob, job_id)
+        if fresh_job is None:
+            return True
+        fresh_branch_session = session.get(BranchSession, fresh_job.branch_session_id)
+        if fresh_branch_session is None:
+            raise RuntimeError(f"Branch session {fresh_job.branch_session_id} was not found")
+
+        if fresh_job.status != "running" or fresh_branch_session.input_revision != fresh_job.input_revision:
+            if fresh_job.status == "running":
+                apply_branch_reply_job_progress(
+                    fresh_job,
+                    current_stage="superseded",
+                    current_stage_completed_units=0,
+                    current_stage_total_units=1,
+                    overall_completed_units=0,
+                    overall_total_units=1,
+                    status_message="superseded by newer branch input",
+                    status="superseded",
+                    finished_at=branch_utcnow(),
+                    error_message=None,
+                )
+                session.commit()
+            return True
+
+        message = BranchMessage(
+            branch_session_id=fresh_branch_session.id,
+            sequence_no=_next_branch_message_sequence_no(session, branch_session_id=fresh_branch_session.id),
+            speaker_role="other",
+            content_text=reply.message_text.strip(),
+            source="llm",
+            delivery_state="committed",
+            metadata_json={
+                "reply_job_id": fresh_job.id,
+                "strategy_used": reply.strategy_used,
+                "generation_notes": reply.generation_notes,
+                "input_revision": fresh_job.input_revision,
+            },
+        )
+        session.add(message)
+        session.flush()
+
+        fresh_branch_session.current_branch_state = reply.state_after_turn.model_dump()
+        fresh_branch_session.updated_at = branch_utcnow()
+        apply_branch_reply_job_progress(
+            fresh_job,
+            current_stage="completed",
+            current_stage_completed_units=1,
+            current_stage_total_units=1,
+            overall_completed_units=1,
+            overall_total_units=1,
+            status_message="completed 1/1 reply",
+            status="completed",
+            finished_at=branch_utcnow(),
+            error_message=None,
+        )
+        fresh_job.payload_json = {
+            **(fresh_job.payload_json or {}),
+            "result_message_id": message.id,
+            "state_after_turn": reply.state_after_turn.model_dump(),
+        }
+        session.commit()
+        return True
+    except Exception as exc:
+        session.rollback()
+        if job_id is not None:
+            failed_job = session.get(BranchReplyJob, job_id)
+            if failed_job is not None and failed_job.status == "running":
+                apply_branch_reply_job_progress(
+                    failed_job,
+                    current_stage="failed",
+                    current_stage_completed_units=0,
+                    current_stage_total_units=1,
+                    overall_completed_units=0,
+                    overall_total_units=1,
+                    status_message=f"failed generating 0/1 reply: {exc}",
+                    status="failed",
+                    finished_at=branch_utcnow(),
+                    error_message=str(exc),
+                )
+                session.commit()
+        return True
+    finally:
+        session.close()
+
+
 def run_forever(*, llm_client, poll_interval_seconds: int = 2) -> None:
     while True:
         processed = run_next_job(llm_client=llm_client, progress_reporter=ConsoleProgressReporter())
         processed = run_next_simulation_job(llm_client=llm_client) or processed
+        processed = run_next_branch_reply_job(llm_client=llm_client) or processed
         if not processed:
             time.sleep(poll_interval_seconds)
 
@@ -1210,6 +1356,46 @@ def _simulation_snapshot_from_job(job: SimulationJob) -> SimulationProgressSnaps
         overall_total_units=overall_total_units,
         status_message=str(progress.get("status_message") or ""),
     )
+
+
+def _load_branch_transcript(session, *, branch_session_id: int) -> list[dict[str, object]]:
+    messages = (
+        session.execute(
+            select(BranchMessage)
+            .where(BranchMessage.branch_session_id == branch_session_id)
+            .order_by(BranchMessage.sequence_no.asc(), BranchMessage.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "sequence_no": message.sequence_no,
+            "speaker_role": message.speaker_role,
+            "message_text": message.content_text,
+            "source": message.source,
+        }
+        for message in messages
+    ]
+
+
+def _pending_self_messages_since_last_other(transcript: list[dict[str, object]]) -> list[dict[str, object]]:
+    last_other_index = -1
+    for index, message in enumerate(transcript):
+        if message.get("speaker_role") == "other":
+            last_other_index = index
+    return [
+        message
+        for message in transcript[last_other_index + 1 :]
+        if message.get("speaker_role") == "self"
+    ]
+
+
+def _next_branch_message_sequence_no(session, *, branch_session_id: int) -> int:
+    current_max = session.execute(
+        select(func.max(BranchMessage.sequence_no)).where(BranchMessage.branch_session_id == branch_session_id)
+    ).scalar_one()
+    return int(current_max or 0) + 1
 
 
 def _build_simulation_context_pack(

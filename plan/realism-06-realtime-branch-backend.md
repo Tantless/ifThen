@@ -14,7 +14,7 @@
 
 ## 核心模型
 
-建议新增：
+已新增：
 
 - `BranchSession`
   - conversation_id
@@ -81,18 +81,18 @@
 
 ## 实施 TODO
 
-- [ ] 新增数据库模型和迁移/初始化逻辑。
-- [ ] 新增 schemas。
-- [ ] 新增 API endpoint。
-- [ ] 新增 worker job claim/processing 逻辑。
-- [ ] 复用 `build_context_pack()` 和分层证据结构。
-- [ ] 新增 realtime reply prompt，只生成 other 的一批消息，不生成 self。
-- [ ] 将 `persona_other` 作为主约束、`persona_self` 作为理解 self 的辅助约束写入 prompt。
-- [ ] 实现 `input_revision` 和 superseded job 丢弃逻辑。
-- [ ] 每次 LLM 回复后更新 `current_branch_state`。
-- [ ] 增加并发测试：同一 session 不允许两个 running job。
-- [ ] 增加上下文测试：第二轮回复包含完整 branch transcript。
-- [ ] 增加过期结果测试：用户在运行中追加消息后，旧 LLM 结果不能写入分支。
+- [x] 新增数据库模型和迁移/初始化逻辑。
+- [x] 新增 schemas。
+- [x] 新增 API endpoint。
+- [x] 新增 worker job claim/processing 逻辑。
+- [x] 复用 `build_context_pack()` 和当前 cutoff-safe context 结构。
+- [x] 新增 realtime reply prompt，只生成 other 的一条消息，不生成 self。
+- [x] 将 `persona_other` 作为主约束、`persona_self` 作为理解 self 的辅助约束写入 prompt。
+- [x] 实现 `input_revision` 和 superseded job 丢弃逻辑。
+- [x] 每次 LLM 回复后更新 `current_branch_state`。
+- [x] 增加并发测试：同一 session 不允许两个 active job 留存。
+- [x] 增加上下文测试：第二轮回复包含完整 branch transcript。
+- [x] 增加过期结果测试：用户在运行中追加消息后，旧 LLM 结果不能写入分支。
 
 ## 可能涉及文件
 
@@ -101,19 +101,28 @@
 - `src/if_then_mvp/api.py`
 - `src/if_then_mvp/worker.py`
 - `src/if_then_mvp/simulation.py`
+- `src/if_then_mvp/branch_sessions.py`
+- `src/if_then_mvp/conversation_lifecycle.py`
 - `src/if_then_mvp/retrieval.py`
-- `tests/test_simulations.py`
-- `tests/test_worker.py`
+- `tests/test_branch_sessions.py`
+- `tests/test_models.py`
 
 ## 验收标准
 
-- [ ] 可以创建 branch session。
-- [ ] 用户 self 消息可以持久化追加。
-- [ ] LLM 只生成 other 消息。
-- [ ] 同一 session 回复任务严格串行。
-- [ ] 用户在 LLM 回复返回前追加 self 消息时，旧回复会被标记过期并基于合并后的 self 消息重新回复。
-- [ ] 每轮生成使用最新 transcript 和分层 context。
-- [ ] 旧 `/simulations` 入口不被破坏。
+- [x] 可以创建 branch session。
+- [x] 用户 self 消息可以持久化追加。
+- [x] LLM 只生成 other 消息。
+- [x] 同一 session 回复任务严格串行。
+- [x] 用户在 LLM 回复返回前追加 self 消息时，旧回复会被标记过期，并且旧结果不会写入分支。
+- [x] 每轮生成使用最新 transcript 和会话级 memory pack。
+- [x] 旧 `/simulations` 入口不被破坏。
+
+## 完成产物
+
+- `BranchSession` / `BranchMessage` / `BranchReplyJob`：持久化实时分支会话、消息和回复任务。
+- `POST /branch-sessions`、`GET /branch-sessions/{id}`、`POST /branch-sessions/{id}/messages`、`POST /branch-sessions/{id}/reply-jobs`、`GET /branch-sessions/{id}/reply-jobs`：后端最小 API 闭环。
+- `run_next_branch_reply_job()`：worker 处理 branch reply job，LLM 只生成 other，并在提交前基于 `input_revision` 丢弃过期结果。
+- `tests/test_branch_sessions.py`：覆盖创建、追加、队列 supersede、worker 写入、过期丢弃、二轮 transcript 和删除清理。
 
 ## 风险
 

@@ -15,6 +15,8 @@
   - 已生成 3 段可导入、可解析、每段 1000+ 消息的合成 QQChatExporter 语料，并标注关键改写点与 cutoff 后 modeler-only evidence。
 - [x] `realism-01` 拟真性基线与失败样例集（已完成 2026-05-02）
   - 已新增 12 个固定基线样例，覆盖 8 类失真类型，并用测试验证样例能回指到合成原语料。
+- [x] `realism-06` 实时分支会话后端（已完成 2026-05-02）
+  - 已新增 branch session/message/reply job 后端闭环，支持用户 self 消息追加、LLM 只回复 other、`input_revision` 过期丢弃和会话级 memory pack。
 
 ## 真实性提升阶段性 TODO
 
@@ -35,7 +37,7 @@
 7. [推演 Prompt 与泄漏护栏](./realism-05-prompt-guardrails.md)
    - 让未来事实只影响概率和风险，不进入角色台词。
 8. [实时分支会话后端](./realism-06-realtime-branch-backend.md)
-   - 建立用户扮演 self、LLM 只扮演 other 的持久分支会话；该项已提升为真实性主线，而不是后期附加体验。
+   - 已建立用户扮演 self、LLM 只扮演 other 的持久分支会话；该项已提升为真实性主线，而不是后期附加体验。
 9. [实时聊天前端交互](./realism-07-realtime-branch-frontend.md)
    - 实现输入窗口、运行中消息合并/旧回复丢弃、串行回复、拆泡延迟和 typing 状态。
 10. [质量验收与回归策略](./realism-08-quality-and-rollout.md)
@@ -47,7 +49,7 @@
 
 - [x] 完成 `realism-01-pre`，拿到 3 段可导入的合成拟真长消息测试集。
 - [x] 完成 `realism-01`，拿到失败样例与评估标准。
-- [ ] 完成 `realism-06` 的最小后端闭环，新增 branch session/message/reply job，并让 LLM 只回复 other。
+- [x] 完成 `realism-06` 的最小后端闭环，新增 branch session/message/reply job，并让 LLM 只回复 other。
 - [ ] 完成 `realism-07` 的最小前端闭环，用户改写后进入实时分支聊天。
 - [ ] 完成 `realism-05` 的实时版 prompt 护栏，禁止 LLM 生成 self 台词，并确保未来证据不进入角色台词。
 

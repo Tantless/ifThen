@@ -45,6 +45,13 @@ class NextTurnPayload(BaseModel):
     stopping_reason: str | None = None
 
 
+class BranchReplyPayload(BaseModel):
+    message_text: str
+    strategy_used: str
+    state_after_turn: TurnStatePayload
+    generation_notes: str
+
+
 BRANCH_SYSTEM_PROMPT = (
     "你是一个“截止安全”的反事实分支状态判断器。"
     "你的任务不是直接生成回复文本，而是判断：把原消息改写成新消息后，"
@@ -93,6 +100,19 @@ NEXT_TURN_SYSTEM_PROMPT = (
     "7. 允许自然变短、自然停住，不以把对话写完整为目标。"
     "8. 你必须主动避免机械重复、原地打转、只换说法复述上一轮、或让双方异常理想化地持续推进。"
     "9. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+)
+
+BRANCH_REPLY_SYSTEM_PROMPT = (
+    "你是实时反事实分支会话里的“other 回复生成器”。"
+    "用户继续扮演 self，你只能生成 other 在当前分支里的下一条消息。"
+    "你必须遵守以下规则："
+    "1. 只能生成 other 的一条下一轮回复，绝对不要代写 self。"
+    "2. 用户实时输入是事实源；persona_self 只能帮助理解用户风格，不能覆盖、改写或忽略用户刚说的话。"
+    "3. persona_other 是主要生成约束，回复长度、语气、回避/承接方式和关系推进上限都必须受它约束。"
+    "4. session_memory_pack 中的 cutoff-safe 材料可作为角色当时可知上下文；未来原时间线证据若出现，只能影响风险和保守程度，不能写成 other 已知内容。"
+    "5. 回复必须符合当前 branch transcript 和 current_branch_state，不要突然变得更热、更深、更会沟通。"
+    "6. state_after_turn 只估计这条 other 回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
+    "7. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 
 
@@ -203,6 +223,26 @@ def simulate_short_thread(
             break
 
     return turns
+
+
+def generate_branch_reply(
+    *,
+    llm_client: ChatJSONClient,
+    session_memory_pack: dict[str, Any],
+    branch_transcript: list[dict[str, Any]],
+    pending_self_messages: list[dict[str, Any]],
+    current_branch_state: dict[str, Any],
+) -> BranchReplyPayload:
+    return llm_client.chat_json(
+        system_prompt=BRANCH_REPLY_SYSTEM_PROMPT,
+        user_prompt=_build_branch_reply_prompt(
+            session_memory_pack=session_memory_pack,
+            branch_transcript=branch_transcript,
+            pending_self_messages=pending_self_messages,
+            current_branch_state=current_branch_state,
+        ),
+        response_model=BranchReplyPayload,
+    )
 
 
 def _build_branch_prompt(*, context_pack: dict[str, Any]) -> str:
@@ -622,6 +662,51 @@ def _build_next_turn_prompt(
     return "\n".join(lines)
 
 
+def _build_branch_reply_prompt(
+    *,
+    session_memory_pack: dict[str, Any],
+    branch_transcript: list[dict[str, Any]],
+    pending_self_messages: list[dict[str, Any]],
+    current_branch_state: dict[str, Any],
+) -> str:
+    lines = [
+        "请根据下面的实时反事实分支会话，生成 other 的下一条回复，并输出结构化 JSON。",
+        "",
+        "你的目标是让 other 对用户最新 self 输入做出真实、克制、符合对方 persona 的即时回应。",
+        "",
+        "硬性边界：",
+        "- 只生成 other 的下一条消息，不要生成 self 消息。",
+        "- 不要总结整段关系，不要替用户决定下一句怎么说。",
+        "- 用户实时输入优先于 persona_self；persona_self 只用于理解，不用于改写用户输入。",
+        "- persona_other 是主要生成约束。",
+        "- 如果 session_memory_pack 中存在 cutoff 后证据，只能用于保守估计风险，不能让 other 说出这些未来事实。",
+        "- 如果 pending_self_messages 是连续多条 self 消息，应把它们当作同一轮用户输入一起回应。",
+        "",
+        "输出字段要求：",
+        "- `message_text`：other 此刻最可能发出的下一条消息。",
+        "- `strategy_used`：这条回复采用的互动策略。",
+        "- `state_after_turn`：这条 other 回复之后的即时分支状态。",
+        "- `generation_notes`：用 1 到 3 句说明回复如何受 persona_other、当前状态和用户最新输入约束。",
+        "",
+        "session_memory_pack JSON:",
+        _to_json_line(session_memory_pack),
+        "",
+        "current_branch_state JSON:",
+        _to_json_line(current_branch_state),
+        "",
+        "branch_transcript JSONL:",
+    ]
+    lines.extend(_to_json_line(item) for item in branch_transcript)
+    lines.extend(
+        [
+            "",
+            "pending_self_messages JSONL:",
+        ]
+    )
+    lines.extend(_to_json_line(item) for item in pending_self_messages)
+    return "\n".join(lines)
+
+
 def _build_branch_transcript_seed(*, context_pack: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {
@@ -651,5 +736,5 @@ def _normalize_message_text(value: str) -> str:
     return lowered
 
 
-def _to_json_line(payload: dict[str, Any]) -> str:
+def _to_json_line(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)

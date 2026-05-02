@@ -12,7 +12,7 @@ def test_core_models_persist_and_are_mapped_with_sqlalchemy(tmp_path, monkeypatc
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(first_data_dir))
 
     from if_then_mvp.db import Base, get_engine, init_db, session_scope
-    from if_then_mvp.models import AnalysisJob, AppSetting, Conversation, ImportBatch, Message
+    from if_then_mvp.models import AnalysisJob, AppSetting, BranchMessage, BranchReplyJob, BranchSession, Conversation, ImportBatch, Message
 
     first_engine = get_engine()
     first_db_path = Path(first_engine.url.database)
@@ -23,6 +23,9 @@ def test_core_models_persist_and_are_mapped_with_sqlalchemy(tmp_path, monkeypatc
     assert Conversation.__table__.name == "conversations"
     assert ImportBatch.__table__.name == "imports"
     assert Message.__table__.name == "messages"
+    assert BranchSession.__table__.name == "branch_sessions"
+    assert BranchMessage.__table__.name == "branch_messages"
+    assert BranchReplyJob.__table__.name == "branch_reply_jobs"
     assert AnalysisJob.__table__.name == "analysis_jobs"
     assert AppSetting.__table__.name == "app_settings"
 

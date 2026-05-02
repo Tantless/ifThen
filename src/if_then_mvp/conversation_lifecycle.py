@@ -4,6 +4,9 @@ from sqlalchemy import select
 
 from if_then_mvp.models import (
     AnalysisJob,
+    BranchMessage,
+    BranchReplyJob,
+    BranchSession,
     Conversation,
     ImportBatch,
     Message,
@@ -20,6 +23,7 @@ from if_then_mvp.models import (
 
 
 def clear_conversation_simulations(session, *, conversation_id: int) -> None:
+    clear_conversation_branch_sessions(session, conversation_id=conversation_id)
     for turn in session.execute(
         select(SimulationTurn)
         .join(Simulation, SimulationTurn.simulation_id == Simulation.id)
@@ -30,6 +34,26 @@ def clear_conversation_simulations(session, *, conversation_id: int) -> None:
         select(Simulation).where(Simulation.conversation_id == conversation_id)
     ).scalars():
         session.delete(simulation)
+    session.flush()
+
+
+def clear_conversation_branch_sessions(session, *, conversation_id: int) -> None:
+    for reply_job in session.execute(
+        select(BranchReplyJob)
+        .join(BranchSession, BranchReplyJob.branch_session_id == BranchSession.id)
+        .where(BranchSession.conversation_id == conversation_id)
+    ).scalars():
+        session.delete(reply_job)
+    for branch_message in session.execute(
+        select(BranchMessage)
+        .join(BranchSession, BranchMessage.branch_session_id == BranchSession.id)
+        .where(BranchSession.conversation_id == conversation_id)
+    ).scalars():
+        session.delete(branch_message)
+    for branch_session in session.execute(
+        select(BranchSession).where(BranchSession.conversation_id == conversation_id)
+    ).scalars():
+        session.delete(branch_session)
     session.flush()
 
 
@@ -80,6 +104,8 @@ def delete_conversation_tree(session, *, conversation_id: int) -> list[Path]:
             select(ImportBatch).where(ImportBatch.conversation_id == conversation_id)
         ).scalars()
     ]
+
+    clear_conversation_branch_sessions(session, conversation_id=conversation_id)
 
     for turn in session.execute(
         select(SimulationTurn)

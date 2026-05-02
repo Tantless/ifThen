@@ -218,6 +218,50 @@ class SimulationJob(TimestampMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class BranchSession(TimestampMixin, Base):
+    __tablename__ = "branch_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), index=True, nullable=False)
+    target_message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), index=True, nullable=False)
+    replacement_content: Mapped[str] = mapped_column(Text, nullable=False)
+    context_pack_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    session_memory_pack: Mapped[dict] = mapped_column(JSON, nullable=False)
+    current_branch_state: Mapped[dict] = mapped_column(JSON, nullable=False)
+    input_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(32), index=True, nullable=False, default="active")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class BranchMessage(TimestampMixin, Base):
+    __tablename__ = "branch_messages"
+    __table_args__ = (UniqueConstraint("branch_session_id", "sequence_no", name="uq_branch_messages_session_sequence"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    branch_session_id: Mapped[int] = mapped_column(ForeignKey("branch_sessions.id"), index=True, nullable=False)
+    sequence_no: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    speaker_role: Mapped[str] = mapped_column(String(32), nullable=False)
+    content_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    delivery_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class BranchReplyJob(TimestampMixin, Base):
+    __tablename__ = "branch_reply_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    branch_session_id: Mapped[int] = mapped_column(ForeignKey("branch_sessions.id"), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    current_stage: Mapped[str] = mapped_column(String(64), nullable=False)
+    progress_percent: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    input_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class AppSetting(Base):
     __tablename__ = "app_settings"
 

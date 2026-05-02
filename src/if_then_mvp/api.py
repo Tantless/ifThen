@@ -10,6 +10,14 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
 from if_then_mvp.config import get_settings
+from if_then_mvp.branch_sessions import (
+    append_branch_self_message,
+    branch_message_to_read,
+    branch_reply_job_to_read,
+    branch_session_to_read,
+    create_branch_session,
+    queue_branch_reply_job,
+)
 from if_then_mvp.conversation_lifecycle import (
     delete_conversation_tree,
     queue_rerun_analysis,
@@ -19,6 +27,8 @@ from if_then_mvp.llm import ChatJSONClient
 from if_then_mvp.models import (
     AnalysisJob,
     AppSetting,
+    BranchReplyJob,
+    BranchSession,
     Conversation,
     ImportBatch,
     Message,
@@ -32,8 +42,14 @@ from if_then_mvp.models import (
     TopicLink,
 )
 from if_then_mvp.parser import parse_qq_export
+from if_then_mvp.retrieval import build_context_pack
 from if_then_mvp.runtime_llm import build_runtime_llm_client, load_runtime_settings_map
 from if_then_mvp.schemas import (
+    BranchMessageCreate,
+    BranchMessageRead,
+    BranchReplyJobRead,
+    BranchSessionCreate,
+    BranchSessionRead,
     ConversationRead,
     ImportResponse,
     JobRead,
@@ -439,6 +455,83 @@ def create_app(*, llm_client: ChatJSONClient | None = None) -> FastAPI:
             )
             return simulation_job_to_read(job)
 
+    @app.post("/branch-sessions", response_model=BranchSessionRead, status_code=201)
+    def create_realtime_branch_session(payload: BranchSessionCreate) -> BranchSessionRead:
+        with session_scope() as session:
+            _require_conversation(session, payload.conversation_id)
+            target_message = session.get(Message, payload.target_message_id)
+            if target_message is None or target_message.conversation_id != payload.conversation_id:
+                raise HTTPException(status_code=404, detail="Target message not found")
+            if target_message.speaker_role != "self":
+                raise HTTPException(status_code=400, detail="Target message must be a self message")
+
+            try:
+                context_pack = _build_branch_context_pack(
+                    session,
+                    conversation_id=payload.conversation_id,
+                    target_message=target_message,
+                    replacement_content=payload.replacement_content,
+                )
+                branch_session = create_branch_session(
+                    session,
+                    conversation_id=payload.conversation_id,
+                    target_message_id=payload.target_message_id,
+                    replacement_content=payload.replacement_content,
+                    context_pack=context_pack,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            return branch_session_to_read(session, branch_session)
+
+    @app.get("/branch-sessions/{branch_session_id}", response_model=BranchSessionRead)
+    def get_branch_session(branch_session_id: int) -> BranchSessionRead:
+        with session_scope() as session:
+            branch_session = _require_branch_session(session, branch_session_id)
+            return branch_session_to_read(session, branch_session)
+
+    @app.post("/branch-sessions/{branch_session_id}/messages", response_model=BranchMessageRead, status_code=201)
+    def append_branch_message(branch_session_id: int, payload: BranchMessageCreate) -> BranchMessageRead:
+        with session_scope() as session:
+            branch_session = _require_branch_session(session, branch_session_id)
+            try:
+                message = append_branch_self_message(
+                    session,
+                    branch_session=branch_session,
+                    content_text=payload.content_text,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            return branch_message_to_read(message)
+
+    @app.post("/branch-sessions/{branch_session_id}/reply-jobs", response_model=BranchReplyJobRead, status_code=202)
+    def create_branch_reply_job(branch_session_id: int) -> BranchReplyJobRead:
+        with session_scope() as session:
+            branch_session = _require_branch_session(session, branch_session_id)
+            try:
+                job = queue_branch_reply_job(session, branch_session=branch_session)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            return branch_reply_job_to_read(job)
+
+    @app.get("/branch-sessions/{branch_session_id}/reply-jobs", response_model=list[BranchReplyJobRead])
+    def list_branch_reply_jobs(
+        branch_session_id: int,
+        limit: int = Query(default=10, ge=1, le=50),
+    ) -> list[BranchReplyJobRead]:
+        with session_scope() as session:
+            _require_branch_session(session, branch_session_id)
+            jobs = (
+                session.execute(
+                    select(BranchReplyJob)
+                    .where(BranchReplyJob.branch_session_id == branch_session_id)
+                    .order_by(BranchReplyJob.id.desc())
+                    .limit(limit)
+                )
+                .scalars()
+                .all()
+            )
+            return [branch_reply_job_to_read(job) for job in jobs]
+
     @app.post("/imports/qq-text", response_model=ImportResponse, status_code=201)
     async def import_qq_text(
         file: UploadFile = File(...),
@@ -575,6 +668,82 @@ def _require_conversation(session, conversation_id: int) -> Conversation:
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
+
+
+def _require_branch_session(session, branch_session_id: int) -> BranchSession:
+    branch_session = session.get(BranchSession, branch_session_id)
+    if branch_session is None:
+        raise HTTPException(status_code=404, detail="Branch session not found")
+    return branch_session
+
+
+def _build_branch_context_pack(
+    session,
+    *,
+    conversation_id: int,
+    target_message: Message,
+    replacement_content: str,
+) -> dict[str, object]:
+    messages = (
+        session.execute(
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.timestamp.asc(), Message.sequence_no.asc(), Message.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    segments = (
+        session.execute(
+            select(Segment)
+            .where(Segment.conversation_id == conversation_id)
+            .order_by(Segment.start_time.asc(), Segment.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    snapshot = (
+        session.execute(
+            select(RelationshipSnapshot)
+            .join(Message, RelationshipSnapshot.as_of_message_id == Message.id)
+            .where(
+                RelationshipSnapshot.conversation_id == conversation_id,
+                (
+                    (RelationshipSnapshot.as_of_time < target_message.timestamp)
+                    | (
+                        (RelationshipSnapshot.as_of_time == target_message.timestamp)
+                        & (Message.sequence_no < target_message.sequence_no)
+                    )
+                ),
+            )
+            .order_by(RelationshipSnapshot.as_of_time.desc(), Message.sequence_no.desc())
+        )
+        .scalars()
+        .first()
+    )
+    related_topic_digests = _load_related_topic_digests(
+        session=session,
+        conversation_id=conversation_id,
+        target_message=target_message,
+    )
+    personas = (
+        session.execute(select(PersonaProfile).where(PersonaProfile.conversation_id == conversation_id))
+        .scalars()
+        .all()
+    )
+    persona_self = next((item for item in personas if item.subject_role == "self"), None)
+    persona_other = next((item for item in personas if item.subject_role == "other"), None)
+
+    return build_context_pack(
+        messages=[_message_to_context_dict(item) for item in messages],
+        segments=[_segment_to_context_dict(item) for item in segments],
+        target_message_id=target_message.id,
+        replacement_content=replacement_content,
+        related_topic_digests=related_topic_digests,
+        base_relationship_snapshot=_snapshot_to_context_dict(snapshot),
+        persona_self=_persona_to_context_dict(persona_self),
+        persona_other=_persona_to_context_dict(persona_other),
+    )
 
 
 def _message_to_context_dict(message: Message) -> dict[str, object]:

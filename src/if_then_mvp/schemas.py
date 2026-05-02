@@ -156,3 +156,47 @@ class SimulationRead(BaseModel):
     first_reply_text: str | None = None
     impact_summary: str | None = None
     simulated_turns: list[SimulationTurnRead] = Field(default_factory=list)
+
+
+class BranchSessionCreate(BaseModel):
+    conversation_id: int
+    target_message_id: int
+    replacement_content: str = Field(min_length=1)
+
+
+class BranchMessageCreate(BaseModel):
+    content_text: str = Field(min_length=1)
+
+
+class BranchMessageRead(BaseModel):
+    id: int
+    branch_session_id: int
+    sequence_no: int
+    speaker_role: str
+    content_text: str
+    source: str
+    delivery_state: str
+    metadata_json: dict = Field(default_factory=dict)
+
+
+class BranchReplyJobRead(BaseModel):
+    id: int
+    branch_session_id: int
+    status: str
+    current_stage: str
+    progress_percent: int
+    input_revision: int
+    error_message: str | None = None
+    status_message: str | None = None
+
+
+class BranchSessionRead(BaseModel):
+    id: int
+    conversation_id: int
+    target_message_id: int
+    replacement_content: str
+    input_revision: int
+    status: str
+    current_branch_state: dict
+    messages: list[BranchMessageRead] = Field(default_factory=list)
+    reply_jobs: list[BranchReplyJobRead] = Field(default_factory=list)

@@ -131,6 +131,8 @@ Status: completed in the performance task and recorded in `plan/TODO.md`.
 
 ### 5. Real-Time Branch Chat Backend
 
+Status: completed in `realism-06`.
+
 * Add persistent branch session and branch message records linked to the target message and rewrite.
 * Add append-message endpoints where the user can only add `self` messages and the LLM job only appends `other` messages.
 * Enforce one active LLM job per branch session; later user messages supersede stale uncommitted replies instead of spawning parallel replies.
@@ -246,7 +248,8 @@ Cons:
 * Performance pipeline optimization: completed.
 * `realism-01-pre` synthetic corpus: completed.
 * `realism-01` baseline and failure taxonomy: completed with `tests/fixtures/realism_baseline/cases.json`, `tests/test_realism_baseline_fixtures.py`, and `scripts/report_realism_baseline.py`.
-* Next implementation target: `realism-06` realtime branch backend minimum loop.
+* `realism-06` realtime branch backend minimum loop: completed with `BranchSession`, `BranchMessage`, `BranchReplyJob`, branch session APIs, `run_next_branch_reply_job()`, stale reply superseding, and branch-session regression tests.
+* Next implementation target: `realism-07` realtime branch frontend minimum loop.
 
 ## Out of Scope
 
