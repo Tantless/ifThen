@@ -136,7 +136,7 @@ Status: completed in the performance task and recorded in `plan/TODO.md`.
 ### 6. Real-Time Branch Chat Frontend
 
 * Replace the primary short-thread experience with an interactive branch chat view while preserving `single_reply` / `short_thread` compatibility.
-* Batch user messages after a short idle window, currently proposed for MVP as 1.5 to 2 seconds.
+* Batch user messages after a short idle window; MVP decision is 1.5 to 2 seconds, backed by stale reply superseding when users add messages during generation.
 * If a new user message arrives while the LLM reply is running but not yet committed, mark that reply stale and trigger a new reply over the merged self messages.
 * Show delayed split bubbles for generated `other` replies and a lightweight typing state while the LLM is waiting/generating.
 * Keep all generated branch bubbles visually distinct from original timeline bubbles.
@@ -225,14 +225,15 @@ Cons:
 
 * Mark the performance TODO complete.
 * Build the first real-time branch session backend: `BranchSession`, `BranchMessage`, `BranchReplyJob`, append self message, generate other reply, and stale reply superseding.
-* Build the first real-time branch UI: rewrite enters branch chat, self messages use an idle window, other reply shows typing and split bubbles.
+* Build the first real-time branch UI: rewrite enters branch chat, self messages use a 1.5 to 2 second idle window, other reply shows typing and split bubbles.
 * Use the current cutoff-safe context pack plus a session-level memory pack that includes `persona_other` as primary and `persona_self` as supporting context.
 * Keep future evidence modeler-only; if layered evidence is not complete in the first realtime PR, the prompt must state that no cutoff-after facts may appear as role-known content.
 * Preserve `/simulations` and current desktop short-thread rendering as compatibility while the primary entry moves to branch sessions.
 
-## Open Questions
+## Decisions
 
-* What idle window should the MVP use before starting an LLM reply: 1.5-2 seconds for stronger realtime feel, or 3-5 seconds for better burst-message capture?
+* MVP idle window: use 1.5 to 2 seconds for stronger realtime feel.
+* Burst-message fallback: if the user sends another self message before an LLM reply is committed, supersede the stale reply job and regenerate from the merged self input.
 
 ## Out of Scope
 

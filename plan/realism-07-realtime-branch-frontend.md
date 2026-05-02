@@ -13,7 +13,7 @@
 ## 交互规则
 
 - 用户可以连续发送多条 self 消息。
-- MVP 默认使用较短 idle window，例如 1.5 到 2 秒无新消息后触发 LLM；后续可按体验调到 3 到 5 秒。
+- MVP 默认使用 1.5 到 2 秒 idle window：最后一条 self 消息后 1.5 到 2 秒无新消息再触发 LLM。
 - LLM 回复期间显示 typing 状态。
 - LLM 回复返回后，按短句拆成多条 other 气泡。
 - 每条 other 气泡按文本长度设置发送延迟：
@@ -40,7 +40,7 @@
 - [ ] 增加 branch session 状态管理。
 - [ ] 在改写完成后提供进入实时分支会话的入口。
 - [ ] 实现用户消息本地乐观展示和后端持久化。
-- [ ] 实现可配置 idle window debounce，MVP 默认 1.5 到 2 秒。
+- [ ] 实现 idle window debounce，MVP 默认 1.5 到 2 秒；如果后续人工验收认为过短，再改为可配置。
 - [ ] 实现 reply job polling。
 - [ ] 实现 other typing 状态。
 - [ ] 实现回复拆泡和延迟展示。
