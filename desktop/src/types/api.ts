@@ -179,3 +179,52 @@ export type SimulationRead = {
   impact_summary: string | null
   simulated_turns: SimulationTurnRead[]
 }
+
+export type BranchSessionCreate = {
+  conversation_id: number
+  target_message_id: number
+  replacement_content: string
+}
+
+export type BranchMessageCreate = {
+  content_text: string
+}
+
+export type BranchMessageRead = {
+  id: number
+  branch_session_id: number
+  sequence_no: number
+  speaker_role: string
+  content_text: string
+  source: string
+  delivery_state: string
+  metadata_json: Record<string, unknown>
+}
+
+export type BranchReplyJobRead = {
+  id: number
+  branch_session_id: number
+  status: string
+  current_stage: string
+  progress_percent: number
+  input_revision: number
+  error_message: string | null
+  status_message: string | null
+}
+
+export type BranchSessionRead = {
+  id: number
+  conversation_id: number
+  target_message_id: number
+  replacement_content: string
+  input_revision: number
+  status: string
+  current_branch_state: Record<string, unknown>
+  messages: BranchMessageRead[]
+  reply_jobs: BranchReplyJobRead[]
+}
+
+export type ListBranchReplyJobsInput = {
+  branchSessionId: number
+  limit?: number
+}

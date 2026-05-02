@@ -37,11 +37,13 @@ import {
 import { resolveJobProgress } from './lib/analysisProgress'
 import {
   buildFrontChatItem,
+  buildFrontChatMessagesFromBranchSession,
   buildFrontChatMessagesFromSimulation,
   buildFrontChatWindowState,
   formatChatTimestampLabel,
+  resolveBranchDeliveryDelayMs,
+  splitChatLikeMessageText,
 } from './lib/frontUiAdapters'
-import { resolveSimulationPendingStageLabel } from './lib/simulationPending'
 import {
   deleteConversation,
   importConversation,
@@ -56,7 +58,14 @@ import {
 } from './lib/services/conversationService'
 import { listConversationJobs, readJob } from './lib/services/jobService'
 import { readSettings, writeSetting } from './lib/services/settingsService'
-import { createSimulation, listConversationSimulationJobs, readSimulation } from './lib/services/simulationService'
+import { listConversationSimulationJobs, readSimulation } from './lib/services/simulationService'
+import {
+  appendBranchMessage,
+  createBranchReplyJob,
+  createBranchSession,
+  listBranchReplyJobs,
+  readBranchSession,
+} from './lib/services/branchSessionService'
 import {
   isRewriteRequestCurrent,
   resolveInspectorSnapshotAt,
@@ -67,6 +76,8 @@ import {
   type RewriteRequestSnapshot,
 } from './lib/chatState'
 import type {
+  BranchReplyJobRead,
+  BranchSessionRead,
   ConversationRead,
   JobRead,
   MessageDayRead,
@@ -86,17 +97,33 @@ type RewriteDraft = {
   targetMessageTimestamp: string
   replacementContent: string
   simulationJobId: number | null
-  status: 'editing' | 'pending' | 'completed'
+  branchSession: BranchSessionRead | null
+  branchReplyJobId: number | null
+  branchStatus: BranchChatStatus
+  status: 'editing' | 'pending' | 'completed' | 'branch'
   simulation: SimulationRead | null
   errorMessage: string | null
   pendingStageLabel: string | null
 }
+
+type BranchChatStatus =
+  | 'idle'
+  | 'collecting_user_window'
+  | 'reply_queued'
+  | 'other_typing'
+  | 'reply_superseded'
+  | 'delivering_reply'
+  | 'error'
 
 function isPollingJob(job: JobRead | null | undefined): job is JobRead {
   return job?.status === 'running' || job?.status === 'queued'
 }
 
 function isPollingSimulationJob(job: SimulationJobRead | null | undefined): boolean {
+  return job?.status === 'running' || job?.status === 'queued'
+}
+
+function isPollingBranchReplyJob(job: BranchReplyJobRead | null | undefined): boolean {
   return job?.status === 'running' || job?.status === 'queued'
 }
 
@@ -131,6 +158,8 @@ const OLDER_MESSAGE_PAGE_SIZE = 50
 const CHAT_HISTORY_INITIAL_PAGE_SIZE = 20
 const CHAT_HISTORY_LOAD_MORE_PAGE_SIZE = 10
 const CHAT_HISTORY_LOCATE_CONTEXT_RADIUS = 40
+const BRANCH_REPLY_IDLE_WINDOW_MS = 1800
+const BRANCH_REPLY_JOB_POLL_INTERVAL_MS = 1200
 
 type MessagePaginationState = {
   hasOlder: boolean
@@ -141,6 +170,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<FrontSidebarTab>('chat')
   const [chatViewState, setChatViewState] = useState<ChatViewState>({ mode: 'history' })
   const [rewriteDraft, setRewriteDraft] = useState<RewriteDraft | null>(null)
+  const [branchDeliveredPartCountsByMessageId, setBranchDeliveredPartCountsByMessageId] = useState<Record<number, number>>({})
+  const [optimisticBranchMessagesBySessionId, setOptimisticBranchMessagesBySessionId] = useState<Record<number, BranchSessionRead['messages']>>({})
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [inspectorTab, setInspectorTab] = useState<AnalysisInspectorTab>('topics')
   const [inspectorLoadingByTab, setInspectorLoadingByTab] = useState<Record<AnalysisInspectorTab, boolean>>({
@@ -193,9 +224,25 @@ export default function App() {
   const activeRewriteRequestRef = useRef<RewriteRequestSnapshot | null>(null)
   const selectedConversationIdRef = useRef<number | null>(null)
   const rewriteDraftRef = useRef<RewriteDraft | null>(null)
+  const branchReplyIdleTimerRef = useRef<number | null>(null)
+  const branchDeliveryTimerRefs = useRef<number[]>([])
   const windowStateRequestIdRef = useRef(0)
   const normalizedChatHistoryKeyword = chatHistoryKeyword.trim()
   const normalizedChatHistoryDate = chatHistoryDate
+
+  const clearBranchReplyIdleTimer = () => {
+    if (branchReplyIdleTimerRef.current !== null) {
+      window.clearTimeout(branchReplyIdleTimerRef.current)
+      branchReplyIdleTimerRef.current = null
+    }
+  }
+
+  const clearBranchDeliveryTimers = () => {
+    for (const timerId of branchDeliveryTimerRefs.current) {
+      window.clearTimeout(timerId)
+    }
+    branchDeliveryTimerRefs.current = []
+  }
 
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversationId
@@ -204,6 +251,13 @@ export default function App() {
   useEffect(() => {
     rewriteDraftRef.current = rewriteDraft
   }, [rewriteDraft])
+
+  useEffect(() => {
+    return () => {
+      clearBranchReplyIdleTimer()
+      clearBranchDeliveryTimers()
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -257,6 +311,10 @@ export default function App() {
       setInspectorSnapshot(null)
       setActiveTab('chat')
       setMockMessagesByConversation({})
+      setBranchDeliveredPartCountsByMessageId({})
+      setOptimisticBranchMessagesBySessionId({})
+      clearBranchReplyIdleTimer()
+      clearBranchDeliveryTimers()
       activeRewriteRequestRef.current = null
       return
     }
@@ -342,6 +400,10 @@ export default function App() {
       setSelectedConversationId(null)
       setChatViewState({ mode: 'history' })
       setRewriteDraft(null)
+      setBranchDeliveredPartCountsByMessageId({})
+      setOptimisticBranchMessagesBySessionId({})
+      clearBranchReplyIdleTimer()
+      clearBranchDeliveryTimers()
       return
     }
 
@@ -413,25 +475,44 @@ export default function App() {
   }, [conversations, settings])
 
   const rewriteGeneratedMessages = useMemo(() => {
-    if (
-      !rewriteDraft ||
-      rewriteDraft.status !== 'completed' ||
-      !rewriteDraft.simulation ||
-      !selectedConversation ||
-      rewriteDraft.conversationId !== selectedConversation.id
-    ) {
+    if (!rewriteDraft || !selectedConversation || rewriteDraft.conversationId !== selectedConversation.id) {
       return []
     }
 
-    return buildFrontChatMessagesFromSimulation({
-      simulation: rewriteDraft.simulation,
-      selfDisplayName: selectedConversation.self_display_name,
-      otherDisplayName: selectedConversation.other_display_name,
-      selfAvatarUrl,
-      otherAvatarUrl: resolveConversationAvatarUrl(selectedConversation.id),
-      timestampRaw: rewriteDraft.targetMessageTimestamp,
-    })
-  }, [rewriteDraft, selectedConversation, selfAvatarUrl, settings])
+    if (rewriteDraft.status === 'branch' && rewriteDraft.branchSession) {
+      const optimisticMessages = optimisticBranchMessagesBySessionId[rewriteDraft.branchSession.id] ?? []
+      const branchSession =
+        optimisticMessages.length > 0
+          ? {
+              ...rewriteDraft.branchSession,
+              messages: [...rewriteDraft.branchSession.messages, ...optimisticMessages],
+            }
+          : rewriteDraft.branchSession
+
+      return buildFrontChatMessagesFromBranchSession({
+        branchSession,
+        selfDisplayName: selectedConversation.self_display_name,
+        otherDisplayName: selectedConversation.other_display_name,
+        selfAvatarUrl,
+        otherAvatarUrl: resolveConversationAvatarUrl(selectedConversation.id),
+        timestampRaw: rewriteDraft.targetMessageTimestamp,
+        deliveredPartCountsByMessageId: branchDeliveredPartCountsByMessageId,
+      })
+    }
+
+    if (rewriteDraft.status === 'completed' && rewriteDraft.simulation) {
+      return buildFrontChatMessagesFromSimulation({
+        simulation: rewriteDraft.simulation,
+        selfDisplayName: selectedConversation.self_display_name,
+        otherDisplayName: selectedConversation.other_display_name,
+        selfAvatarUrl,
+        otherAvatarUrl: resolveConversationAvatarUrl(selectedConversation.id),
+        timestampRaw: rewriteDraft.targetMessageTimestamp,
+      })
+    }
+
+    return []
+  }, [branchDeliveredPartCountsByMessageId, optimisticBranchMessagesBySessionId, rewriteDraft, selectedConversation, selfAvatarUrl, settings])
   const selectedMessageModels = useMemo(() => {
     const realState = buildFrontChatWindowState({
       selectedConversation: activeTab === 'chat' ? selectedConversation : null,
@@ -456,7 +537,7 @@ export default function App() {
           bubbleTone: 'rewrite-target',
         }
 
-        if (rewriteDraft.status === 'pending' || rewriteDraft.status === 'completed') {
+        if (rewriteDraft.status === 'pending' || rewriteDraft.status === 'completed' || rewriteDraft.status === 'branch') {
           if (rewriteDraft.status === 'pending') {
             messages = messages.map((message, index) =>
               index > targetIndex
@@ -464,7 +545,7 @@ export default function App() {
                     ...message,
                     ghosted: true,
                   }
-                : message,
+              : message,
             )
           } else {
             messages = messages.slice(0, targetIndex + 1)
@@ -514,6 +595,10 @@ export default function App() {
 
     setInspectorOpen(false)
     setRewriteDraft(null)
+    setBranchDeliveredPartCountsByMessageId({})
+    setOptimisticBranchMessagesBySessionId({})
+    clearBranchReplyIdleTimer()
+    clearBranchDeliveryTimers()
     activeRewriteRequestRef.current = null
     setChatViewState({ mode: 'history' })
     setShowChatHistoryDialog(false)
@@ -523,6 +608,10 @@ export default function App() {
   useEffect(() => {
     setChatViewState({ mode: 'history' })
     setRewriteDraft(null)
+    setBranchDeliveredPartCountsByMessageId({})
+    setOptimisticBranchMessagesBySessionId({})
+    clearBranchReplyIdleTimer()
+    clearBranchDeliveryTimers()
     setInspectorOpen(false)
     setInspectorTab('topics')
     setInspectorLoadingByTab({ topics: false, profile: false, snapshot: false })
@@ -549,6 +638,10 @@ export default function App() {
     if (!analysisCompleted) {
       setInspectorOpen(false)
       setRewriteDraft(null)
+      setBranchDeliveredPartCountsByMessageId({})
+      setOptimisticBranchMessagesBySessionId({})
+      clearBranchReplyIdleTimer()
+      clearBranchDeliveryTimers()
       activeRewriteRequestRef.current = null
     }
   }, [analysisCompleted])
@@ -1247,6 +1340,332 @@ export default function App() {
     }
   }, [rewriteDraft?.conversationId, rewriteDraft?.simulationJobId, rewriteDraft?.status, selectedConversationId, state.phase])
 
+  const queueBranchReply = async (branchSessionId: number, inputRevision: number) => {
+    const currentDraft = rewriteDraftRef.current
+    if (
+      !currentDraft ||
+      currentDraft.status !== 'branch' ||
+      currentDraft.branchSession?.id !== branchSessionId ||
+      currentDraft.branchSession.input_revision !== inputRevision
+    ) {
+      return
+    }
+
+    setRewriteDraft((current) =>
+      current?.status === 'branch' &&
+      current.branchSession?.id === branchSessionId &&
+      current.branchSession.input_revision === inputRevision
+        ? {
+            ...current,
+            branchStatus: 'reply_queued',
+            pendingStageLabel: '等待 worker 处理',
+            errorMessage: null,
+          }
+        : current,
+    )
+
+    try {
+      const branchReplyJob = await createBranchReplyJob(branchSessionId)
+      setRewriteDraft((current) =>
+        current?.status === 'branch' &&
+        current.branchSession?.id === branchSessionId &&
+        current.branchSession.input_revision === inputRevision
+          ? {
+              ...current,
+              branchReplyJobId: branchReplyJob.id,
+              branchStatus: branchReplyJob.status === 'running' ? 'other_typing' : 'reply_queued',
+              pendingStageLabel: branchReplyJob.status_message,
+              errorMessage: null,
+            }
+          : current,
+      )
+    } catch (error) {
+      setRewriteDraft((current) =>
+        current?.status === 'branch' &&
+        current.branchSession?.id === branchSessionId &&
+        current.branchSession.input_revision === inputRevision
+          ? {
+              ...current,
+              branchReplyJobId: null,
+              branchStatus: 'error',
+              errorMessage: error instanceof Error ? error.message : '回复失败',
+              pendingStageLabel: null,
+            }
+          : current,
+      )
+    }
+  }
+
+  useEffect(() => {
+    if (
+      state.phase !== 'ready' ||
+      selectedConversationId === null ||
+      !rewriteDraft ||
+      rewriteDraft.status !== 'branch' ||
+      rewriteDraft.conversationId !== selectedConversationId ||
+      rewriteDraft.branchStatus !== 'collecting_user_window' ||
+      !rewriteDraft.branchSession
+    ) {
+      clearBranchReplyIdleTimer()
+      return
+    }
+
+    const branchSessionId = rewriteDraft.branchSession.id
+    const inputRevision = rewriteDraft.branchSession.input_revision
+
+    clearBranchReplyIdleTimer()
+    branchReplyIdleTimerRef.current = window.setTimeout(() => {
+      branchReplyIdleTimerRef.current = null
+      void queueBranchReply(branchSessionId, inputRevision)
+    }, BRANCH_REPLY_IDLE_WINDOW_MS)
+
+    return () => {
+      clearBranchReplyIdleTimer()
+    }
+  }, [
+    rewriteDraft?.branchSession?.id,
+    rewriteDraft?.branchSession?.input_revision,
+    rewriteDraft?.branchStatus,
+    rewriteDraft?.conversationId,
+    rewriteDraft?.status,
+    selectedConversationId,
+    state.phase,
+  ])
+
+  useEffect(() => {
+    if (
+      state.phase !== 'ready' ||
+      selectedConversationId === null ||
+      !rewriteDraft ||
+      rewriteDraft.status !== 'branch' ||
+      rewriteDraft.conversationId !== selectedConversationId ||
+      !rewriteDraft.branchSession ||
+      rewriteDraft.branchReplyJobId === null ||
+      (rewriteDraft.branchStatus !== 'reply_queued' && rewriteDraft.branchStatus !== 'other_typing')
+    ) {
+      return
+    }
+
+    let cancelled = false
+    let timeoutId: number | null = null
+    const branchSessionId = rewriteDraft.branchSession.id
+    const branchReplyJobId = rewriteDraft.branchReplyJobId
+
+    const scheduleRetry = () => {
+      timeoutId = window.setTimeout(() => {
+        void pollBranchReplyJob()
+      }, BRANCH_REPLY_JOB_POLL_INTERVAL_MS)
+    }
+
+    const pollBranchReplyJob = async () => {
+      try {
+        const jobs = await listBranchReplyJobs(branchSessionId, 10)
+        if (cancelled) {
+          return
+        }
+
+        const currentDraft = rewriteDraftRef.current
+        if (
+          !currentDraft ||
+          currentDraft.status !== 'branch' ||
+          currentDraft.conversationId !== selectedConversationIdRef.current ||
+          currentDraft.branchSession?.id !== branchSessionId ||
+          currentDraft.branchReplyJobId !== branchReplyJobId
+        ) {
+          return
+        }
+
+        const branchReplyJob = jobs.find((job) => job.id === branchReplyJobId)
+        if (!branchReplyJob) {
+          scheduleRetry()
+          return
+        }
+
+        if (isPollingBranchReplyJob(branchReplyJob)) {
+          setRewriteDraft((current) =>
+            current &&
+            current.status === 'branch' &&
+            current.branchSession?.id === branchSessionId &&
+            current.branchReplyJobId === branchReplyJob.id
+              ? {
+                  ...current,
+                  branchStatus: branchReplyJob.status === 'running' ? 'other_typing' : 'reply_queued',
+                  pendingStageLabel: branchReplyJob.status_message,
+                  errorMessage: null,
+                }
+              : current,
+          )
+          scheduleRetry()
+          return
+        }
+
+        if (branchReplyJob.status === 'completed') {
+          const branchSession = await readBranchSession(branchSessionId)
+          if (cancelled) {
+            return
+          }
+
+          setRewriteDraft((current) =>
+            current &&
+            current.status === 'branch' &&
+            current.branchSession?.id === branchSessionId &&
+            current.branchReplyJobId === branchReplyJob.id
+              ? {
+                  ...current,
+                  branchSession,
+                  branchReplyJobId: null,
+                  branchStatus: 'delivering_reply',
+                  pendingStageLabel: null,
+                  errorMessage: null,
+                }
+              : current,
+          )
+          return
+        }
+
+        if (branchReplyJob.status === 'failed') {
+          setRewriteDraft((current) =>
+            current &&
+            current.status === 'branch' &&
+            current.branchSession?.id === branchSessionId &&
+            current.branchReplyJobId === branchReplyJob.id
+              ? {
+                  ...current,
+                  branchReplyJobId: null,
+                  branchStatus: 'error',
+                  errorMessage: branchReplyJob.error_message ?? '回复失败',
+                  pendingStageLabel: null,
+                }
+              : current,
+          )
+          return
+        }
+
+        if (branchReplyJob.status === 'superseded') {
+          const branchSession = await readBranchSession(branchSessionId)
+          if (cancelled) {
+            return
+          }
+
+          setRewriteDraft((current) =>
+            current &&
+            current.status === 'branch' &&
+            current.branchSession?.id === branchSessionId &&
+            current.branchReplyJobId === branchReplyJob.id
+              ? {
+                  ...current,
+                  branchSession,
+                  branchReplyJobId: null,
+                  branchStatus: 'collecting_user_window',
+                  pendingStageLabel: null,
+                  errorMessage: null,
+                }
+              : current,
+          )
+          return
+        }
+
+        scheduleRetry()
+      } catch {
+        if (!cancelled) {
+          scheduleRetry()
+        }
+      }
+    }
+
+    void pollBranchReplyJob()
+
+    return () => {
+      cancelled = true
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [
+    rewriteDraft?.branchReplyJobId,
+    rewriteDraft?.branchSession?.id,
+    rewriteDraft?.branchStatus,
+    rewriteDraft?.conversationId,
+    rewriteDraft?.status,
+    selectedConversationId,
+    state.phase,
+  ])
+
+  useEffect(() => {
+    if (
+      !rewriteDraft ||
+      rewriteDraft.status !== 'branch' ||
+      rewriteDraft.branchStatus !== 'delivering_reply' ||
+      !rewriteDraft.branchSession
+    ) {
+      return
+    }
+
+    const branchSession = rewriteDraft.branchSession
+    const latestOtherMessage = [...branchSession.messages]
+      .reverse()
+      .find((message) => message.speaker_role === 'other' && message.delivery_state === 'committed')
+
+    if (!latestOtherMessage) {
+      setRewriteDraft((current) =>
+        current?.status === 'branch' && current.branchSession?.id === branchSession.id
+          ? {
+              ...current,
+              branchStatus: 'idle',
+            }
+          : current,
+      )
+      return
+    }
+
+    const parts = splitChatLikeMessageText(latestOtherMessage.content_text)
+    if (parts.length === 0) {
+      setRewriteDraft((current) =>
+        current?.status === 'branch' && current.branchSession?.id === branchSession.id
+          ? {
+              ...current,
+              branchStatus: 'idle',
+            }
+          : current,
+      )
+      return
+    }
+
+    clearBranchDeliveryTimers()
+    setBranchDeliveredPartCountsByMessageId((current) => ({
+      ...current,
+      [latestOtherMessage.id]: 0,
+    }))
+
+    let elapsedMs = 0
+    parts.forEach((part, index) => {
+      elapsedMs += resolveBranchDeliveryDelayMs(part)
+      const timerId = window.setTimeout(() => {
+        setBranchDeliveredPartCountsByMessageId((current) => ({
+          ...current,
+          [latestOtherMessage.id]: index + 1,
+        }))
+
+        if (index === parts.length - 1) {
+          setRewriteDraft((current) =>
+            current?.status === 'branch' &&
+            current.branchSession?.id === branchSession.id &&
+            current.branchSession.input_revision === branchSession.input_revision &&
+            current.branchStatus === 'delivering_reply'
+              ? {
+                  ...current,
+                  branchStatus: 'idle',
+                }
+              : current,
+          )
+        }
+      }, elapsedMs)
+      branchDeliveryTimerRefs.current.push(timerId)
+    })
+
+    return undefined
+  }, [rewriteDraft?.branchSession?.id, rewriteDraft?.branchSession?.input_revision, rewriteDraft?.branchStatus])
+
   useEffect(() => {
     if (!inspectorOpen || !analysisCompleted || state.phase !== 'ready' || selectedConversationId === null) {
       return
@@ -1538,6 +1957,9 @@ export default function App() {
       targetMessageTimestamp: targetMessage.timestamp,
       replacementContent: targetMessage.content_text,
       simulationJobId: null,
+      branchSession: null,
+      branchReplyJobId: null,
+      branchStatus: 'idle',
       status: 'editing',
       simulation: null,
       errorMessage: null,
@@ -1558,11 +1980,19 @@ export default function App() {
   }
 
   const handleCancelRewrite = () => {
+    clearBranchReplyIdleTimer()
+    clearBranchDeliveryTimers()
+    setBranchDeliveredPartCountsByMessageId({})
+    setOptimisticBranchMessagesBySessionId({})
     setRewriteDraft(null)
     activeRewriteRequestRef.current = null
   }
 
   const handleResetRewriteView = () => {
+    clearBranchReplyIdleTimer()
+    clearBranchDeliveryTimers()
+    setBranchDeliveredPartCountsByMessageId({})
+    setOptimisticBranchMessagesBySessionId({})
     setRewriteDraft(null)
     activeRewriteRequestRef.current = null
   }
@@ -1574,6 +2004,9 @@ export default function App() {
             ...current,
             status: 'editing',
             simulationJobId: null,
+            branchSession: null,
+            branchReplyJobId: null,
+            branchStatus: 'idle',
             simulation: null,
             errorMessage: null,
             pendingStageLabel: null,
@@ -1594,6 +2027,10 @@ export default function App() {
     const trimmedReplacementContent = rewriteDraft.replacementContent.trim()
 
     if (!trimmedReplacementContent || trimmedReplacementContent === rewriteDraft.originalMessage.trim()) {
+      clearBranchReplyIdleTimer()
+      clearBranchDeliveryTimers()
+      setBranchDeliveredPartCountsByMessageId({})
+      setOptimisticBranchMessagesBySessionId({})
       setRewriteDraft(null)
       activeRewriteRequestRef.current = null
       return
@@ -1614,24 +2051,22 @@ export default function App() {
             ...current,
             replacementContent: trimmedReplacementContent,
             simulationJobId: null,
+            branchSession: null,
+            branchReplyJobId: null,
+            branchStatus: 'idle',
             status: 'pending',
             simulation: null,
             errorMessage: null,
-            pendingStageLabel: resolveSimulationPendingStageLabel(
-              settingsFormState.simulationMode,
-              settingsFormState.simulationTurnCount,
-            ),
+            pendingStageLabel: '正在创建实时分支',
           }
         : current,
     )
 
     try {
-      const simulationJob = await createSimulation({
+      const branchSession = await createBranchSession({
         conversation_id: selectedConversationId,
         target_message_id: rewriteDraft.targetMessageId,
         replacement_content: trimmedReplacementContent,
-        mode: settingsFormState.simulationMode,
-        turn_count: settingsFormState.simulationTurnCount,
       })
 
       if (
@@ -1655,11 +2090,14 @@ export default function App() {
           ? {
               ...current,
               replacementContent: trimmedReplacementContent,
-              simulationJobId: simulationJob.id,
-              status: 'pending',
+              simulationJobId: null,
+              branchSession,
+              branchReplyJobId: null,
+              branchStatus: 'collecting_user_window',
+              status: 'branch',
               simulation: null,
               errorMessage: null,
-              pendingStageLabel: simulationJob.status_message ?? current.pendingStageLabel,
+              pendingStageLabel: null,
             }
           : current,
       )
@@ -1687,9 +2125,12 @@ export default function App() {
               ...current,
               replacementContent: trimmedReplacementContent,
               simulationJobId: null,
+              branchSession: null,
+              branchReplyJobId: null,
+              branchStatus: 'idle',
               status: 'editing',
               simulation: null,
-              errorMessage: error instanceof Error ? error.message : '推演失败',
+              errorMessage: error instanceof Error ? error.message : '实时分支创建失败',
             }
           : current,
       )
@@ -1774,8 +2215,127 @@ export default function App() {
     }
   }
 
+  const handleRetryBranchReply = () => {
+    const currentDraft = rewriteDraftRef.current
+    if (
+      !currentDraft ||
+      currentDraft.status !== 'branch' ||
+      !currentDraft.branchSession ||
+      currentDraft.branchStatus !== 'error'
+    ) {
+      return
+    }
+
+    setRewriteDraft((current) =>
+      current?.status === 'branch' && current.branchSession?.id === currentDraft.branchSession?.id
+        ? {
+            ...current,
+            branchReplyJobId: null,
+            branchStatus: 'collecting_user_window',
+            errorMessage: null,
+            pendingStageLabel: null,
+          }
+        : current,
+    )
+  }
+
+  const sendBranchMessage = async (branchSessionId: number, text: string) => {
+    const contentText = text.trim()
+    if (!contentText) {
+      return
+    }
+
+    const currentDraft = rewriteDraftRef.current
+    const currentBranchSession =
+      currentDraft?.status === 'branch' && currentDraft.branchSession?.id === branchSessionId
+        ? currentDraft.branchSession
+        : null
+    const optimisticMessageId = -Date.now()
+    const nextSequenceNo =
+      Math.max(
+        0,
+        ...((currentBranchSession?.messages ?? []).map((message) => message.sequence_no)),
+        ...((optimisticBranchMessagesBySessionId[branchSessionId] ?? []).map((message) => message.sequence_no)),
+      ) + 1
+    const optimisticMessage: BranchSessionRead['messages'][number] = {
+      id: optimisticMessageId,
+      branch_session_id: branchSessionId,
+      sequence_no: nextSequenceNo,
+      speaker_role: 'self',
+      content_text: contentText,
+      source: 'user',
+      delivery_state: 'committed',
+      metadata_json: { optimistic: true },
+    }
+
+    setOptimisticBranchMessagesBySessionId((current) => ({
+      ...current,
+      [branchSessionId]: [...(current[branchSessionId] ?? []), optimisticMessage],
+    }))
+
+    setRewriteDraft((current) =>
+      current?.status === 'branch' && current.branchSession?.id === branchSessionId
+        ? {
+            ...current,
+            branchStatus: current.branchStatus === 'other_typing' || current.branchStatus === 'reply_queued'
+              ? 'reply_superseded'
+              : current.branchStatus,
+            errorMessage: null,
+          }
+        : current,
+    )
+
+    try {
+      await appendBranchMessage(branchSessionId, { content_text: contentText })
+      const branchSession = await readBranchSession(branchSessionId)
+      setOptimisticBranchMessagesBySessionId((current) => {
+        const next = { ...current }
+        delete next[branchSessionId]
+        return next
+      })
+      setRewriteDraft((current) =>
+        current?.status === 'branch' && current.branchSession?.id === branchSessionId
+          ? {
+              ...current,
+              branchSession,
+              branchReplyJobId: null,
+              branchStatus: 'collecting_user_window',
+              errorMessage: null,
+              pendingStageLabel: null,
+            }
+          : current,
+      )
+    } catch (error) {
+      setOptimisticBranchMessagesBySessionId((current) => ({
+        ...current,
+        [branchSessionId]: (current[branchSessionId] ?? []).filter((message) => message.id !== optimisticMessageId),
+      }))
+      setRewriteDraft((current) =>
+        current?.status === 'branch' && current.branchSession?.id === branchSessionId
+          ? {
+              ...current,
+              branchStatus: 'error',
+              errorMessage: error instanceof Error ? error.message : '消息发送失败',
+              pendingStageLabel: null,
+            }
+          : current,
+      )
+    }
+  }
+
   const handleSendFrontMessage = (text: string) => {
     if (activeTab !== 'chat' || selectedConversationId === null) {
+      return
+    }
+
+    const currentDraft = rewriteDraftRef.current
+    if (
+      currentDraft &&
+      currentDraft.status === 'branch' &&
+      currentDraft.conversationId === selectedConversationId &&
+      currentDraft.branchSession
+    ) {
+      void sendBranchMessage(currentDraft.branchSession.id, text)
       return
     }
 
@@ -1897,6 +2457,7 @@ export default function App() {
                     stageLabel: rewriteDraft.status === 'pending' ? rewriteDraft.pendingStageLabel : null,
                     errorMessage: rewriteDraft.errorMessage,
                     generatedMessages: rewriteGeneratedMessages,
+                    branchStatus: rewriteDraft.status === 'branch' ? rewriteDraft.branchStatus : undefined,
                   }
                 : null
             }
@@ -1908,6 +2469,7 @@ export default function App() {
             onCancelRewrite={handleCancelRewrite}
             onResetRewriteView={handleResetRewriteView}
             onContinueRewrite={handleContinueRewrite}
+            onRetryBranchReply={handleRetryBranchReply}
             onSendMessage={handleSendFrontMessage}
             hasOlderMessages={activeTab === 'chat' && selectedMessageModels.mode === 'conversation' && !!selectedConversationPaginationState?.hasOlder}
             olderMessagesPending={activeTab === 'chat' && !!selectedConversationPaginationState?.loadingOlder}

@@ -20,8 +20,15 @@ import {
 } from '../src/lib/services/conversationService'
 import { listConversationJobs, readJob } from '../src/lib/services/jobService'
 import { createSimulation, listConversationSimulationJobs, readSimulation } from '../src/lib/services/simulationService'
+import {
+  appendBranchMessage,
+  createBranchReplyJob,
+  createBranchSession,
+  listBranchReplyJobs,
+  readBranchSession,
+} from '../src/lib/services/branchSessionService'
 import { readSettings, writeSetting } from '../src/lib/services/settingsService'
-import type { ConversationRead, JobRead, MessageRead, SettingRead } from '../src/types/api'
+import type { BranchReplyJobRead, BranchSessionRead, ConversationRead, JobRead, MessageRead, SettingRead } from '../src/types/api'
 import { AVATAR_PRESETS } from '../src/lib/avatarPresets'
 
 vi.mock('../src/lib/services/conversationService', () => ({
@@ -53,6 +60,14 @@ vi.mock('../src/lib/services/simulationService', () => ({
   readSimulation: vi.fn(),
 }))
 
+vi.mock('../src/lib/services/branchSessionService', () => ({
+  createBranchSession: vi.fn(),
+  readBranchSession: vi.fn(),
+  appendBranchMessage: vi.fn(),
+  createBranchReplyJob: vi.fn(),
+  listBranchReplyJobs: vi.fn(),
+}))
+
 const mockedReadSettings = vi.mocked(readSettings)
 const mockedWriteSetting = vi.mocked(writeSetting)
 const mockedListConversations = vi.mocked(listConversations)
@@ -70,6 +85,11 @@ const mockedReadJob = vi.mocked(readJob)
 const mockedCreateSimulation = vi.mocked(createSimulation)
 const mockedListConversationSimulationJobs = vi.mocked(listConversationSimulationJobs)
 const mockedReadSimulation = vi.mocked(readSimulation)
+const mockedCreateBranchSession = vi.mocked(createBranchSession)
+const mockedReadBranchSession = vi.mocked(readBranchSession)
+const mockedAppendBranchMessage = vi.mocked(appendBranchMessage)
+const mockedCreateBranchReplyJob = vi.mocked(createBranchReplyJob)
+const mockedListBranchReplyJobs = vi.mocked(listBranchReplyJobs)
 
 const mountedRoots: Array<{ root: ReturnType<typeof createRoot>; container: HTMLDivElement }> = []
 let activeDom: JSDOM | null = null
@@ -92,6 +112,46 @@ function createDeferred<T>() {
   })
 
   return { promise, resolve, reject }
+}
+
+function makeBranchSession(overrides: Partial<BranchSessionRead> = {}): BranchSessionRead {
+  return {
+    id: 501,
+    conversation_id: 7,
+    target_message_id: 12,
+    replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
+    input_revision: 1,
+    status: 'active',
+    current_branch_state: {},
+    messages: [
+      {
+        id: 701,
+        branch_session_id: 501,
+        sequence_no: 1,
+        speaker_role: 'self',
+        content_text: '我想先冷静一下，晚点继续聊可以吗？',
+        source: 'rewrite',
+        delivery_state: 'committed',
+        metadata_json: {},
+      },
+    ],
+    reply_jobs: [],
+    ...overrides,
+  }
+}
+
+function makeBranchReplyJob(overrides: Partial<BranchReplyJobRead> = {}): BranchReplyJobRead {
+  return {
+    id: 601,
+    branch_session_id: 501,
+    status: 'queued',
+    current_stage: 'queued',
+    progress_percent: 0,
+    input_revision: 1,
+    error_message: null,
+    status_message: '等待 worker 处理',
+    ...overrides,
+  }
 }
 
 function installReadyDesktopBridge(options?: {
@@ -256,6 +316,11 @@ beforeEach(() => {
     impact_summary: '关系稳定，没有明显升级冲突。',
     simulated_turns: [],
   })
+  mockedCreateBranchSession.mockRejectedValue(new Error('not used in visual shell tests'))
+  mockedReadBranchSession.mockRejectedValue(new Error('not used in visual shell tests'))
+  mockedAppendBranchMessage.mockRejectedValue(new Error('not used in visual shell tests'))
+  mockedCreateBranchReplyJob.mockRejectedValue(new Error('not used in visual shell tests'))
+  mockedListBranchReplyJobs.mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -699,6 +764,8 @@ describe('App frontUI integration', () => {
   })
 
   it('把分析入口和内联改写推演流程挂回 frontUI 主壳', async () => {
+    vi.useFakeTimers()
+
     const settings: SettingRead[] = [
       { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
       { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
@@ -767,67 +834,35 @@ describe('App frontUI integration', () => {
     mockedListMessages.mockResolvedValue([...messages].reverse())
     mockedListConversationJobs.mockResolvedValue([completedJob])
     mockedReadJob.mockResolvedValue(completedJob)
-    const queuedSimulationJob = {
-      id: 88,
-      conversation_id: 7,
-      target_message_id: 12,
-      mode: 'short_thread',
-      turn_count: 3,
-      replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
-      status: 'queued',
-      current_stage: 'queued',
-      progress_percent: 0,
-      current_stage_percent: 0,
-      current_stage_total_units: 0,
-      current_stage_completed_units: 0,
-      overall_total_units: 0,
-      overall_completed_units: 0,
-      status_message: '等待 worker 处理',
-      result_simulation_id: null,
-      error_message: null,
-    } as Awaited<ReturnType<typeof createSimulation>>
-    const completedSimulationJob = {
-      ...queuedSimulationJob,
+    const initialBranchSession = makeBranchSession()
+    const queuedBranchReplyJob = makeBranchReplyJob()
+    const completedBranchReplyJob = makeBranchReplyJob({
       status: 'completed',
       current_stage: 'completed',
       progress_percent: 100,
-      current_stage_percent: 100,
-      current_stage_total_units: 1,
-      current_stage_completed_units: 1,
-      overall_total_units: 1,
-      overall_completed_units: 1,
-      status_message: '推演完成',
-      result_simulation_id: 188,
-    }
-    const finalSimulation = {
-      id: 188,
-      mode: 'short_thread',
-      replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
-      first_reply_text: '好，那你先休息。',
-      impact_summary: '冲突被降温。',
-      simulated_turns: [
+      status_message: '回复完成',
+    })
+    const completedBranchSession = makeBranchSession({
+      messages: [
+        ...initialBranchSession.messages,
         {
-          turn_index: 1,
+          id: 702,
+          branch_session_id: 501,
+          sequence_no: 2,
           speaker_role: 'other',
-          message_text: '好，那你先休息。',
-          strategy_used: 'de-escalate',
-          state_after_turn: {},
-          generation_notes: null,
-        },
-        {
-          turn_index: 2,
-          speaker_role: 'self',
-          message_text: '谢谢理解，我们晚点再聊。',
-          strategy_used: 'repair',
-          state_after_turn: {},
-          generation_notes: null,
+          content_text: '好，那你先休息。谢谢理解。',
+          source: 'llm',
+          delivery_state: 'committed',
+          metadata_json: { reply_job_id: 601 },
         },
       ],
-    }
-    const deferredSimulationJobs = createDeferred<Awaited<ReturnType<typeof listConversationSimulationJobs>>>()
-    mockedCreateSimulation.mockResolvedValueOnce(queuedSimulationJob)
-    mockedListConversationSimulationJobs.mockReturnValueOnce(deferredSimulationJobs.promise)
-    mockedReadSimulation.mockResolvedValueOnce(finalSimulation)
+      reply_jobs: [completedBranchReplyJob],
+    })
+    const deferredBranchJobs = createDeferred<Awaited<ReturnType<typeof listBranchReplyJobs>>>()
+    mockedCreateBranchSession.mockResolvedValueOnce(initialBranchSession)
+    mockedCreateBranchReplyJob.mockResolvedValueOnce(queuedBranchReplyJob)
+    mockedListBranchReplyJobs.mockReturnValueOnce(deferredBranchJobs.promise)
+    mockedReadBranchSession.mockResolvedValueOnce(completedBranchSession)
 
     const { root, container } = setupDom()
 
@@ -898,41 +933,44 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork()
 
-    expect(mockedCreateSimulation).toHaveBeenCalledTimes(1)
-    expect(mockedCreateSimulation).toHaveBeenCalledWith({
+    expect(mockedCreateBranchSession).toHaveBeenCalledTimes(1)
+    expect(mockedCreateBranchSession).toHaveBeenCalledWith({
       conversation_id: 7,
       target_message_id: 12,
       replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
-      mode: 'short_thread',
-      turn_count: 3,
     })
-    const pendingOverlay = container.querySelector('[data-testid="rewrite-pending-overlay"]')
-    expect(pendingOverlay).not.toBeNull()
-    expect(pendingOverlay?.className).toContain('absolute')
-    expect(container.textContent).toContain('正在推演')
-    expect(container.textContent).toContain('等待 worker 处理')
+    expect(mockedCreateSimulation).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('实时分支')
+    expect(container.textContent).toContain('等待补充消息')
     expect(container.textContent).toContain('我想先冷静一下，晚点继续聊可以吗？')
 
-    const ghostedMessage = container.querySelector('[data-chat-message-id="message-13"]')
-    expect(ghostedMessage?.className).toContain('opacity-28')
+    expect(container.querySelector('[data-chat-message-id="message-13"]')).toBeNull()
 
     await act(async () => {
-      deferredSimulationJobs.resolve([completedSimulationJob])
+      vi.advanceTimersByTime(1800)
     })
     await flushAsyncWork(8)
 
-    expect(container.textContent).toContain('正在查看推演结果')
-    expect(container.textContent).toContain('原始历史已保留，可随时切回')
-    expect(container.textContent).toContain('我想先冷静一下，晚点继续聊可以吗？')
+    expect(mockedCreateBranchReplyJob).toHaveBeenCalledWith(501)
+    expect(container.textContent).toContain('等待对方回复')
+
+    await act(async () => {
+      deferredBranchJobs.resolve([completedBranchReplyJob])
+    })
+    await flushAsyncWork(8)
+
+    expect(container.textContent).toContain('对方正在发送')
+    expect(container.textContent).not.toContain('好，那你先休息')
+
+    await advanceTimersAndFlush(1000, 4)
     expect(container.textContent).toContain('好')
+
+    await advanceTimersAndFlush(2000, 4)
     expect(container.textContent).toContain('那你先休息')
+
+    await advanceTimersAndFlush(2000, 4)
     expect(container.textContent).toContain('谢谢理解')
-    expect(container.textContent).toContain('我们晚点再聊')
-    expect(container.textContent).not.toContain('好，那晚点见。')
-    expect(container.querySelector('[data-chat-message-id="message-13"]')).toBeNull()
-    expect(container.querySelectorAll('[data-chat-message-id^="simulation-188-"]').length).toBe(4)
-    expect(container.querySelector('.rewrite-result-enter')).not.toBeNull()
-    expect(container.querySelector('[data-testid="rewrite-completion-flash"]')).not.toBeNull()
+    expect(container.querySelectorAll('[data-chat-message-id^="branch-501-message-702"]').length).toBe(3)
 
     const resetButton = Array.from(container.querySelectorAll('button')).find(
       (element) => element.textContent?.includes('返回原始历史') ?? false,
@@ -953,7 +991,9 @@ describe('App frontUI integration', () => {
     expect(container.textContent).toContain('发送(S)')
   })
 
-  it('推演完成后可直接进入继续改写状态', async () => {
+  it('实时分支连续 self 消息只在 idle window 后触发一次回复任务', async () => {
+    vi.useFakeTimers()
+
     const settings: SettingRead[] = [
       { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
       { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
@@ -1012,50 +1052,52 @@ describe('App frontUI integration', () => {
     mockedListMessages.mockResolvedValue([...messages].reverse())
     mockedListConversationJobs.mockResolvedValue([completedJob])
     mockedReadJob.mockResolvedValue(completedJob)
-    const queuedSimulationJob = {
-      id: 90,
-      conversation_id: 7,
-      target_message_id: 12,
-      mode: 'single_reply',
-      turn_count: 1,
-      replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
-      status: 'queued',
-      current_stage: 'queued',
-      progress_percent: 0,
-      current_stage_percent: 0,
-      current_stage_total_units: 0,
-      current_stage_completed_units: 0,
-      overall_total_units: 0,
-      overall_completed_units: 0,
-      status_message: '等待 worker 处理',
-      result_simulation_id: null,
-      error_message: null,
-    } as Awaited<ReturnType<typeof createSimulation>>
-    const completedSimulationJob = {
-      ...queuedSimulationJob,
-      status: 'completed',
-      current_stage: 'completed',
-      progress_percent: 100,
-      current_stage_percent: 100,
-      current_stage_total_units: 1,
-      current_stage_completed_units: 1,
-      overall_total_units: 1,
-      overall_completed_units: 1,
-      status_message: '推演完成',
-      result_simulation_id: 190,
-    }
-    const finalSimulation = {
-      id: 190,
-      mode: 'single_reply',
-      replacement_content: '我想先冷静一下，晚点继续聊可以吗？',
-      first_reply_text: '好，那你先休息。',
-      impact_summary: '冲突被降温。',
-      simulated_turns: [],
-    }
-    const deferredSimulationJobs = createDeferred<Awaited<ReturnType<typeof listConversationSimulationJobs>>>()
-    mockedCreateSimulation.mockResolvedValueOnce(queuedSimulationJob)
-    mockedListConversationSimulationJobs.mockReturnValueOnce(deferredSimulationJobs.promise)
-    mockedReadSimulation.mockResolvedValueOnce(finalSimulation)
+    const initialBranchSession = makeBranchSession()
+    const branchAfterFirstSelf = makeBranchSession({
+      input_revision: 2,
+      messages: [
+        ...initialBranchSession.messages,
+        {
+          id: 703,
+          branch_session_id: 501,
+          sequence_no: 2,
+          speaker_role: 'self',
+          content_text: '我再补一句。',
+          source: 'user',
+          delivery_state: 'committed',
+          metadata_json: { input_revision: 2 },
+        },
+      ],
+    })
+    const branchAfterSecondSelf = makeBranchSession({
+      input_revision: 3,
+      messages: [
+        ...branchAfterFirstSelf.messages,
+        {
+          id: 704,
+          branch_session_id: 501,
+          sequence_no: 3,
+          speaker_role: 'self',
+          content_text: '这句也算一起说。',
+          source: 'user',
+          delivery_state: 'committed',
+          metadata_json: { input_revision: 3 },
+        },
+      ],
+    })
+    mockedCreateBranchSession.mockResolvedValueOnce(initialBranchSession)
+    mockedAppendBranchMessage.mockResolvedValue({
+      id: 703,
+      branch_session_id: 501,
+      sequence_no: 2,
+      speaker_role: 'self',
+      content_text: '我再补一句。',
+      source: 'user',
+      delivery_state: 'committed',
+      metadata_json: { input_revision: 2 },
+    })
+    mockedReadBranchSession.mockResolvedValueOnce(branchAfterFirstSelf).mockResolvedValueOnce(branchAfterSecondSelf)
+    mockedCreateBranchReplyJob.mockResolvedValueOnce(makeBranchReplyJob({ input_revision: 3 }))
 
     const { root, container } = setupDom()
 
@@ -1102,31 +1144,79 @@ describe('App frontUI integration', () => {
     })
     await flushAsyncWork(8)
 
-    expect(container.textContent).toContain('等待 worker 处理')
+    expect(container.textContent).toContain('实时分支')
+
+    const composer = container.querySelectorAll('textarea')[0] as HTMLTextAreaElement | undefined
+    expect(composer).not.toBeUndefined()
 
     await act(async () => {
-      deferredSimulationJobs.resolve([completedSimulationJob])
+      if (composer) {
+        composer.value = '我再补一句。'
+        getReactProps<{
+          onChange?: (event: { target: { value: string } }) => void
+        }>(composer).onChange?.({
+          target: { value: '我再补一句。' },
+        })
+      }
+    })
+    await flushAsyncWork(4)
+
+    const composerAfterFirstChange = container.querySelector('textarea') as HTMLTextAreaElement | null
+    await act(async () => {
+      if (composerAfterFirstChange) {
+        getReactProps<{
+          onKeyDown?: (event: { key: string; shiftKey: boolean; preventDefault: () => void }) => void
+        }>(composerAfterFirstChange).onKeyDown?.({
+          key: 'Enter',
+          shiftKey: false,
+          preventDefault: () => undefined,
+        })
+      }
     })
     await flushAsyncWork(8)
 
-    const continueButton = Array.from(container.querySelectorAll('button')).find(
-      (element) => element.textContent?.includes('继续改写') ?? false,
-    )
-    expect(continueButton).not.toBeUndefined()
+    const nextComposer = container.querySelector('textarea') as HTMLTextAreaElement | null
+    expect(nextComposer).not.toBeNull()
 
     await act(async () => {
-      if (continueButton) {
-        getReactProps<{ onClick?: () => void }>(continueButton).onClick?.()
+      if (nextComposer) {
+        nextComposer.value = '这句也算一起说。'
+        getReactProps<{
+          onChange?: (event: { target: { value: string } }) => void
+        }>(nextComposer).onChange?.({
+          target: { value: '这句也算一起说。' },
+        })
       }
     })
-    await flushAsyncWork(6)
+    await flushAsyncWork(4)
 
-    const resumedEditor = container.querySelector('textarea') as HTMLTextAreaElement | null
-    expect(resumedEditor).not.toBeNull()
-    expect(resumedEditor?.value).toBe('我想先冷静一下，晚点继续聊可以吗？')
-    expect(container.textContent).toContain('回车保存并推演')
-    expect(container.textContent).toContain('我想先冷静一下，晚点继续聊可以吗？')
-    expect(container.textContent).not.toContain('正在查看推演结果')
+    const composerAfterSecondChange = container.querySelector('textarea') as HTMLTextAreaElement | null
+    await act(async () => {
+      if (composerAfterSecondChange) {
+        getReactProps<{
+          onKeyDown?: (event: { key: string; shiftKey: boolean; preventDefault: () => void }) => void
+        }>(composerAfterSecondChange).onKeyDown?.({
+          key: 'Enter',
+          shiftKey: false,
+          preventDefault: () => undefined,
+        })
+      }
+    })
+    await flushAsyncWork(8)
+
+    expect(mockedAppendBranchMessage).toHaveBeenCalledTimes(2)
+    expect(container.textContent).toContain('我再补一句。')
+    expect(container.textContent).toContain('这句也算一起说。')
+
+    await act(async () => {
+      vi.advanceTimersByTime(1799)
+    })
+    await flushAsyncWork(4)
+    expect(mockedCreateBranchReplyJob).not.toHaveBeenCalled()
+
+    await advanceTimersAndFlush(1, 6)
+    expect(mockedCreateBranchReplyJob).toHaveBeenCalledTimes(1)
+    expect(mockedCreateBranchReplyJob).toHaveBeenCalledWith(501)
   })
 
   it('保存设置时会一并持久化默认推演模式和轮数', async () => {

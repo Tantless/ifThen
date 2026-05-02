@@ -36,17 +36,17 @@
 
 ## 实施 TODO
 
-- [ ] 增加 branch session service。
-- [ ] 增加 branch session 状态管理。
-- [ ] 在改写完成后提供进入实时分支会话的入口。
-- [ ] 实现用户消息本地乐观展示和后端持久化。
-- [ ] 实现 idle window debounce，MVP 默认 1.5 到 2 秒；如果后续人工验收认为过短，再改为可配置。
-- [ ] 实现 reply job polling。
-- [ ] 实现 other typing 状态。
-- [ ] 实现回复拆泡和延迟展示。
-- [ ] 实现运行中禁止并行触发 LLM，并在新 self 消息到来时标记旧回复过期。
-- [ ] 用 session/input revision 防止过期回复进入 UI。
-- [ ] 增加失败重试与错误展示。
+- [x] 增加 branch session service。
+- [x] 增加 branch session 状态管理。
+- [x] 在改写完成后提供进入实时分支会话的入口。
+- [x] 实现用户消息本地乐观展示和后端持久化。
+- [x] 实现 idle window debounce，MVP 默认 1.8 秒；如果后续人工验收认为过短，再改为可配置。
+- [x] 实现 reply job polling。
+- [x] 实现 other typing 状态。
+- [x] 实现回复拆泡和延迟展示。
+- [x] 实现运行中禁止并行触发 LLM，并在新 self 消息到来时标记旧回复过期。
+- [x] 用 session/input revision 防止过期回复进入 UI。
+- [x] 增加失败重试与错误展示。
 
 ## 可能涉及文件
 
@@ -61,13 +61,20 @@
 
 ## 验收标准
 
-- [ ] 用户改写后可以进入实时分支会话。
-- [ ] 用户连续发送多条消息时，只在 idle window 后触发一次 LLM。
-- [ ] LLM 回复期间不会并行触发第二个有效回复任务。
-- [ ] LLM 未返回前用户追加消息时，最终只展示基于合并后 self 消息生成的 other 回复。
-- [ ] other 回复会按短句逐条出现。
-- [ ] typing 和失败状态可见。
-- [ ] 原有 short-thread 展示仍可用。
+- [x] 用户改写后可以进入实时分支会话。
+- [x] 用户连续发送多条消息时，只在 idle window 后触发一次 LLM。
+- [x] LLM 回复期间不会并行触发第二个有效回复任务。
+- [x] LLM 未返回前用户追加消息时，最终只展示基于合并后 self 消息生成的 other 回复。
+- [x] other 回复会按短句逐条出现。
+- [x] typing 和失败状态可见。
+- [x] 原有 short-thread adapter 展示仍可用。
+
+## 完成产物
+
+- `branchSessionService`、desktop bridge、Electron IPC/preload 和 backend client：完整接入 branch session API。
+- `App.tsx`：改写提交后创建 branch session，self 消息先本地乐观展示再由后端 session 替换，1.8 秒 idle window 后创建 reply job，轮询 job，读取 session，并处理 supersede、typing、失败和重试状态。
+- `frontUiAdapters.ts` / `ChatWindow.tsx`：将 branch message 转为实时分支气泡，跳过 rewrite seed，保留目标消息改写展示，并对 other 回复做短句拆泡和延迟展示。
+- `desktop/tests/visualShell.test.tsx`：覆盖改写进入实时分支、idle window 合并 self 消息、reply job 轮询和 other 拆泡延迟。
 
 ## 风险
 

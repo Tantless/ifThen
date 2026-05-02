@@ -4,8 +4,10 @@ import { FRONTUI_PLACEHOLDER_AVATAR, FRONTUI_SELF_AVATAR } from '../src/frontui/
 import {
   buildFrontChatItem,
   buildFrontChatMessage,
+  buildFrontChatMessagesFromBranchSession,
   buildFrontChatMessagesFromSimulation,
   buildFrontChatWindowState,
+  resolveBranchDeliveryDelayMs,
 } from '../src/lib/frontUiAdapters'
 
 describe('buildFrontChatItem', () => {
@@ -560,5 +562,71 @@ describe('buildFrontChatMessagesFromSimulation', () => {
         bubbleTone: 'simulation-other',
       },
     ])
+  })
+})
+
+describe('buildFrontChatMessagesFromBranchSession', () => {
+  it('skips the initial rewrite seed and splits committed other replies by delivered part count', () => {
+    const messages = buildFrontChatMessagesFromBranchSession({
+      branchSession: {
+        id: 501,
+        conversation_id: 7,
+        target_message_id: 12,
+        replacement_content: '我想先冷静一下。',
+        input_revision: 2,
+        status: 'active',
+        current_branch_state: {},
+        messages: [
+          {
+            id: 701,
+            branch_session_id: 501,
+            sequence_no: 1,
+            speaker_role: 'self',
+            content_text: '我想先冷静一下。',
+            source: 'rewrite',
+            delivery_state: 'committed',
+            metadata_json: {},
+          },
+          {
+            id: 702,
+            branch_session_id: 501,
+            sequence_no: 2,
+            speaker_role: 'self',
+            content_text: '我再补一句。',
+            source: 'user',
+            delivery_state: 'committed',
+            metadata_json: {},
+          },
+          {
+            id: 703,
+            branch_session_id: 501,
+            sequence_no: 3,
+            speaker_role: 'other',
+            content_text: '好，那你先休息。晚点说。',
+            source: 'llm',
+            delivery_state: 'committed',
+            metadata_json: {},
+          },
+        ],
+        reply_jobs: [],
+      },
+      selfDisplayName: '我',
+      otherDisplayName: '小李',
+      timestampRaw: '2026-04-08T10:02:00',
+      deliveredPartCountsByMessageId: {
+        703: 2,
+      },
+      now: '2026-04-08T18:00:00',
+    })
+
+    expect(messages.map((message) => message.text)).toEqual(['我再补一句。', '好', '那你先休息'])
+    expect(messages.map((message) => message.bubbleTone)).toEqual(['branch-self', 'branch-other', 'branch-other'])
+    expect(messages.every((message) => message.id.startsWith('branch-501-'))).toBe(true)
+  })
+
+  it('uses short, medium, and long branch delivery delays', () => {
+    expect(resolveBranchDeliveryDelayMs('好')).toBe(1000)
+    expect(resolveBranchDeliveryDelayMs('那我们晚点再说')).toBe(2000)
+    expect(resolveBranchDeliveryDelayMs('这件事我需要更认真地想一想然后晚点再回复你')).toBe(3000)
   })
 })

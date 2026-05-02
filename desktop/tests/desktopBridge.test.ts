@@ -145,6 +145,11 @@ describe('desktop preload bridge', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce({ target: { id: 12 }, before: [], after: [] })
       .mockResolvedValueOnce({ conversation: { id: 7 }, job: { id: 9 } })
+      .mockResolvedValueOnce({ id: 501 })
+      .mockResolvedValueOnce({ id: 501, messages: [] })
+      .mockResolvedValueOnce({ id: 701 })
+      .mockResolvedValueOnce({ id: 601 })
+      .mockResolvedValueOnce([{ id: 601 }])
 
     await expect(desktopBridge.settings.read()).resolves.toEqual([])
     await expect(
@@ -171,6 +176,19 @@ describe('desktop preload bridge', () => {
         autoAnalyze: true,
       }),
     ).resolves.toEqual({ conversation: { id: 7 }, job: { id: 9 } })
+    await expect(
+      desktopBridge.branchSessions.create({
+        conversation_id: 7,
+        target_message_id: 12,
+        replacement_content: '改写',
+      }),
+    ).resolves.toEqual({ id: 501 })
+    await expect(desktopBridge.branchSessions.read(501)).resolves.toEqual({ id: 501, messages: [] })
+    await expect(desktopBridge.branchSessions.appendMessage(501, { content_text: '补一句' })).resolves.toEqual({ id: 701 })
+    await expect(desktopBridge.branchSessions.createReplyJob(501)).resolves.toEqual({ id: 601 })
+    await expect(desktopBridge.branchSessions.listReplyJobs({ branchSessionId: 501, limit: 10 })).resolves.toEqual([
+      { id: 601 },
+    ])
 
     expect(invoke).toHaveBeenNthCalledWith(1, 'desktop:settings-read')
     expect(invoke).toHaveBeenNthCalledWith(2, 'desktop:settings-write', {
@@ -186,6 +204,20 @@ describe('desktop preload bridge', () => {
     expect(invoke).toHaveBeenNthCalledWith(5, 'desktop:conversations-import', {
       selfDisplayName: '我',
       autoAnalyze: true,
+    })
+    expect(invoke).toHaveBeenNthCalledWith(6, 'desktop:branch-sessions-create', {
+      conversation_id: 7,
+      target_message_id: 12,
+      replacement_content: '改写',
+    })
+    expect(invoke).toHaveBeenNthCalledWith(7, 'desktop:branch-sessions-read', 501)
+    expect(invoke).toHaveBeenNthCalledWith(8, 'desktop:branch-sessions-append-message', 501, {
+      content_text: '补一句',
+    })
+    expect(invoke).toHaveBeenNthCalledWith(9, 'desktop:branch-sessions-create-reply-job', 501)
+    expect(invoke).toHaveBeenNthCalledWith(10, 'desktop:branch-sessions-list-reply-jobs', {
+      branchSessionId: 501,
+      limit: 10,
     })
   })
 })

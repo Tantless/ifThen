@@ -14,14 +14,24 @@ import type { FrontAnalysisProgress, FrontAnalysisStage, FrontChatMessage, Front
 const TOP_LOAD_TRIGGER_PX = 24
 const TOP_LOAD_REARM_PX = 72
 
+type BranchChatStatus =
+  | 'idle'
+  | 'collecting_user_window'
+  | 'reply_queued'
+  | 'other_typing'
+  | 'reply_superseded'
+  | 'delivering_reply'
+  | 'error'
+
 type RewriteState =
   | {
-      state: 'editing' | 'pending' | 'completed'
+      state: 'editing' | 'pending' | 'completed' | 'branch'
       targetMessageId: number
       draftText: string
       stageLabel?: string | null
       errorMessage?: string | null
       generatedMessages?: FrontChatMessage[]
+      branchStatus?: BranchChatStatus
     }
   | null
 
@@ -41,6 +51,7 @@ type FrontChatWindowProps = {
   onCancelRewrite?: () => void
   onResetRewriteView?: () => void
   onContinueRewrite?: () => void
+  onRetryBranchReply?: () => void
   hasOlderMessages?: boolean
   olderMessagesPending?: boolean
   onLoadOlderMessages?: () => Promise<void> | void
@@ -69,6 +80,7 @@ export function FrontChatWindow({
   onCancelRewrite,
   onResetRewriteView,
   onContinueRewrite,
+  onRetryBranchReply,
   hasOlderMessages = false,
   olderMessagesPending = false,
   onLoadOlderMessages,
@@ -158,7 +170,10 @@ export function FrontChatWindow({
     historyLoadHint === 'loading' ? '正在加载聊天记录...' : hasOlderMessages ? '已加载更早消息' : '已到最早消息'
   const hasActiveRewrite = rewriteState !== null
   const renderedMessages = useMemo(
-    () => (rewriteState?.state === 'completed' ? [...conversationMessages, ...generatedMessages] : conversationMessages),
+    () =>
+      rewriteState?.state === 'completed' || rewriteState?.state === 'branch'
+        ? [...conversationMessages, ...generatedMessages]
+        : conversationMessages,
     [conversationMessages, generatedMessages, rewriteState?.state],
   )
 
@@ -459,6 +474,41 @@ export function FrontChatWindow({
             </div>
           </div>
         ) : null}
+        {rewriteState?.state === 'branch' ? (
+          <div className="border-t border-[color:var(--if-divider)] bg-[#eef6fc] px-5 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-[#4b8fb8]" />
+                  <p className="text-[13px] font-medium text-[#24506a]">实时分支</p>
+                </div>
+                <p className="mt-1 text-[12px] text-[#557386]">
+                  {rewriteState.branchStatus === 'error' && rewriteState.errorMessage
+                    ? rewriteState.errorMessage
+                    : resolveBranchStatusLabel(rewriteState.branchStatus)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {rewriteState.branchStatus === 'error' && onRetryBranchReply ? (
+                  <button
+                    type="button"
+                    className="rounded-[8px] border border-[#bdd6e5] bg-white/92 px-3 py-1.5 text-[12px] text-[#24506a] transition-colors duration-150 hover:bg-white"
+                    onClick={onRetryBranchReply}
+                  >
+                    重试
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="rounded-[8px] border border-[#bdd6e5] bg-white/92 px-3 py-1.5 text-[12px] text-[#557386] transition-colors duration-150 hover:bg-white hover:text-[#24506a]"
+                  onClick={onResetRewriteView}
+                >
+                  返回原始历史
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="relative flex-1 min-h-0 overflow-hidden">
@@ -543,7 +593,10 @@ export function FrontChatWindow({
             const isRewriteTarget =
               rewriteState !== null &&
               rewriteState.targetMessageId === message.messageId &&
-              (rewriteState.state === 'editing' || rewriteState.state === 'pending' || rewriteState.state === 'completed')
+              (rewriteState.state === 'editing' ||
+                rewriteState.state === 'pending' ||
+                rewriteState.state === 'completed' ||
+                rewriteState.state === 'branch')
             const bubbleClass =
               bubbleTone === 'rewrite-target'
                 ? 'rewrite-target rounded-[10px] border border-[#c9dce8] bg-[linear-gradient(135deg,#f8fbff_0%,#eef6fc_52%,#fcfaf6_100%)] text-[var(--if-text-primary)] shadow-[0_12px_24px_rgba(73,61,49,0.08)]'
@@ -551,6 +604,10 @@ export function FrontChatWindow({
                   ? 'rounded-[10px] border border-[#c9deeb] bg-[#d9e9f2] text-[var(--if-text-primary)]'
                   : bubbleTone === 'simulation-other'
                     ? 'rounded-[10px] border border-[#ead1da] bg-[#f3e0e6] text-[var(--if-text-primary)]'
+                    : bubbleTone === 'branch-self'
+                      ? 'rounded-[10px] border border-[#bdd7e6] bg-[#dbeef8] text-[var(--if-text-primary)]'
+                      : bubbleTone === 'branch-other'
+                        ? 'rounded-[10px] border border-[#d7d2bd] bg-[#f2ecd7] text-[var(--if-text-primary)]'
                     : isSelf
                       ? 'rounded-[10px] border border-[#c8deb9] bg-[#d8ebc8] text-[var(--if-text-primary)]'
                       : 'rounded-[10px] border border-[color:var(--if-divider)] bg-white text-[var(--if-text-primary)]'
@@ -559,6 +616,10 @@ export function FrontChatWindow({
                   ? 'right-[-12px] border-l-[#d9e9f2]'
                   : bubbleTone === 'simulation-other'
                     ? 'left-[-12px] border-r-[#f3e0e6]'
+                    : bubbleTone === 'branch-self'
+                      ? 'right-[-12px] border-l-[#dbeef8]'
+                      : bubbleTone === 'branch-other'
+                        ? 'left-[-12px] border-r-[#f2ecd7]'
                     : isSelf
                       ? 'right-[-12px] border-l-[#d8ebc8]'
                       : 'left-[-12px] border-r-white'
@@ -732,6 +793,25 @@ export function FrontChatWindow({
       ) : null}
     </div>
   )
+}
+
+function resolveBranchStatusLabel(status: BranchChatStatus | undefined): string {
+  switch (status) {
+    case 'collecting_user_window':
+      return '等待补充消息'
+    case 'reply_queued':
+      return '等待对方回复'
+    case 'other_typing':
+      return '对方正在输入'
+    case 'reply_superseded':
+      return '正在合并新消息'
+    case 'delivering_reply':
+      return '对方正在发送'
+    case 'error':
+      return '回复失败'
+    default:
+      return '可以继续发送'
+  }
 }
 
 function HeaderProgressStatus({ progress, onOpenDetails }: { progress: FrontAnalysisProgress; onOpenDetails: () => void }) {

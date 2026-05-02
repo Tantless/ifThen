@@ -133,14 +133,14 @@ example:
 **用途：** 在真实性路线图完成前，为上下文压缩保留当前执行顺序。`realism-00` 规划的全部步骤完成后，删除此临时块。
 
 当前必须先做：
-- `realism-07`：建设实时聊天前端交互，支持运行中消息合并与旧回复丢弃。
-- 随后继续 `realism-02`，为实时分支补齐分层证据上下文和会话级 memory pack 增强。
+- `realism-02`：为实时分支补齐分层证据上下文和会话级 memory pack 增强。
+- 随后继续 `realism-03`，实现检索排序与上下文预算。
 
 主路线图阶段顺序：
 1. `realism-01-pre`：构筑 3 段可导入的合成拟真长消息测试集。（已完成）
 2. `realism-01`：建立拟真性基线与失败样例集。（已完成）
 3. `realism-06`：建设实时分支会话后端，LLM 只回复 other。（已完成）
-4. `realism-07`：建设实时聊天前端交互，支持运行中消息合并与旧回复丢弃。
+4. `realism-07`：建设实时聊天前端交互，支持运行中消息合并与旧回复丢弃。（已完成）
 5. `realism-02`：实现分层证据上下文和实时会话 memory pack。
 6. `realism-03`：实现检索排序与上下文预算。
 7. `realism-04`：增强人格与表达风格。
@@ -166,6 +166,13 @@ example:
 - [x] worker 处理 branch reply job 时只生成并写入 other 消息。
 - [x] 同一 branch session 的 active reply job 会被新输入或新 job supersede。
 - [x] LLM 返回后基于 `input_revision` 重新校验，过期结果不能写入分支。
+
+`realism-07` 完成条件：
+- [x] 改写提交后进入实时 branch session，而不是默认生成完整短链。
+- [x] 用户连续发送 self 消息时，1.8 秒 idle window 后只触发一次 reply job。
+- [x] reply job queued/running 期间显示等待或 typing 状态，失败时可重试。
+- [x] 用户在回复提交前追加 self 消息时，旧回复任务会过期并基于合并输入重新生成。
+- [x] other 回复按短句拆成多条气泡并延迟展示。
 
 ---
 

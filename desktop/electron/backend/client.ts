@@ -2,10 +2,16 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import type {
+  BranchMessageCreate,
+  BranchMessageRead,
+  BranchReplyJobRead,
+  BranchSessionCreate,
+  BranchSessionRead,
   ConversationRead,
   ImportConversationRequest,
   ImportResponse,
   JobRead,
+  ListBranchReplyJobsInput,
   ListConversationJobsInput,
   ListConversationSimulationJobsInput,
   ListMessagesInput,
@@ -163,6 +169,30 @@ export class DesktopBackendClient {
 
   async readSimulation(simulationId: number): Promise<SimulationRead> {
     return this.getJson<SimulationRead>(`/simulations/${simulationId}`)
+  }
+
+  async createBranchSession(payload: BranchSessionCreate): Promise<BranchSessionRead> {
+    return this.sendJson<BranchSessionRead>('/branch-sessions', 'POST', payload)
+  }
+
+  async readBranchSession(branchSessionId: number): Promise<BranchSessionRead> {
+    return this.getJson<BranchSessionRead>(`/branch-sessions/${branchSessionId}`)
+  }
+
+  async appendBranchMessage(branchSessionId: number, payload: BranchMessageCreate): Promise<BranchMessageRead> {
+    return this.sendJson<BranchMessageRead>(`/branch-sessions/${branchSessionId}/messages`, 'POST', payload)
+  }
+
+  async createBranchReplyJob(branchSessionId: number): Promise<BranchReplyJobRead> {
+    return this.sendJson<BranchReplyJobRead>(`/branch-sessions/${branchSessionId}/reply-jobs`, 'POST', {})
+  }
+
+  async listBranchReplyJobs(payload: ListBranchReplyJobsInput): Promise<BranchReplyJobRead[]> {
+    return this.getJson<BranchReplyJobRead[]>(
+      withQuery(`/branch-sessions/${payload.branchSessionId}/reply-jobs`, {
+        limit: payload.limit,
+      }),
+    )
   }
 
   private async getJson<T>(pathname: string): Promise<T> {

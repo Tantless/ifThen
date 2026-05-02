@@ -1,8 +1,14 @@
 import type {
+  BranchMessageCreate,
+  BranchMessageRead,
+  BranchReplyJobRead,
+  BranchSessionCreate,
+  BranchSessionRead,
   ConversationRead,
   ImportConversationRequest,
   ImportResponse,
   JobRead,
+  ListBranchReplyJobsInput,
   ListConversationJobsInput,
   ListConversationSimulationJobsInput,
   ListMessagesInput,
@@ -83,6 +89,14 @@ export type DesktopSimulationsBridge = {
   read: (simulationId: number) => Promise<SimulationRead>
 }
 
+export type DesktopBranchSessionsBridge = {
+  create: (payload: BranchSessionCreate) => Promise<BranchSessionRead>
+  read: (branchSessionId: number) => Promise<BranchSessionRead>
+  appendMessage: (branchSessionId: number, payload: BranchMessageCreate) => Promise<BranchMessageRead>
+  createReplyJob: (branchSessionId: number) => Promise<BranchReplyJobRead>
+  listReplyJobs: (payload: ListBranchReplyJobsInput) => Promise<BranchReplyJobRead[]>
+}
+
 export type DesktopBridge = {
   getServiceState: () => Promise<DesktopServiceState>
   pickImportFile: () => Promise<DesktopFileSelectionPayload>
@@ -92,5 +106,6 @@ export type DesktopBridge = {
   conversations: DesktopConversationsBridge
   jobs: DesktopJobsBridge
   simulations: DesktopSimulationsBridge
+  branchSessions: DesktopBranchSessionsBridge
   window: DesktopWindowBridge
 }

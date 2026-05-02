@@ -50,6 +50,22 @@ contextBridge.exposeInMainWorld('desktop', {
     /** @param {number} simulationId */
     read: (simulationId) => ipcRenderer.invoke('desktop:simulations-read', simulationId),
   },
+  branchSessions: {
+    /** @param {import('../src/types/api.js').BranchSessionCreate} payload */
+    create: (payload) => ipcRenderer.invoke('desktop:branch-sessions-create', payload),
+    /** @param {number} branchSessionId */
+    read: (branchSessionId) => ipcRenderer.invoke('desktop:branch-sessions-read', branchSessionId),
+    /**
+     * @param {number} branchSessionId
+     * @param {import('../src/types/api.js').BranchMessageCreate} payload
+     */
+    appendMessage: (branchSessionId, payload) =>
+      ipcRenderer.invoke('desktop:branch-sessions-append-message', branchSessionId, payload),
+    /** @param {number} branchSessionId */
+    createReplyJob: (branchSessionId) => ipcRenderer.invoke('desktop:branch-sessions-create-reply-job', branchSessionId),
+    /** @param {import('../src/types/api.js').ListBranchReplyJobsInput} payload */
+    listReplyJobs: (payload) => ipcRenderer.invoke('desktop:branch-sessions-list-reply-jobs', payload),
+  },
   window: {
     minimize: () => ipcRenderer.invoke('desktop:window-minimize'),
     toggleMaximize: () => ipcRenderer.invoke('desktop:window-toggle-maximize'),

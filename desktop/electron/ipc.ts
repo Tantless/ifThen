@@ -5,7 +5,10 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import type { DesktopServiceState, ManagedServiceState } from './backend/contracts.js'
 import type { DesktopWindowState } from '../src/types/desktop.js'
 import type {
+  BranchMessageCreate,
+  BranchSessionCreate,
   ImportConversationRequest,
+  ListBranchReplyJobsInput,
   ListConversationJobsInput,
   ListConversationSimulationJobsInput,
   ListMessagesInput,
@@ -165,6 +168,28 @@ export function registerDesktopIpc(processManager: BackendProcessManager, backen
 
   ipcMain.handle('desktop:simulations-read', async (_event, simulationId: number) =>
     backendClient.readSimulation(simulationId),
+  )
+
+  ipcMain.handle('desktop:branch-sessions-create', async (_event, payload: BranchSessionCreate) =>
+    backendClient.createBranchSession(payload),
+  )
+
+  ipcMain.handle('desktop:branch-sessions-read', async (_event, branchSessionId: number) =>
+    backendClient.readBranchSession(branchSessionId),
+  )
+
+  ipcMain.handle(
+    'desktop:branch-sessions-append-message',
+    async (_event, branchSessionId: number, payload: BranchMessageCreate) =>
+      backendClient.appendBranchMessage(branchSessionId, payload),
+  )
+
+  ipcMain.handle('desktop:branch-sessions-create-reply-job', async (_event, branchSessionId: number) =>
+    backendClient.createBranchReplyJob(branchSessionId),
+  )
+
+  ipcMain.handle('desktop:branch-sessions-list-reply-jobs', async (_event, payload: ListBranchReplyJobsInput) =>
+    backendClient.listBranchReplyJobs(payload),
   )
 
   ipcMain.handle('desktop:window-minimize', (event) => {

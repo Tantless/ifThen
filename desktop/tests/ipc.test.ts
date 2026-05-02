@@ -252,4 +252,65 @@ describe('registerDesktopIpc', () => {
     })
     expect(readMessageContext).toHaveBeenCalledWith({ messageId: 12, radius: 30 })
   })
+
+  it('proxies branch session actions through the backend client facade', async () => {
+    const createBranchSession = vi.fn(async () => ({ id: 501 }))
+    const readBranchSession = vi.fn(async () => ({ id: 501, messages: [] }))
+    const appendBranchMessage = vi.fn(async () => ({ id: 701, content_text: '补一句' }))
+    const createBranchReplyJob = vi.fn(async () => ({ id: 601, status: 'queued' }))
+    const listBranchReplyJobs = vi.fn(async () => [{ id: 601, status: 'queued' }])
+
+    registerDesktopIpc({
+      getState: () => ({ phase: 'ready' }),
+    } as any, {
+      createBranchSession,
+      readBranchSession,
+      appendBranchMessage,
+      createBranchReplyJob,
+      listBranchReplyJobs,
+    } as any)
+
+    const createHandler = handlers.get('desktop:branch-sessions-create')
+    const readHandler = handlers.get('desktop:branch-sessions-read')
+    const appendHandler = handlers.get('desktop:branch-sessions-append-message')
+    const createReplyJobHandler = handlers.get('desktop:branch-sessions-create-reply-job')
+    const listReplyJobsHandler = handlers.get('desktop:branch-sessions-list-reply-jobs')
+
+    expect(createHandler).toBeTypeOf('function')
+    expect(readHandler).toBeTypeOf('function')
+    expect(appendHandler).toBeTypeOf('function')
+    expect(createReplyJobHandler).toBeTypeOf('function')
+    expect(listReplyJobsHandler).toBeTypeOf('function')
+
+    if (!createHandler || !readHandler || !appendHandler || !createReplyJobHandler || !listReplyJobsHandler) {
+      throw new Error('expected branch session IPC handlers to be registered')
+    }
+
+    await expect(
+      createHandler(invokeEvent, {
+        conversation_id: 7,
+        target_message_id: 12,
+        replacement_content: '改写',
+      }),
+    ).resolves.toEqual({ id: 501 })
+    await expect(readHandler(invokeEvent, 501)).resolves.toEqual({ id: 501, messages: [] })
+    await expect(appendHandler(invokeEvent, 501, { content_text: '补一句' })).resolves.toEqual({
+      id: 701,
+      content_text: '补一句',
+    })
+    await expect(createReplyJobHandler(invokeEvent, 501)).resolves.toEqual({ id: 601, status: 'queued' })
+    await expect(listReplyJobsHandler(invokeEvent, { branchSessionId: 501, limit: 10 })).resolves.toEqual([
+      { id: 601, status: 'queued' },
+    ])
+
+    expect(createBranchSession).toHaveBeenCalledWith({
+      conversation_id: 7,
+      target_message_id: 12,
+      replacement_content: '改写',
+    })
+    expect(readBranchSession).toHaveBeenCalledWith(501)
+    expect(appendBranchMessage).toHaveBeenCalledWith(501, { content_text: '补一句' })
+    expect(createBranchReplyJob).toHaveBeenCalledWith(501)
+    expect(listBranchReplyJobs).toHaveBeenCalledWith({ branchSessionId: 501, limit: 10 })
+  })
 })

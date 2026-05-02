@@ -142,6 +142,8 @@ Status: completed in `realism-06`.
 
 ### 6. Real-Time Branch Chat Frontend
 
+Status: completed in `realism-07`.
+
 * Replace the primary short-thread experience with an interactive branch chat view while preserving `single_reply` / `short_thread` compatibility.
 * Batch user messages after a short idle window; MVP decision is 1.5 to 2 seconds, backed by stale reply superseding when users add messages during generation.
 * If a new user message arrives while the LLM reply is running but not yet committed, mark that reply stale and trigger a new reply over the merged self messages.
@@ -249,7 +251,8 @@ Cons:
 * `realism-01-pre` synthetic corpus: completed.
 * `realism-01` baseline and failure taxonomy: completed with `tests/fixtures/realism_baseline/cases.json`, `tests/test_realism_baseline_fixtures.py`, and `scripts/report_realism_baseline.py`.
 * `realism-06` realtime branch backend minimum loop: completed with `BranchSession`, `BranchMessage`, `BranchReplyJob`, branch session APIs, `run_next_branch_reply_job()`, stale reply superseding, and branch-session regression tests.
-* Next implementation target: `realism-07` realtime branch frontend minimum loop.
+* `realism-07` realtime branch frontend minimum loop: completed with desktop branch session service/IPC, rewrite-to-branch flow, 1.8 second idle window, reply job polling, typing/error/retry states, and delayed split-bubble `other` delivery.
+* Next implementation target: `realism-02` layered evidence context and realtime session memory pack enhancement.
 
 ## Out of Scope
 

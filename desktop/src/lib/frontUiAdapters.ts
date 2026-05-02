@@ -1,4 +1,4 @@
-import type { ConversationRead, JobRead, MessageRead, SimulationRead } from '../types/api'
+import type { BranchSessionRead, ConversationRead, JobRead, MessageRead, SimulationRead } from '../types/api'
 import { FRONTUI_PLACEHOLDER_AVATAR, FRONTUI_SELF_AVATAR } from '../frontui/mockState'
 import type { FrontChatListItem, FrontChatMessage, FrontChatWindowState } from '../frontui/types'
 import { resolveJobProgress, resolveJobStageProgressLabel } from './analysisProgress'
@@ -7,7 +7,7 @@ function trimText(value: string | null | undefined): string {
   return value?.trim() ?? ''
 }
 
-function splitSimulationMessageText(value: string | null | undefined): string[] {
+export function splitChatLikeMessageText(value: string | null | undefined): string[] {
   const normalized = trimText(value)
   if (!normalized) {
     return []
@@ -19,6 +19,20 @@ function splitSimulationMessageText(value: string | null | undefined): string[] 
     .filter(Boolean)
 
   return parts.length > 0 ? parts : [normalized]
+}
+
+export function resolveBranchDeliveryDelayMs(text: string): number {
+  const length = trimText(text).length
+
+  if (length <= 6) {
+    return 1000
+  }
+
+  if (length <= 18) {
+    return 2000
+  }
+
+  return 3000
 }
 
 function resolveConversationDisplayName(conversation: ConversationRead): string {
@@ -191,7 +205,7 @@ export function buildFrontChatMessagesFromSimulation(input: {
   if (simulation.simulated_turns.length > 0) {
     return simulation.simulated_turns.flatMap((turn, index) => {
       const isSelf = turn.speaker_role === 'self'
-      return splitSimulationMessageText(turn.message_text).map((text, partIndex) => ({
+      return splitChatLikeMessageText(turn.message_text).map((text, partIndex) => ({
         id: `simulation-${simulation.id}-turn-${turn.turn_index}-${index}-part-${partIndex}`,
         messageId: null,
         align: isSelf ? 'right' : 'left',
@@ -208,7 +222,7 @@ export function buildFrontChatMessagesFromSimulation(input: {
   }
 
   if (trimText(simulation.first_reply_text)) {
-    return splitSimulationMessageText(simulation.first_reply_text).map((text, partIndex) => ({
+    return splitChatLikeMessageText(simulation.first_reply_text).map((text, partIndex) => ({
       id: `simulation-${simulation.id}-first-reply-part-${partIndex}`,
       messageId: null,
       align: 'left',
@@ -224,4 +238,72 @@ export function buildFrontChatMessagesFromSimulation(input: {
   }
 
   return []
+}
+
+export function buildFrontChatMessagesFromBranchSession(input: {
+  branchSession: BranchSessionRead
+  selfDisplayName?: string
+  otherDisplayName?: string
+  selfAvatarUrl?: string
+  otherAvatarUrl?: string
+  timestampRaw: string
+  deliveredPartCountsByMessageId?: Record<number, number>
+  now?: string | Date
+}): FrontChatMessage[] {
+  const {
+    branchSession,
+    selfDisplayName = '我',
+    otherDisplayName = '对方',
+    selfAvatarUrl,
+    otherAvatarUrl,
+    timestampRaw,
+    deliveredPartCountsByMessageId = {},
+    now,
+  } = input
+  const normalizedTimestamp = trimText(timestampRaw) || new Date().toISOString()
+
+  return branchSession.messages.flatMap<FrontChatMessage>((message) => {
+    if (message.source === 'rewrite') {
+      return []
+    }
+
+    const isSelf = message.speaker_role === 'self'
+    const speakerName = isSelf ? selfDisplayName : otherDisplayName
+    const avatarUrl = isSelf ? selfAvatarUrl || FRONTUI_SELF_AVATAR : otherAvatarUrl || FRONTUI_PLACEHOLDER_AVATAR
+
+    if (isSelf) {
+      return [
+        {
+          id: `branch-${branchSession.id}-message-${message.id}`,
+          messageId: null,
+          align: 'right' as const,
+          bubbleTone: 'branch-self' as const,
+          speakerName,
+          avatarUrl,
+          text: message.content_text,
+          timestampLabel: formatChatTimestampLabel(normalizedTimestamp, now),
+          timestampRaw: normalizedTimestamp,
+          canRewrite: false,
+          source: 'mock' as const,
+        },
+      ]
+    }
+
+    const parts = splitChatLikeMessageText(message.content_text)
+    const visiblePartCount = deliveredPartCountsByMessageId[message.id] ?? parts.length
+
+    return parts.slice(0, visiblePartCount).map((text, partIndex) => ({
+      id: `branch-${branchSession.id}-message-${message.id}-part-${partIndex}`,
+      messageId: null,
+      align: 'left' as const,
+      bubbleTone: 'branch-other' as const,
+      speakerName,
+      avatarUrl,
+      text,
+      timestampLabel: formatChatTimestampLabel(normalizedTimestamp, now),
+      timestampRaw: normalizedTimestamp,
+      canRewrite: false,
+      source: 'mock' as const,
+    }))
+  })
 }
