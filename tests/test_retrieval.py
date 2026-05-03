@@ -48,6 +48,7 @@ def test_build_context_pack_excludes_target_and_future_messages():
         target_message_id=2,
         replacement_content="如果方便的话，我们慢慢聊也可以",
         related_topic_digests=[],
+        future_evidence_digests=[],
         base_relationship_snapshot={"relationship_temperature": "warm"},
         persona_self={"global_persona_summary": "友好"},
         persona_other={"global_persona_summary": "轻松"},
@@ -68,8 +69,12 @@ def test_build_context_pack_excludes_target_and_future_messages():
     assert context["moment_state_estimate"]["active_sensitive_topics"] == []
     assert context["persona_self"] == {"global_persona_summary": "友好"}
     assert context["persona_other"] == {"global_persona_summary": "轻松"}
-    assert context["retrieval_warnings"] == ["related_topic_digests_empty"]
-    assert context["strategy_version"] == "cutoff-safe-rules-v1"
+    assert context["cutoff_safe_facts"]["related_topic_digests"] == []
+    assert context["future_evidence_digests"] == []
+    assert context["branch_facts"]["rewrite_target"]["target_message_id"] == 2
+    assert context["evidence_policy"]["future_evidence_digests"] == "modeler_only_not_character_known"
+    assert context["retrieval_warnings"] == ["related_topic_digests_empty", "future_evidence_digests_empty"]
+    assert context["strategy_version"] == "layered-evidence-v1"
 
 
 def test_build_context_pack_collects_same_day_prior_segments_only():
@@ -153,6 +158,23 @@ def test_build_context_pack_collects_same_day_prior_segments_only():
         target_message_id=5,
         replacement_content="换个轻松点的说法",
         related_topic_digests=[{"topic_id": 9, "topic_name": "闲聊"}],
+        future_evidence_digests=[
+            {
+                "source_type": "segment_summary",
+                "source_id": 801,
+                "topic_id": 9,
+                "topic_name": "闲聊",
+                "supporting_segment_id": 104,
+                "starts_at": "2025-03-02T22:00:00",
+                "ends_at": "2025-03-02T22:00:00",
+                "evidence_kind": "topic_linked_future_summary",
+                "summary": "目标后的后续互动摘要",
+                "topic_summary": "闲聊延续",
+                "relevance_reason": "同一话题",
+                "topic_link_score": 0.8,
+                "use_policy": "modeler_only_not_character_known",
+            }
+        ],
         base_relationship_snapshot=None,
         persona_self=None,
         persona_other=None,
@@ -171,4 +193,7 @@ def test_build_context_pack_collects_same_day_prior_segments_only():
     ]
     assert context["moment_state_estimate"]["relationship_temperature"] == "unknown"
     assert context["moment_state_estimate"]["active_sensitive_topics"] == []
+    assert context["cutoff_safe_facts"]["same_day_prior_segments"] == context["same_day_prior_segments"]
+    assert context["future_evidence_digests"][0]["supporting_segment_id"] == 104
+    assert context["related_topic_digests"] == [{"topic_id": 9, "topic_name": "闲聊"}]
     assert context["retrieval_warnings"] == ["base_relationship_snapshot_missing"]

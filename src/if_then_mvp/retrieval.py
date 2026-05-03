@@ -52,6 +52,7 @@ def build_context_pack(
     target_message_id: int,
     replacement_content: str,
     related_topic_digests: list[dict[str, Any]],
+    future_evidence_digests: list[dict[str, Any]],
     base_relationship_snapshot: dict[str, Any] | None,
     persona_self: dict[str, Any] | None,
     persona_other: dict[str, Any] | None,
@@ -135,6 +136,28 @@ def build_context_pack(
         retrieval_warnings.append("related_topic_digests_empty")
     if base_relationship_snapshot is None:
         retrieval_warnings.append("base_relationship_snapshot_missing")
+    if not future_evidence_digests:
+        retrieval_warnings.append("future_evidence_digests_empty")
+
+    cutoff_safe_facts = {
+        "current_segment_history": current_segment_history,
+        "current_segment_brief": current_segment_brief,
+        "same_day_prior_segments": same_day_prior_segments,
+        "related_topic_digests": related_topic_digests,
+        "base_relationship_snapshot": base_relationship_snapshot,
+    }
+    evidence_policy = {
+        "cutoff_safe_facts": "character_known",
+        "future_evidence_digests": "modeler_only_not_character_known",
+        "branch_facts": "branch_only_generated_facts",
+    }
+    branch_facts = {
+        "rewrite_target": {
+            "target_message_id": target_message_id,
+            "replacement_content": replacement_content,
+        },
+        "generated_branch_messages": [],
+    }
 
     return {
         "conversation_id": target["conversation_id"],
@@ -148,9 +171,13 @@ def build_context_pack(
         "same_day_prior_segments": same_day_prior_segments,
         "related_topic_digests": related_topic_digests,
         "base_relationship_snapshot": base_relationship_snapshot,
+        "cutoff_safe_facts": cutoff_safe_facts,
+        "future_evidence_digests": future_evidence_digests,
+        "branch_facts": branch_facts,
+        "evidence_policy": evidence_policy,
         "moment_state_estimate": moment_state_estimate,
         "persona_self": persona_self,
         "persona_other": persona_other,
         "retrieval_warnings": retrieval_warnings,
-        "strategy_version": "cutoff-safe-rules-v1",
+        "strategy_version": "layered-evidence-v1",
     }

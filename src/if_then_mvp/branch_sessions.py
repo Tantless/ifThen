@@ -27,14 +27,7 @@ def create_branch_session(
     if not replacement:
         raise ValueError("replacement_content must not be empty")
 
-    memory_pack = {
-        "strategy_version": "realtime-branch-memory-v1",
-        "cutoff_safe_context_pack": context_pack,
-        "persona_priority": {
-            "primary_generation_target": "persona_other",
-            "self_interpretation_context": "persona_self",
-        },
-    }
+    memory_pack = _build_session_memory_pack(context_pack=context_pack)
     branch_session = BranchSession(
         conversation_id=conversation_id,
         target_message_id=target_message_id,
@@ -291,3 +284,22 @@ def _calculate_percent(completed_units: int, total_units: int) -> int:
     if total_units <= 0:
         return 0
     return min(100, int((completed_units * 100) / total_units))
+
+
+def _build_session_memory_pack(*, context_pack: dict) -> dict:
+    return {
+        "strategy_version": "realtime-branch-memory-v2",
+        "layered_context_pack": {
+            "cutoff_safe_facts": context_pack.get("cutoff_safe_facts") or {},
+            "future_evidence_digests": context_pack.get("future_evidence_digests") or [],
+            "branch_facts": context_pack.get("branch_facts") or {},
+            "evidence_policy": context_pack.get("evidence_policy") or {},
+        },
+        "compatibility": {
+            "cutoff_safe_context_pack": context_pack,
+        },
+        "persona_priority": {
+            "primary_generation_target": "persona_other",
+            "self_interpretation_context": "persona_self",
+        },
+    }

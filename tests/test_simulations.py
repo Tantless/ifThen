@@ -12,6 +12,7 @@ from if_then_mvp.api import (
     _snapshot_to_context_dict,
     create_app,
 )
+from if_then_mvp.context_builder import build_conversation_context_pack
 from if_then_mvp.db import init_db, session_scope
 from if_then_mvp.models import (
     Conversation,
@@ -260,67 +261,11 @@ def _seed_engine_context_pack(
         )
 
         target_message = session.get(Message, target_self.id)
-        messages = (
-            session.execute(
-                select(Message)
-                .where(Message.conversation_id == conversation.id)
-                .order_by(Message.timestamp.asc(), Message.sequence_no.asc(), Message.id.asc())
-            )
-            .scalars()
-            .all()
-        )
-        segments = (
-            session.execute(
-                select(Segment)
-                .where(Segment.conversation_id == conversation.id)
-                .order_by(Segment.start_time.asc(), Segment.id.asc())
-            )
-            .scalars()
-            .all()
-        )
-        snapshot = (
-            session.execute(
-                select(RelationshipSnapshot)
-                .join(Message, RelationshipSnapshot.as_of_message_id == Message.id)
-                .where(
-                    RelationshipSnapshot.conversation_id == conversation.id,
-                    (
-                        (RelationshipSnapshot.as_of_time < target_message.timestamp)
-                        | (
-                            (RelationshipSnapshot.as_of_time == target_message.timestamp)
-                            & (Message.sequence_no < target_message.sequence_no)
-                        )
-                    ),
-                )
-                .order_by(RelationshipSnapshot.as_of_time.desc(), Message.sequence_no.desc())
-            )
-            .scalars()
-            .first()
-        )
-        related_topic_digests = _load_related_topic_digests(
-            session=session,
+        return build_conversation_context_pack(
+            session,
             conversation_id=conversation.id,
             target_message=target_message,
-        )
-        personas = (
-            session.execute(
-                select(PersonaProfile).where(PersonaProfile.conversation_id == conversation.id)
-            )
-            .scalars()
-            .all()
-        )
-        persona_self = next((item for item in personas if item.subject_role == "self"), None)
-        persona_other = next((item for item in personas if item.subject_role == "other"), None)
-
-        return build_context_pack(
-            messages=[_message_to_context_dict(item) for item in messages],
-            segments=[_segment_to_context_dict(item) for item in segments],
-            target_message_id=target_message.id,
             replacement_content=replacement_content,
-            related_topic_digests=related_topic_digests,
-            base_relationship_snapshot=_snapshot_to_context_dict(snapshot),
-            persona_self=_persona_to_context_dict(persona_self),
-            persona_other=_persona_to_context_dict(persona_other),
         )
 
 
@@ -726,6 +671,7 @@ def test_simulation_engine_rejects_targets_not_covered_by_segments(tmp_path, mon
                 target_message_id=target.id,
                 replacement_content="换个说法",
                 related_topic_digests=[],
+                future_evidence_digests=[],
                 base_relationship_snapshot=None,
                 persona_self=None,
                 persona_other=None,

@@ -18,6 +18,14 @@ from if_then_mvp.branch_sessions import (
     create_branch_session,
     queue_branch_reply_job,
 )
+from if_then_mvp.context_builder import (
+    build_conversation_context_pack,
+    load_related_topic_digests as _load_related_topic_digests,
+    message_to_context_dict as _message_to_context_dict,
+    persona_to_context_dict as _persona_to_context_dict,
+    segment_to_context_dict as _segment_to_context_dict,
+    snapshot_to_context_dict as _snapshot_to_context_dict,
+)
 from if_then_mvp.conversation_lifecycle import (
     delete_conversation_tree,
     queue_rerun_analysis,
@@ -42,7 +50,6 @@ from if_then_mvp.models import (
     TopicLink,
 )
 from if_then_mvp.parser import parse_qq_export
-from if_then_mvp.retrieval import build_context_pack
 from if_then_mvp.runtime_llm import build_runtime_llm_client, load_runtime_settings_map
 from if_then_mvp.schemas import (
     BranchMessageCreate,
@@ -684,171 +691,12 @@ def _build_branch_context_pack(
     target_message: Message,
     replacement_content: str,
 ) -> dict[str, object]:
-    messages = (
-        session.execute(
-            select(Message)
-            .where(Message.conversation_id == conversation_id)
-            .order_by(Message.timestamp.asc(), Message.sequence_no.asc(), Message.id.asc())
-        )
-        .scalars()
-        .all()
-    )
-    segments = (
-        session.execute(
-            select(Segment)
-            .where(Segment.conversation_id == conversation_id)
-            .order_by(Segment.start_time.asc(), Segment.id.asc())
-        )
-        .scalars()
-        .all()
-    )
-    snapshot = (
-        session.execute(
-            select(RelationshipSnapshot)
-            .join(Message, RelationshipSnapshot.as_of_message_id == Message.id)
-            .where(
-                RelationshipSnapshot.conversation_id == conversation_id,
-                (
-                    (RelationshipSnapshot.as_of_time < target_message.timestamp)
-                    | (
-                        (RelationshipSnapshot.as_of_time == target_message.timestamp)
-                        & (Message.sequence_no < target_message.sequence_no)
-                    )
-                ),
-            )
-            .order_by(RelationshipSnapshot.as_of_time.desc(), Message.sequence_no.desc())
-        )
-        .scalars()
-        .first()
-    )
-    related_topic_digests = _load_related_topic_digests(
-        session=session,
+    return build_conversation_context_pack(
+        session,
         conversation_id=conversation_id,
         target_message=target_message,
-    )
-    personas = (
-        session.execute(select(PersonaProfile).where(PersonaProfile.conversation_id == conversation_id))
-        .scalars()
-        .all()
-    )
-    persona_self = next((item for item in personas if item.subject_role == "self"), None)
-    persona_other = next((item for item in personas if item.subject_role == "other"), None)
-
-    return build_context_pack(
-        messages=[_message_to_context_dict(item) for item in messages],
-        segments=[_segment_to_context_dict(item) for item in segments],
-        target_message_id=target_message.id,
         replacement_content=replacement_content,
-        related_topic_digests=related_topic_digests,
-        base_relationship_snapshot=_snapshot_to_context_dict(snapshot),
-        persona_self=_persona_to_context_dict(persona_self),
-        persona_other=_persona_to_context_dict(persona_other),
     )
-
-
-def _message_to_context_dict(message: Message) -> dict[str, object]:
-    return {
-        "id": message.id,
-        "conversation_id": message.conversation_id,
-        "sequence_no": message.sequence_no,
-        "timestamp": message.timestamp,
-        "speaker_role": message.speaker_role,
-        "content_text": message.content_text,
-    }
-
-
-def _segment_to_context_dict(segment: Segment) -> dict[str, object]:
-    return {
-        "id": segment.id,
-        "source_message_ids": segment.source_message_ids or [],
-        "start_time": segment.start_time,
-        "end_time": segment.end_time,
-    }
-
-
-def _snapshot_to_context_dict(snapshot: RelationshipSnapshot | None) -> dict[str, object] | None:
-    if snapshot is None:
-        return None
-    return {
-        "relationship_temperature": snapshot.relationship_temperature,
-        "tension_level": snapshot.tension_level,
-        "openness_level": snapshot.openness_level,
-        "initiative_balance": snapshot.initiative_balance,
-        "defensiveness_level": snapshot.defensiveness_level,
-        "relationship_phase": snapshot.relationship_phase,
-        "active_sensitive_topics": snapshot.unresolved_conflict_flags,
-    }
-
-
-def _persona_to_context_dict(persona: PersonaProfile | None) -> dict[str, object] | None:
-    if persona is None:
-        return None
-    return {
-        "global_persona_summary": persona.global_persona_summary,
-        "style_traits": persona.style_traits,
-        "conflict_traits": persona.conflict_traits,
-        "relationship_specific_patterns": persona.relationship_specific_patterns,
-        "confidence": persona.confidence,
-    }
-
-
-def _load_related_topic_digests(
-    *,
-    session,
-    conversation_id: int,
-    target_message: Message,
-) -> list[dict[str, object]]:
-    rows = (
-        session.execute(
-            select(Topic, TopicLink, Segment, SegmentSummary, Message)
-            .join(TopicLink, TopicLink.topic_id == Topic.id)
-            .join(Segment, TopicLink.segment_id == Segment.id)
-            .join(SegmentSummary, SegmentSummary.segment_id == Segment.id)
-            .join(Message, Segment.end_message_id == Message.id)
-            .where(
-                Topic.conversation_id == conversation_id,
-                (
-                    (Segment.end_time < target_message.timestamp)
-                    | (
-                        (Segment.end_time == target_message.timestamp)
-                        & (Message.sequence_no < target_message.sequence_no)
-                    )
-                ),
-            )
-            .order_by(Topic.id.asc(), Segment.end_time.asc(), Message.sequence_no.asc(), Segment.id.asc())
-        )
-        .all()
-    )
-    if not rows:
-        return []
-
-    digest_map: dict[int, dict[str, object]] = {}
-    for topic, topic_link, segment, segment_summary, _end_message in rows:
-        digest = digest_map.setdefault(
-            topic.id,
-            {
-                "topic_id": topic.id,
-                "topic_name": topic.topic_name,
-                "cutoff_safe_summary_parts": [],
-                "supporting_segment_ids": [],
-                "relevance_reason": topic_link.link_reason,
-                "topic_status": topic.topic_status,
-            },
-        )
-        digest["cutoff_safe_summary_parts"].append(segment_summary.summary_text)
-        digest["supporting_segment_ids"].append(segment.id)
-
-    return [
-        {
-            "topic_id": topic_id,
-            "topic_name": digest["topic_name"],
-            "cutoff_safe_summary": " | ".join(digest["cutoff_safe_summary_parts"][:3]),
-            "supporting_segment_ids": digest["supporting_segment_ids"],
-            "relevance_reason": digest["relevance_reason"],
-            "topic_status": digest["topic_status"],
-        }
-        for topic_id, digest in digest_map.items()
-    ]
 
 
 def _job_to_read(job: AnalysisJob) -> JobRead:

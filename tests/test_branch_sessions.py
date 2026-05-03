@@ -282,6 +282,17 @@ def test_branch_session_api_creates_session_and_supersedes_stale_reply_jobs(tmp_
         assert body["current_branch_state"]["relationship_temperature"] == "warm"
         assert [(message["speaker_role"], message["source"]) for message in body["messages"]] == [("self", "rewrite")]
 
+        with session_scope() as session:
+            branch_session = session.query(BranchSession).one()
+            assert branch_session.session_memory_pack["strategy_version"] == "realtime-branch-memory-v2"
+            assert branch_session.session_memory_pack["layered_context_pack"]["evidence_policy"][
+                "future_evidence_digests"
+            ] == "modeler_only_not_character_known"
+            assert (
+                branch_session.session_memory_pack["compatibility"]["cutoff_safe_context_pack"]["target_message_id"]
+                == target_message_id
+            )
+
         first_job = client.post("/branch-sessions/1/reply-jobs")
         assert first_job.status_code == 202
         assert first_job.json()["status"] == "queued"

@@ -45,7 +45,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "05-03-05-03-realism-02-layered-evidence-context"
+  ],
   "parent": null,
   "relatedFiles": [],
   "notes": "",
