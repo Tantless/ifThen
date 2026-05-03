@@ -80,10 +80,11 @@ FIRST_REPLY_SYSTEM_PROMPT = (
     "4. 回复必须符合对方 persona、当前关系状态和 BranchAssessment 指定的 reply_strategy，而不是单纯把改写内容顺着说得更好听。"
     "5. 回复应优先追求真实、克制、符合当下关系允许的表达强度，而不是追求戏剧性、理想化或过度治愈。"
     "6. 如果当前关系的 openness 有限、tension 偏高或 defensiveness 仍在，回复可以是有限承接、轻接一下、保留式回应、谨慎确认，而不必强行展开。"
-    "7. 避免分析腔、治疗腔、总结腔或过度完整的书面表达。"
-    "8. first_reply_text、strategy_used、first_reply_style_notes、state_after_turn 各自职责不同，不能互相重复或混淆。"
-    "9. state_after_turn 只估计这条首轮回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
-    "10. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+    "7. 若 persona_other.deterministic_style_profile 指定偏短句、单泡或压力下保留边界，必须优先服从，不能写成长篇分析或无限拆泡。"
+    "8. 避免分析腔、治疗腔、总结腔或过度完整的书面表达。"
+    "9. first_reply_text、strategy_used、first_reply_style_notes、state_after_turn 各自职责不同，不能互相重复或混淆。"
+    "10. state_after_turn 只估计这条首轮回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
+    "11. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 
 NEXT_TURN_SYSTEM_PROMPT = (
@@ -95,11 +96,12 @@ NEXT_TURN_SYSTEM_PROMPT = (
     "2. 绝对不能引用这些材料之外的信息，更不能引入未来发生的内容。"
     "3. 你每次只生成“指定说话者”的下一句消息，不要替对方多说，也不要提前写后续轮次。"
     "4. 生成必须符合当前分支已经形成的节奏、关系状态和 persona，不要突然变得更热、更深、更会说话。"
-    "5. state_after_turn 只估计这一轮之后的即时状态，不要把单轮变化夸大成长期关系反转。"
-    "6. should_stop 用于判断这条分支是否应当自然收束；只有在继续说下去明显不自然、只会机械重复或当前轮已形成自然收口时才设为 true。"
-    "7. 允许自然变短、自然停住，不以把对话写完整为目标。"
-    "8. 你必须主动避免机械重复、原地打转、只换说法复述上一轮、或让双方异常理想化地持续推进。"
-    "9. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+    "5. 若指定说话者 persona 的 deterministic_style_profile 指定偏短句、单泡或压力下保留边界，必须优先服从。"
+    "6. state_after_turn 只估计这一轮之后的即时状态，不要把单轮变化夸大成长期关系反转。"
+    "7. should_stop 用于判断这条分支是否应当自然收束；只有在继续说下去明显不自然、只会机械重复或当前轮已形成自然收口时才设为 true。"
+    "8. 允许自然变短、自然停住，不以把对话写完整为目标。"
+    "9. 你必须主动避免机械重复、原地打转、只换说法复述上一轮、或让双方异常理想化地持续推进。"
+    "10. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 
 BRANCH_REPLY_SYSTEM_PROMPT = (
@@ -110,9 +112,10 @@ BRANCH_REPLY_SYSTEM_PROMPT = (
     "2. 用户实时输入是事实源；persona_self 只能帮助理解用户风格，不能覆盖、改写或忽略用户刚说的话。"
     "3. persona_other 是主要生成约束，回复长度、语气、回避/承接方式和关系推进上限都必须受它约束。"
     "4. session_memory_pack 中的 cutoff-safe 材料可作为角色当时可知上下文；未来原时间线证据若出现，只能影响风险和保守程度，不能写成 other 已知内容。"
-    "5. 回复必须符合当前 branch transcript 和 current_branch_state，不要突然变得更热、更深、更会沟通。"
-    "6. state_after_turn 只估计这条 other 回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
-    "7. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+    "5. 若 persona_other.deterministic_style_profile 指定偏短句、单泡或压力下保留边界，必须优先服从，不能长篇分析或无限拆泡。"
+    "6. 回复必须符合当前 branch transcript 和 current_branch_state，不要突然变得更热、更深、更会沟通。"
+    "7. state_after_turn 只估计这条 other 回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
+    "8. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 
 
@@ -376,8 +379,6 @@ def _build_branch_prompt(*, context_pack: dict[str, Any]) -> str:
         "",
         "对方人格画像 JSON:",
         _to_json_line(context_pack.get("persona_other") or {}),
-        "",
-        "相关话题摘要 JSONL:",
     ]
     lines.extend(_to_json_line(item) for item in (context_pack.get("related_topic_digests") or []))
     lines.extend(
@@ -405,6 +406,8 @@ def _build_first_reply_prompt(*, context_pack: dict[str, Any], assessment: dict[
             "message_text": context_pack.get("replacement_content"),
         }
     )
+    persona_other = context_pack.get("persona_other") or {}
+    other_style_profile = _persona_style_profile(persona_other)
     lines = [
         "请根据下面这条反事实分支的状态判断结果，生成对方在该分支里的第一条回复，并输出结构化 JSON。",
         "",
@@ -426,6 +429,7 @@ def _build_first_reply_prompt(*, context_pack: dict[str, Any], assessment: dict[
         "- 生成对方在这一刻最可能说出的第一条回复",
         "- 回复要像真实聊天里的第一句，而不是总结、分析或后续多轮内容",
         "- 回复长度、语气、直接程度要符合对方 persona 和当前关系允许的强度",
+        "- 若 deterministic style profile 指定偏短句、单泡或最多两条短泡，必须按该 envelope 控制长度和拆泡",
         "- 如果对方更可能简短接话，就不要生成过长回复",
         "- 如果对方更可能保留、缓冲、轻接、确认、软回避，就要如实体现，不要强行热情或深情",
         "",
@@ -524,10 +528,14 @@ def _build_first_reply_prompt(*, context_pack: dict[str, Any], assessment: dict[
         _to_json_line(context_pack.get("moment_state_estimate") or {}),
         "",
         "对方人格画像 JSON:",
-        _to_json_line(context_pack.get("persona_other") or {}),
+        _to_json_line(persona_other),
         "",
-        "相关话题摘要 JSONL:",
+        "对方 deterministic style profile JSON:",
+        _to_json_line(other_style_profile),
+        "",
+        "对方风格护栏 JSONL:",
     ]
+    lines.extend(_to_json_line(item) for item in _style_hint_lines(other_style_profile))
     lines.extend(_to_json_line(item) for item in (context_pack.get("related_topic_digests") or []))
     lines.extend(
         [
@@ -548,6 +556,8 @@ def _build_next_turn_prompt(
     speaker_role: str,
 ) -> str:
     persona_key = "persona_self" if speaker_role == "self" else "persona_other"
+    speaker_persona = context_pack.get(persona_key) or {}
+    speaker_style_profile = _persona_style_profile(speaker_persona)
     lines = [
         "请根据下面这条反事实分支的当前状态，生成指定说话者的下一句消息，并输出结构化 JSON。",
         "",
@@ -567,6 +577,7 @@ def _build_next_turn_prompt(
         "- 生成指定说话者在当前这一轮最可能说出的下一句消息",
         "- 这句话应承接上一轮，但不能只是换个说法重复上一句",
         "- 这句话应符合该说话者 persona、当前状态和前面 transcript 已形成的风格密度",
+        "- 若 deterministic style profile 指定偏短句、单泡或最多两条短泡，必须按该 envelope 控制长度和拆泡",
         "- 如果继续深入不自然，可以保持简短、有限承接、有限回应、轻微推进或自然收束",
         "- 不要把一轮写成一大段分析、解释或关系总结",
         "",
@@ -647,10 +658,14 @@ def _build_next_turn_prompt(
         _to_json_line(current_state),
         "",
         "当前说话者人格画像 JSON:",
-        _to_json_line(context_pack.get(persona_key) or {}),
+        _to_json_line(speaker_persona),
         "",
-        "相关话题摘要 JSONL:",
+        "当前说话者 deterministic style profile JSON:",
+        _to_json_line(speaker_style_profile),
+        "",
+        "当前说话者风格护栏 JSONL:",
     ]
+    lines.extend(_to_json_line(item) for item in _style_hint_lines(speaker_style_profile))
     lines.extend(_to_json_line(item) for item in (context_pack.get("related_topic_digests") or []))
     lines.extend(
         [
@@ -669,6 +684,9 @@ def _build_branch_reply_prompt(
     pending_self_messages: list[dict[str, Any]],
     current_branch_state: dict[str, Any],
 ) -> str:
+    compatibility_pack = ((session_memory_pack.get("compatibility") or {}).get("cutoff_safe_context_pack") or {})
+    persona_other = compatibility_pack.get("persona_other") or {}
+    other_style_profile = _persona_style_profile(persona_other)
     lines = [
         "请根据下面的实时反事实分支会话，生成 other 的下一条回复，并输出结构化 JSON。",
         "",
@@ -679,6 +697,7 @@ def _build_branch_reply_prompt(
         "- 不要总结整段关系，不要替用户决定下一句怎么说。",
         "- 用户实时输入优先于 persona_self；persona_self 只用于理解，不用于改写用户输入。",
         "- persona_other 是主要生成约束。",
+        "- 若 persona_other.deterministic_style_profile 指定偏短句、单泡或最多两条短泡，必须按该 envelope 控制长度和拆泡。",
         "- 如果 session_memory_pack 中存在 cutoff 后证据，只能用于保守估计风险，不能让 other 说出这些未来事实。",
         "- 如果 pending_self_messages 是连续多条 self 消息，应把它们当作同一轮用户输入一起回应。",
         "",
@@ -694,8 +713,21 @@ def _build_branch_reply_prompt(
         "current_branch_state JSON:",
         _to_json_line(current_branch_state),
         "",
-        "branch_transcript JSONL:",
+        "persona_other JSON:",
+        _to_json_line(persona_other),
+        "",
+        "persona_other deterministic style profile JSON:",
+        _to_json_line(other_style_profile),
+        "",
+        "persona_other 风格护栏 JSONL:",
     ]
+    lines.extend(_to_json_line(item) for item in _style_hint_lines(other_style_profile))
+    lines.extend(
+        [
+            "",
+            "branch_transcript JSONL:",
+        ]
+    )
     lines.extend(_to_json_line(item) for item in branch_transcript)
     lines.extend(
         [
@@ -738,3 +770,23 @@ def _normalize_message_text(value: str) -> str:
 
 def _to_json_line(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def _persona_style_profile(persona_payload: dict[str, Any]) -> dict[str, Any]:
+    style_profile = persona_payload.get("deterministic_style_profile")
+    if isinstance(style_profile, dict):
+        return style_profile
+    return {}
+
+
+def _style_hint_lines(style_profile: dict[str, Any]) -> list[dict[str, Any]]:
+    lines: list[dict[str, Any]] = []
+    reply_envelope = style_profile.get("reply_envelope")
+    if isinstance(reply_envelope, dict) and reply_envelope:
+        lines.append(reply_envelope)
+    generation_hints = style_profile.get("generation_hints")
+    if isinstance(generation_hints, list):
+        for hint in generation_hints:
+            if hint:
+                lines.append({"hint": hint})
+    return lines

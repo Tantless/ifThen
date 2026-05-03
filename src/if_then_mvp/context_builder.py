@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -15,6 +16,11 @@ from if_then_mvp.retrieval import (
 
 MAX_RELATED_TOPIC_DIGESTS = DEFAULT_RELATED_TOPIC_DIGEST_LIMIT
 MAX_FUTURE_EVIDENCE_ITEMS = DEFAULT_FUTURE_EVIDENCE_DIGEST_LIMIT
+RECENT_INTERACTION_WINDOW_MESSAGES = 12
+RECENT_ROLE_STYLE_SAMPLE_SIZE = 6
+SHORT_STYLE_MESSAGE_CHAR_LIMIT = 12
+LONG_STYLE_MESSAGE_CHAR_LIMIT = 36
+MAX_STYLE_SIGNAL_ITEMS = 3
 
 SENSITIVE_KEYWORDS = (
     "拒绝",
@@ -33,6 +39,22 @@ SENSITIVE_KEYWORDS = (
     "慢一点",
     "先不要",
 )
+STYLE_PARTICLES = (
+    "hhh",
+    "哈哈",
+    "哈哈哈",
+    "嗯",
+    "哦",
+    "好",
+    "啊",
+    "吧",
+    "嘛",
+    "呀",
+    "诶",
+    "欸",
+)
+STYLE_PUNCTUATION = ("。", "，", "？", "！", "…", "~", "～")
+PLACEHOLDER_MESSAGE_PATTERN = re.compile(r"^\[[^\]]+\]$")
 
 
 def build_conversation_context_pack(
@@ -107,6 +129,11 @@ def build_conversation_context_pack(
         .scalars()
         .all()
     )
+    style_profiles = _build_role_style_profiles(
+        messages=messages,
+        target_message=target_message,
+        snapshot=snapshot,
+    )
     persona_self = next((item for item in personas if item.subject_role == "self"), None)
     persona_other = next((item for item in personas if item.subject_role == "other"), None)
 
@@ -118,8 +145,14 @@ def build_conversation_context_pack(
         related_topic_digests=related_topic_digests,
         future_evidence_digests=future_evidence_digests,
         base_relationship_snapshot=snapshot_to_context_dict(snapshot),
-        persona_self=persona_to_context_dict(persona_self),
-        persona_other=persona_to_context_dict(persona_other),
+        persona_self=persona_to_context_dict(
+            persona_self,
+            deterministic_style_profile=style_profiles.get("self"),
+        ),
+        persona_other=persona_to_context_dict(
+            persona_other,
+            deterministic_style_profile=style_profiles.get("other"),
+        ),
         retrieval_trace={
             "related_topic_digests": related_topic_trace,
             "future_evidence_digests": future_evidence_trace,
@@ -165,16 +198,27 @@ def snapshot_to_context_dict(snapshot: RelationshipSnapshot | None) -> dict[str,
     }
 
 
-def persona_to_context_dict(persona: PersonaProfile | None) -> dict[str, object] | None:
+def persona_to_context_dict(
+    persona: PersonaProfile | None,
+    *,
+    deterministic_style_profile: dict[str, object] | None = None,
+) -> dict[str, object] | None:
     if persona is None:
-        return None
-    return {
+        if deterministic_style_profile is None:
+            return None
+        return {
+            "deterministic_style_profile": deterministic_style_profile,
+        }
+    payload = {
         "global_persona_summary": persona.global_persona_summary,
         "style_traits": persona.style_traits,
         "conflict_traits": persona.conflict_traits,
         "relationship_specific_patterns": persona.relationship_specific_patterns,
         "confidence": persona.confidence,
     }
+    if deterministic_style_profile is not None:
+        payload["deterministic_style_profile"] = deterministic_style_profile
+    return payload
 
 
 def load_related_topic_digests(
@@ -542,3 +586,371 @@ def _future_time_proximity_score(*, target_timestamp: str, evidence_end_time: ob
     if evidence_value == 0.0 or target_value == 0.0:
         return 0.0
     return -max(0.0, evidence_value - target_value)
+
+
+def _build_role_style_profiles(
+    *,
+    messages: list[Message],
+    target_message: Message,
+    snapshot: RelationshipSnapshot | None,
+) -> dict[str, dict[str, object]]:
+    cutoff_key = _message_model_sort_key(target_message)
+    cutoff_safe_messages = [
+        message
+        for message in sorted(messages, key=_message_model_sort_key)
+        if _message_model_sort_key(message) < cutoff_key and _is_style_eligible_message(message)
+    ]
+    recent_window_messages = cutoff_safe_messages[-RECENT_INTERACTION_WINDOW_MESSAGES:]
+    return {
+        "self": _build_role_style_profile(
+            role="self",
+            cutoff_safe_messages=cutoff_safe_messages,
+            recent_window_messages=recent_window_messages,
+            snapshot=snapshot,
+        ),
+        "other": _build_role_style_profile(
+            role="other",
+            cutoff_safe_messages=cutoff_safe_messages,
+            recent_window_messages=recent_window_messages,
+            snapshot=snapshot,
+        ),
+    }
+
+
+def _build_role_style_profile(
+    *,
+    role: str,
+    cutoff_safe_messages: list[Message],
+    recent_window_messages: list[Message],
+    snapshot: RelationshipSnapshot | None,
+) -> dict[str, object]:
+    global_role_messages = [message for message in cutoff_safe_messages if message.speaker_role == role]
+    recent_role_messages = [message for message in recent_window_messages if message.speaker_role == role]
+    if not recent_role_messages:
+        recent_role_messages = global_role_messages[-RECENT_ROLE_STYLE_SAMPLE_SIZE:]
+
+    global_style = _summarize_style_window(global_role_messages)
+    current_relationship_style = _summarize_style_window(recent_role_messages)
+    global_reply_pattern = _summarize_reply_pattern(messages=cutoff_safe_messages, role=role)
+    recent_reply_pattern = _summarize_reply_pattern(
+        messages=recent_window_messages or cutoff_safe_messages[-RECENT_INTERACTION_WINDOW_MESSAGES:],
+        role=role,
+    )
+    reply_envelope = _build_reply_envelope(
+        global_style=global_style,
+        current_relationship_style=current_relationship_style,
+        global_reply_pattern=global_reply_pattern,
+        recent_reply_pattern=recent_reply_pattern,
+        snapshot=snapshot,
+    )
+    return {
+        "style_profile_version": "deterministic-style-v1",
+        "source_scope": "cutoff_safe_messages_only",
+        "global_style": global_style,
+        "current_relationship_style": current_relationship_style,
+        "reply_pattern": {
+            "global_average_run_length": global_reply_pattern["average_run_length"],
+            "recent_average_run_length": recent_reply_pattern["average_run_length"],
+            "multi_message_run_ratio": recent_reply_pattern["multi_message_run_ratio"],
+            "short_burst_ratio": recent_reply_pattern["short_burst_ratio"],
+            "max_run_length": recent_reply_pattern["max_run_length"],
+            "preferred_bubble_mode": reply_envelope["preferred_bubble_mode"],
+        },
+        "reply_envelope": reply_envelope,
+        "generation_hints": _build_generation_hints(
+            global_style=global_style,
+            current_relationship_style=current_relationship_style,
+            reply_envelope=reply_envelope,
+        ),
+    }
+
+
+def _summarize_style_window(messages: list[Message]) -> dict[str, object]:
+    texts = [_style_text(message) for message in messages]
+    lengths = [len(text) for text in texts if text]
+    sample_size = len(lengths)
+    question_ratio = _message_ratio(
+        sum(1 for text in texts if "?" in text or "？" in text),
+        sample_size,
+    )
+    exclamation_ratio = _message_ratio(
+        sum(1 for text in texts if "!" in text or "！" in text),
+        sample_size,
+    )
+    return {
+        "sample_size": sample_size,
+        "average_chars": _average(lengths),
+        "median_chars": _median(lengths),
+        "short_message_ratio": _message_ratio(
+            sum(1 for length in lengths if length <= SHORT_STYLE_MESSAGE_CHAR_LIMIT),
+            sample_size,
+        ),
+        "long_message_ratio": _message_ratio(
+            sum(1 for length in lengths if length >= LONG_STYLE_MESSAGE_CHAR_LIMIT),
+            sample_size,
+        ),
+        "question_ratio": question_ratio,
+        "exclamation_ratio": exclamation_ratio,
+        "conflict_signal_ratio": _message_ratio(
+            sum(1 for text in texts if _text_has_sensitive_signal(text)),
+            sample_size,
+        ),
+        "frequent_particles": _top_message_signals(texts=texts, signals=STYLE_PARTICLES),
+        "frequent_punctuation": _top_message_signals(texts=texts, signals=STYLE_PUNCTUATION),
+    }
+
+
+def _summarize_reply_pattern(*, messages: list[Message], role: str) -> dict[str, object]:
+    role_runs = _collect_role_runs(messages=messages, role=role)
+    if not role_runs:
+        return {
+            "average_run_length": 0.0,
+            "multi_message_run_ratio": 0.0,
+            "short_burst_ratio": 0.0,
+            "max_run_length": 0,
+        }
+
+    run_lengths = [len(run) for run in role_runs]
+    short_burst_count = 0
+    for run in role_runs:
+        if len(run) < 2:
+            continue
+        if all(len(_style_text(message)) <= SHORT_STYLE_MESSAGE_CHAR_LIMIT for message in run):
+            short_burst_count += 1
+    return {
+        "average_run_length": _average(run_lengths),
+        "multi_message_run_ratio": _message_ratio(
+            sum(1 for length in run_lengths if length >= 2),
+            len(role_runs),
+        ),
+        "short_burst_ratio": _message_ratio(short_burst_count, len(role_runs)),
+        "max_run_length": max(run_lengths),
+    }
+
+
+def _build_reply_envelope(
+    *,
+    global_style: dict[str, object],
+    current_relationship_style: dict[str, object],
+    global_reply_pattern: dict[str, object],
+    recent_reply_pattern: dict[str, object],
+    snapshot: RelationshipSnapshot | None,
+) -> dict[str, object]:
+    recent_sample_size = int(current_relationship_style["sample_size"])
+    median_chars = int(current_relationship_style["median_chars"] or global_style["median_chars"] or 0)
+    short_ratio = float(
+        current_relationship_style["short_message_ratio"]
+        if recent_sample_size > 0
+        else global_style["short_message_ratio"]
+    )
+    if recent_sample_size == 0 and int(global_style["sample_size"]) == 0:
+        length_style = "medium"
+        max_chars = 24
+    elif median_chars <= SHORT_STYLE_MESSAGE_CHAR_LIMIT or short_ratio >= 0.6:
+        length_style = "short"
+        max_chars = max(18, min(28, median_chars + 10 if median_chars > 0 else 18))
+    elif median_chars <= 24:
+        length_style = "medium"
+        max_chars = max(28, min(52, median_chars + 16 if median_chars > 0 else 36))
+    else:
+        length_style = "long"
+        max_chars = max(40, min(88, median_chars + 20 if median_chars > 0 else 56))
+
+    short_burst_ratio = max(
+        float(recent_reply_pattern["short_burst_ratio"]),
+        float(global_reply_pattern["short_burst_ratio"]),
+    )
+    multi_message_run_ratio = max(
+        float(recent_reply_pattern["multi_message_run_ratio"]),
+        float(global_reply_pattern["multi_message_run_ratio"]),
+    )
+    max_run_length = max(
+        int(recent_reply_pattern["max_run_length"]),
+        int(global_reply_pattern["max_run_length"]),
+    )
+    if short_burst_ratio >= 0.34 or (multi_message_run_ratio >= 0.4 and max_run_length >= 2):
+        preferred_bubble_mode = "double_short"
+        max_bubble_count = 2
+    else:
+        preferred_bubble_mode = "single"
+        max_bubble_count = 1
+
+    question_ratio = float(
+        current_relationship_style["question_ratio"]
+        if recent_sample_size > 0
+        else global_style["question_ratio"]
+    )
+    if question_ratio >= 0.45:
+        question_tendency = "high"
+    elif question_ratio >= 0.2:
+        question_tendency = "medium"
+    else:
+        question_tendency = "low"
+
+    return {
+        "length_style": length_style,
+        "max_chars": max_chars,
+        "max_bubble_count": max_bubble_count,
+        "max_clauses": max_bubble_count,
+        "preferred_bubble_mode": preferred_bubble_mode,
+        "question_tendency": question_tendency,
+        "pressure_expression_cap": _resolve_pressure_expression_cap(
+            global_style=global_style,
+            current_relationship_style=current_relationship_style,
+            snapshot=snapshot,
+        ),
+    }
+
+
+def _resolve_pressure_expression_cap(
+    *,
+    global_style: dict[str, object],
+    current_relationship_style: dict[str, object],
+    snapshot: RelationshipSnapshot | None,
+) -> str:
+    conflict_signal_ratio = max(
+        float(global_style["conflict_signal_ratio"]),
+        float(current_relationship_style["conflict_signal_ratio"]),
+    )
+    tension_rank = _state_intensity_rank(snapshot.tension_level if snapshot is not None else None)
+    defensiveness_rank = _state_intensity_rank(snapshot.defensiveness_level if snapshot is not None else None)
+    has_active_sensitive_topics = bool(snapshot and snapshot.unresolved_conflict_flags)
+
+    if tension_rank >= 2 or defensiveness_rank >= 2 or conflict_signal_ratio >= 0.4:
+        return "guarded_brief"
+    if tension_rank >= 1 or defensiveness_rank >= 1 or has_active_sensitive_topics or conflict_signal_ratio >= 0.2:
+        return "soft_but_limited"
+    return "natural_but_not_expansive"
+
+
+def _build_generation_hints(
+    *,
+    global_style: dict[str, object],
+    current_relationship_style: dict[str, object],
+    reply_envelope: dict[str, object],
+) -> list[str]:
+    hints = [
+        _build_length_hint(reply_envelope=reply_envelope),
+        _build_bubble_hint(reply_envelope=reply_envelope),
+    ]
+    particles = list(current_relationship_style["frequent_particles"]) or list(global_style["frequent_particles"])
+    if particles:
+        hints.append(f"常见语气词可参考：{'、'.join(particles)}。")
+
+    punctuation = list(current_relationship_style["frequent_punctuation"]) or list(global_style["frequent_punctuation"])
+    if punctuation:
+        hints.append(f"常见标点倾向可参考：{' '.join(punctuation)}。")
+
+    hints.append(_build_pressure_hint(reply_envelope=reply_envelope))
+    if reply_envelope["question_tendency"] == "low":
+        hints.append("没有明显需要确认时，不要连续追问或堆叠多个问题。")
+    elif reply_envelope["question_tendency"] == "high":
+        hints.append("可以保留轻问一句的习惯，但仍受长度上限和当前关系强度约束。")
+    return hints
+
+
+def _build_length_hint(*, reply_envelope: dict[str, object]) -> str:
+    max_chars = int(reply_envelope["max_chars"])
+    length_style = str(reply_envelope["length_style"])
+    if length_style == "short":
+        return f"优先用偏短句回复，单条尽量不超过{max_chars}字，避免长篇解释或心理分析。"
+    if length_style == "medium":
+        return f"优先保持中短句节奏，单条尽量不超过{max_chars}字，不要展开成整段长文。"
+    return f"即使允许相对完整，也尽量控制在{max_chars}字以内，保持口语化而不是长篇总结。"
+
+
+def _build_bubble_hint(*, reply_envelope: dict[str, object]) -> str:
+    max_bubble_count = int(reply_envelope["max_bubble_count"])
+    if max_bubble_count <= 1:
+        return "默认单泡回复，不要拆成连续多条。"
+    return f"若需要拆泡，最多拆成{max_bubble_count}条短泡，每条保持短句，不要无限拆分。"
+
+
+def _build_pressure_hint(*, reply_envelope: dict[str, object]) -> str:
+    pressure_cap = str(reply_envelope["pressure_expression_cap"])
+    if pressure_cap == "guarded_brief":
+        return "有压力时优先简短确认、轻接或保留，不要突然长篇解释、深入复盘或高强度安抚。"
+    if pressure_cap == "soft_but_limited":
+        return "有压力时可以软化语气，但只做有限承接，不要一下展开很多。"
+    return "即使气氛较稳，也保持原本节奏，不要突然比平时更会说或更深。"
+
+
+def _collect_role_runs(*, messages: list[Message], role: str) -> list[list[Message]]:
+    runs: list[list[Message]] = []
+    current_run: list[Message] = []
+    for message in messages:
+        if message.speaker_role == role:
+            current_run.append(message)
+            continue
+        if current_run:
+            runs.append(current_run)
+            current_run = []
+    if current_run:
+        runs.append(current_run)
+    return runs
+
+
+def _top_message_signals(*, texts: list[str], signals: tuple[str, ...]) -> list[str]:
+    counts: list[tuple[int, str]] = []
+    lowered_texts = [text.casefold() for text in texts if text]
+    for signal in signals:
+        hit_count = sum(1 for text in lowered_texts if signal.casefold() in text)
+        if hit_count > 0:
+            counts.append((hit_count, signal))
+    counts.sort(key=lambda item: (-item[0], item[1]))
+    return [signal for _count, signal in counts[:MAX_STYLE_SIGNAL_ITEMS]]
+
+
+def _is_style_eligible_message(message: Message) -> bool:
+    if message.message_type != "text":
+        return False
+    text = _style_text(message)
+    if not text:
+        return False
+    return PLACEHOLDER_MESSAGE_PATTERN.fullmatch(text) is None
+
+
+def _style_text(message: Message) -> str:
+    return str(message.content_text or "").strip()
+
+
+def _message_model_sort_key(message: Message) -> tuple[str, int, int]:
+    return (str(message.timestamp), int(message.sequence_no), int(message.id))
+
+
+def _text_has_sensitive_signal(text: str) -> bool:
+    haystack = text.casefold()
+    return any(keyword.casefold() in haystack for keyword in SENSITIVE_KEYWORDS)
+
+
+def _average(values: list[int]) -> float:
+    if not values:
+        return 0.0
+    return round(sum(values) / len(values), 2)
+
+
+def _median(values: list[int]) -> int:
+    if not values:
+        return 0
+    ordered = sorted(values)
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return int(ordered[midpoint])
+    return int(round((ordered[midpoint - 1] + ordered[midpoint]) / 2))
+
+
+def _message_ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 2)
+
+
+def _state_intensity_rank(value: object) -> int:
+    normalized = str(value or "").casefold()
+    if not normalized:
+        return 0
+    if "high" in normalized or normalized in {"高", "偏高"}:
+        return 2
+    if "medium" in normalized or normalized in {"中", "中等"}:
+        return 1
+    return 0

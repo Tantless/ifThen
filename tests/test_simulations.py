@@ -654,6 +654,228 @@ def test_context_builder_prioritizes_sensitive_future_evidence_on_target_topic(t
     assert context_pack["retrieval_trace"]["related_topic_digests"][0]["selection_reasons"][0] == "target_topic_overlap"
 
 
+def test_context_builder_adds_deterministic_style_profile_to_persona(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=9,
+        )
+        session.add(batch)
+        session.flush()
+
+        messages = [
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=1,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:10:00",
+                content_text="嗯",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=2,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:10:10",
+                content_text="好呀～",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=3,
+                speaker_name="Tantless",
+                speaker_role="self",
+                timestamp="2025-03-02T20:11:00",
+                content_text="那我慢慢说",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=4,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:12:00",
+                content_text="别急呀",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=5,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:12:15",
+                content_text="慢一点也行",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=6,
+                speaker_name="Tantless",
+                speaker_role="self",
+                timestamp="2025-03-02T20:13:00",
+                content_text="好",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=7,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:14:00",
+                content_text="嗯，那你说吧",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=8,
+                speaker_name="Tantless",
+                speaker_role="self",
+                timestamp="2025-03-02T20:15:00",
+                content_text="目标消息",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=9,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:16:00",
+                content_text="未来消息不应进入风格样本",
+                message_type="text",
+            ),
+        ]
+        session.add_all(messages)
+        session.flush()
+
+        prior_segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=messages[0].id,
+            end_message_id=messages[6].id,
+            start_time="2025-03-02T20:10:00",
+            end_time="2025-03-02T20:14:00",
+            message_count=7,
+            self_message_count=2,
+            other_message_count=5,
+            segment_kind="normal",
+            source_message_ids=[message.id for message in messages[:7]],
+        )
+        target_segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=messages[7].id,
+            end_message_id=messages[7].id,
+            start_time="2025-03-02T20:15:00",
+            end_time="2025-03-02T20:15:00",
+            message_count=1,
+            self_message_count=1,
+            other_message_count=0,
+            segment_kind="normal",
+            source_message_ids=[messages[7].id],
+        )
+        future_segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=messages[8].id,
+            end_message_id=messages[8].id,
+            start_time="2025-03-02T20:16:00",
+            end_time="2025-03-02T20:16:00",
+            message_count=1,
+            self_message_count=0,
+            other_message_count=1,
+            segment_kind="normal",
+            source_message_ids=[messages[8].id],
+        )
+        session.add_all([prior_segment, target_segment, future_segment])
+        session.flush()
+
+        session.add(
+            RelationshipSnapshot(
+                conversation_id=conversation.id,
+                as_of_message_id=messages[6].id,
+                as_of_time="2025-03-02T20:14:00",
+                relationship_temperature="warm",
+                tension_level="medium",
+                openness_level="medium",
+                initiative_balance="balanced",
+                defensiveness_level="medium",
+                unresolved_conflict_flags=["推进节奏"],
+                relationship_phase="warming",
+                snapshot_summary="在轻松里带一点保留。",
+            )
+        )
+        session.add_all(
+            [
+                PersonaProfile(
+                    conversation_id=conversation.id,
+                    subject_role="self",
+                    global_persona_summary="会补充解释",
+                    style_traits=["直接"],
+                    conflict_traits=["解释"],
+                    relationship_specific_patterns=["愿意继续说"],
+                    evidence_segment_ids=[prior_segment.id],
+                    confidence=0.8,
+                ),
+                PersonaProfile(
+                    conversation_id=conversation.id,
+                    subject_role="other",
+                    global_persona_summary="偏简短，爱用轻语气词",
+                    style_traits=["简短", "轻接"],
+                    conflict_traits=["保留"],
+                    relationship_specific_patterns=["连续短句回应"],
+                    evidence_segment_ids=[prior_segment.id],
+                    confidence=0.86,
+                ),
+            ]
+        )
+
+        target_message = session.get(Message, messages[7].id)
+        assert target_message is not None
+        context_pack = build_conversation_context_pack(
+            session,
+            conversation_id=conversation.id,
+            target_message=target_message,
+            replacement_content="如果你方便的话，我慢慢说",
+        )
+
+    other_style_profile = context_pack["persona_other"]["deterministic_style_profile"]
+    assert other_style_profile["style_profile_version"] == "deterministic-style-v1"
+    assert other_style_profile["source_scope"] == "cutoff_safe_messages_only"
+    assert other_style_profile["global_style"]["sample_size"] == 5
+    assert "嗯" in other_style_profile["global_style"]["frequent_particles"]
+    assert other_style_profile["current_relationship_style"]["short_message_ratio"] >= 0.6
+    assert other_style_profile["reply_pattern"]["preferred_bubble_mode"] == "double_short"
+    assert other_style_profile["reply_envelope"]["max_bubble_count"] == 2
+    assert other_style_profile["reply_envelope"]["pressure_expression_cap"] == "soft_but_limited"
+    assert any("最多拆成2条短泡" in hint for hint in other_style_profile["generation_hints"])
+    assert any("有压力时可以软化语气，但只做有限承接" in hint for hint in other_style_profile["generation_hints"])
+
+
 def test_context_builder_keeps_snapshot_and_prior_segment_when_topic_links_missing(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()
@@ -1017,10 +1239,14 @@ def test_simulation_engine_returns_first_reply_and_short_thread(tmp_path, monkey
     assert "- 有没有把首轮回复写得过于理想化或过于会说话" in first_reply_prompt
     assert "避免分析腔、治疗腔、总结腔或过度完整的书面表达" in first_reply_prompt
     assert "宁可短一点、留一点，也不要假装对方突然很会说" in first_reply_prompt
+    assert "deterministic style profile" in first_reply_prompt
+    assert "最多两条短泡" in first_reply_prompt
+    assert "长篇分析" in fake_llm.calls[1]["system_prompt"]
     assert '"reply_strategy": "light_follow_up"' in first_reply_prompt
     assert '"replacement_content": "如果你方便的话，我们慢慢聊就好"' in first_reply_prompt
     assert '"speaker_role": "self"' in first_reply_prompt
     assert '"message_text": "如果你方便的话，我们慢慢聊就好"' in first_reply_prompt
+    assert '"max_bubble_count": 1' in first_reply_prompt
     assert fake_llm.calls[2]["system_prompt"] == NEXT_TURN_SYSTEM_PROMPT
     assert "你是一个“截止安全”的反事实多轮续写器。" in fake_llm.calls[2]["system_prompt"]
     assert "你每次只生成“指定说话者”的下一句消息" in fake_llm.calls[2]["system_prompt"]
@@ -1039,6 +1265,7 @@ def test_simulation_engine_returns_first_reply_and_short_thread(tmp_path, monkey
     assert "- 有没有让这一轮说得比当前关系允许的更多、更深、更热" in next_turn_prompt
     assert "允许自然变短、自然停住，不以把对话写完整为目标" in next_turn_prompt
     assert "如果继续只会重复礼貌承接或轻微改写上一句，应优先收束" in next_turn_prompt
+    assert "当前说话者 deterministic style profile JSON:" in next_turn_prompt
     assert '"speaker_role": "self"' in next_turn_prompt
     assert '"reply_strategy": "light_follow_up"' in next_turn_prompt
     assert '"message_text": "好呀，那我们就慢慢聊，别着急。"' in next_turn_prompt

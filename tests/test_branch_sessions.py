@@ -358,6 +358,9 @@ def test_run_next_branch_reply_job_persists_only_other_reply(tmp_path, monkeypat
     assert llm.calls[0]["response_model"] is BranchReplyPayload
     assert "只能生成 other" in llm.calls[0]["system_prompt"]
     assert "persona_other" in llm.calls[0]["user_prompt"]
+    assert "persona_other deterministic style profile JSON:" in llm.calls[0]["user_prompt"]
+    assert '"max_bubble_count": 1' in llm.calls[0]["user_prompt"]
+    assert "默认单泡回复，不要拆成连续多条。" in llm.calls[0]["user_prompt"]
     assert "如果你方便的话，我们慢慢聊就好" in llm.calls[0]["user_prompt"]
 
 

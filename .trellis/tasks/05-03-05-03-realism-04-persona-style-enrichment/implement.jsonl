@@ -1,0 +1,5 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Context-pack style fields cross retrieval, simulation, and branch session boundaries."}
+{"file": ".trellis/spec/shared/code-quality.md", "reason": "Keep deterministic style-profile changes typed and narrowly scoped."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Centralize deterministic style-profile logic in shared context builder."}
