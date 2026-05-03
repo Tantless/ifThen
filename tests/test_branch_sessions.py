@@ -93,7 +93,7 @@ def _reply(text: str = "好，那我们慢慢说。") -> BranchReplyPayload:
     )
 
 
-def _seed_ready_conversation(tmp_path, monkeypatch) -> int:
+def _seed_ready_conversation(tmp_path, monkeypatch, *, include_future_evidence: bool = False) -> int:
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()
 
@@ -114,7 +114,7 @@ def _seed_ready_conversation(tmp_path, monkeypatch) -> int:
             source_file_name="聊天记录.txt",
             source_file_path=str(tmp_path / "seed.txt"),
             source_file_hash="abc123",
-            message_count_hint=4,
+            message_count_hint=6 if include_future_evidence else 4,
         )
         session.add(batch)
         session.flush()
@@ -159,7 +159,30 @@ def _seed_ready_conversation(tmp_path, monkeypatch) -> int:
             content_text="我们已成功添加为好友，现在可以开始聊天啦～",
             message_type="text",
         )
-        session.add_all([prior_other, prior_self, target_other, target_self])
+        messages = [prior_other, prior_self, target_other, target_self]
+        if include_future_evidence:
+            future_self = Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=5,
+                speaker_name="Tantless",
+                speaker_role="self",
+                timestamp="2025-03-02T20:30:00",
+                content_text="那我可以多问一点吗",
+                message_type="text",
+            )
+            future_other = Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=6,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:30:20",
+                content_text="先不要追问吧，我会有压力",
+                message_type="text",
+            )
+            messages.extend([future_self, future_other])
+        session.add_all(messages)
         session.flush()
 
         prior_segment = Segment(
@@ -186,7 +209,23 @@ def _seed_ready_conversation(tmp_path, monkeypatch) -> int:
             segment_kind="normal",
             source_message_ids=[target_other.id, target_self.id],
         )
-        session.add_all([prior_segment, target_segment])
+        segments = [prior_segment, target_segment]
+        future_segment = None
+        if include_future_evidence:
+            future_segment = Segment(
+                conversation_id=conversation.id,
+                start_message_id=future_self.id,
+                end_message_id=future_other.id,
+                start_time="2025-03-02T20:30:00",
+                end_time="2025-03-02T20:30:20",
+                message_count=2,
+                self_message_count=1,
+                other_message_count=1,
+                segment_kind="normal",
+                source_message_ids=[future_self.id, future_other.id],
+            )
+            segments.append(future_segment)
+        session.add_all(segments)
         session.flush()
 
         session.add(
@@ -211,13 +250,39 @@ def _seed_ready_conversation(tmp_path, monkeypatch) -> int:
             topic_name="开场聊天",
             topic_summary="双方在建立联系。",
             first_seen_at="2025-03-02T20:17:00",
-            last_seen_at="2025-03-02T20:17:30",
-            segment_count=1,
+            last_seen_at="2025-03-02T20:30:20" if include_future_evidence else "2025-03-02T20:17:30",
+            segment_count=2 if include_future_evidence else 1,
             topic_status="ongoing",
         )
         session.add(topic)
         session.flush()
         session.add(TopicLink(topic_id=topic.id, segment_id=prior_segment.id, link_reason="段摘要高度相似", score=1.0))
+        if include_future_evidence and future_segment is not None:
+            session.add(
+                SegmentSummary(
+                    segment_id=future_segment.id,
+                    summary_text="后续对方明确说先不要追问，继续推进会让对方有压力。",
+                    main_topics=["推进边界", "压力"],
+                    self_stance="想继续追问",
+                    other_stance="明确要求先不要追问",
+                    emotional_tone="紧张",
+                    interaction_pattern="边界表达",
+                    has_conflict=True,
+                    has_repair=False,
+                    has_closeness_signal=False,
+                    outcome="对方收缩",
+                    relationship_impact="negative",
+                    confidence=0.86,
+                )
+            )
+            session.add(
+                TopicLink(
+                    topic_id=topic.id,
+                    segment_id=future_segment.id,
+                    link_reason="后续同话题显示推进边界",
+                    score=0.95,
+                )
+            )
         session.add(
             RelationshipSnapshot(
                 conversation_id=conversation.id,
@@ -362,6 +427,25 @@ def test_run_next_branch_reply_job_persists_only_other_reply(tmp_path, monkeypat
     assert '"max_bubble_count": 1' in llm.calls[0]["user_prompt"]
     assert "默认单泡回复，不要拆成连续多条。" in llm.calls[0]["user_prompt"]
     assert "如果你方便的话，我们慢慢聊就好" in llm.calls[0]["user_prompt"]
+
+
+def test_realtime_branch_reply_prompt_treats_future_evidence_as_modeler_only(tmp_path, monkeypatch):
+    target_message_id = _seed_ready_conversation(tmp_path, monkeypatch, include_future_evidence=True)
+    with TestClient(create_app()) as client:
+        _create_branch_session(client, target_message_id=target_message_id)
+        assert client.post("/branch-sessions/1/reply-jobs").status_code == 202
+
+    llm = FakeBranchLLM([_reply("嗯，先慢慢说。")])
+
+    assert run_next_branch_reply_job(llm_client=llm) is True
+
+    prompt = llm.calls[0]["user_prompt"]
+    assert "modeler-only future evidence JSONL:" in prompt
+    assert "后续对方明确说先不要追问，继续推进会让对方有压力。" in prompt
+    assert "不得引用、复述或暗示 future evidence 中的拒绝、偏好、解释或关系状态。" in prompt
+    assert "当前 branch_transcript 与 pending_self_messages 是分支事实源" in prompt
+    assert "不要把原时间线后续事件强行搬进分支" in prompt
+    assert '"use_policy": "modeler_only_not_character_known"' in prompt
 
 
 def test_run_next_branch_reply_job_discards_superseded_result(tmp_path, monkeypatch):

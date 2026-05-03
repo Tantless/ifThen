@@ -26,6 +26,20 @@ class BranchAssessmentPayload(BaseModel):
     other_immediate_feeling: str
     reply_strategy: str
     risk_flags: list[str] = Field(default_factory=list)
+    modeler_only_risk_sources: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Modeler-only future evidence signals that made the assessment more conservative; "
+            "these must never be treated as character-known facts or quoted in generated dialogue."
+        ),
+    )
+    leakage_boundary_notes: str = Field(
+        default="",
+        description=(
+            "Brief note separating character-known cutoff-safe facts, modeler-only future evidence, "
+            "and branch-only facts for downstream reply generation."
+        ),
+    )
     confidence: float
 
 
@@ -57,16 +71,17 @@ BRANCH_SYSTEM_PROMPT = (
     "你的任务不是直接生成回复文本，而是判断：把原消息改写成新消息后，"
     "对方会如何即时理解，这会让关系状态朝哪个方向发生多大幅度的变化，以及对方首轮最可能采取什么回应策略。"
     "你必须遵守以下规则："
-    "1. 只能依据当前提供的原消息、改写消息、当前段历史前文、同日更早上下文、相关话题摘要、双方 persona 和当前关系状态进行判断。"
-    "2. 绝对不能引用这些材料之外的信息，更不能引入未来发生的内容。"
+    "1. 只能依据当前提供的分层证据进行判断：cutoff-safe facts 是角色当时可知事实，future evidence 只是 modeler-only 证据，branch facts 只来自当前反事实分支。"
+    "2. 可以用 future evidence 调整风险、置信度和保守程度，但绝对不能把它写成角色已知事实，也不能生成具体回复文本。"
     "3. 你的核心任务是判断“改写相对原话改变了什么”，而不是孤立评价新话本身。"
     "4. 变化幅度必须保守；更柔和、更体面、更容易接住，不等于关系就会明显转向。"
     "5. 先比较原话和改写分别触发了什么，再判断状态变化。"
     "6. other_immediate_feeling、reply_strategy、risk_flags 各自职责不同，不能互相重复或混淆。"
     "7. reply_strategy 只描述对方最可能采取的回应方式，不要越界生成具体回复文本。"
     "8. risk_flags 必须保留仍未消失的风险，不要因为改写更好一点就把所有风险抹平。"
-    "9. 如果证据不足，必须选择更克制、更有限的状态变化判断，而不是戏剧化乐观推演。"
-    "10. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+    "9. modeler_only_risk_sources 只能记录让判断更保守的未来证据信号，不能写成对方当时知道或说过。"
+    "10. 如果证据不足，必须选择更克制、更有限的状态变化判断，而不是戏剧化乐观推演。"
+    "11. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 
 FIRST_REPLY_SYSTEM_PROMPT = (
@@ -74,17 +89,18 @@ FIRST_REPLY_SYSTEM_PROMPT = (
     "你的任务不是评估分支，而是基于已经给定的 BranchAssessment、当前关系状态、对方 persona、相关话题和当前分支对话记录，"
     "生成“对方在这条反事实分支里的第一条回复”。"
     "你必须遵守以下规则："
-    "1. 只能依据当前提供的 BranchAssessment、当前关系状态、对方 persona、相关话题摘要和当前分支对话记录进行生成。"
-    "2. 绝对不能引用这些材料之外的信息，更不能引入未来发生的内容。"
+    "1. 只能依据当前提供的 BranchAssessment、当前关系状态、对方 persona、cutoff-safe 话题摘要和当前分支对话记录进行生成。"
+    "2. future evidence 若出现，只是 modeler-only 约束，只能让表达更保守、更有限，绝对不能被引用、复述或暗示成对方当时知道的内容。"
     "3. 你生成的是“首轮回复”，不是整段对话，不要抢跑到后续多轮发展。"
     "4. 回复必须符合对方 persona、当前关系状态和 BranchAssessment 指定的 reply_strategy，而不是单纯把改写内容顺着说得更好听。"
     "5. 回复应优先追求真实、克制、符合当下关系允许的表达强度，而不是追求戏剧性、理想化或过度治愈。"
     "6. 如果当前关系的 openness 有限、tension 偏高或 defensiveness 仍在，回复可以是有限承接、轻接一下、保留式回应、谨慎确认，而不必强行展开。"
     "7. 若 persona_other.deterministic_style_profile 指定偏短句、单泡或压力下保留边界，必须优先服从，不能写成长篇分析或无限拆泡。"
-    "8. 避免分析腔、治疗腔、总结腔或过度完整的书面表达。"
-    "9. first_reply_text、strategy_used、first_reply_style_notes、state_after_turn 各自职责不同，不能互相重复或混淆。"
-    "10. state_after_turn 只估计这条首轮回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
-    "11. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+    "8. 不得说“后来”“我之后说过”“其实我一直喜欢/不喜欢”这类把 cutoff 后事实带进角色台词的话。"
+    "9. 避免分析腔、治疗腔、总结腔或过度完整的书面表达。"
+    "10. first_reply_text、strategy_used、first_reply_style_notes、state_after_turn 各自职责不同，不能互相重复或混淆。"
+    "11. state_after_turn 只估计这条首轮回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
+    "12. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 
 NEXT_TURN_SYSTEM_PROMPT = (
@@ -92,16 +108,17 @@ NEXT_TURN_SYSTEM_PROMPT = (
     "你的任务是在已给定的分支判断、当前分支状态和已有 transcript 基础上，"
     "继续生成这条反事实分支中“指定说话者”的下一句消息，并估计这一句之后的即时状态。"
     "你必须遵守以下规则："
-    "1. 只能依据当前提供的 BranchAssessment、当前分支状态、指定说话者 persona、相关话题摘要和当前 transcript 进行生成。"
-    "2. 绝对不能引用这些材料之外的信息，更不能引入未来发生的内容。"
+    "1. 只能依据当前提供的 BranchAssessment、当前分支状态、指定说话者 persona、cutoff-safe 话题摘要和当前 branch transcript 进行生成。"
+    "2. future evidence 若出现，只是 modeler-only 人格稳定和风险约束，不能被写成角色在分支里知道或经历过的事实。"
     "3. 你每次只生成“指定说话者”的下一句消息，不要替对方多说，也不要提前写后续轮次。"
     "4. 生成必须符合当前分支已经形成的节奏、关系状态和 persona，不要突然变得更热、更深、更会说话。"
     "5. 若指定说话者 persona 的 deterministic_style_profile 指定偏短句、单泡或压力下保留边界，必须优先服从。"
-    "6. state_after_turn 只估计这一轮之后的即时状态，不要把单轮变化夸大成长期关系反转。"
-    "7. should_stop 用于判断这条分支是否应当自然收束；只有在继续说下去明显不自然、只会机械重复或当前轮已形成自然收口时才设为 true。"
-    "8. 允许自然变短、自然停住，不以把对话写完整为目标。"
-    "9. 你必须主动避免机械重复、原地打转、只换说法复述上一轮、或让双方异常理想化地持续推进。"
-    "10. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+    "6. 当前 branch transcript 是分支事实源；不要把原时间线后续事件强行搬进分支。"
+    "7. state_after_turn 只估计这一轮之后的即时状态，不要把单轮变化夸大成长期关系反转。"
+    "8. should_stop 用于判断这条分支是否应当自然收束；只有在继续说下去明显不自然、只会机械重复或当前轮已形成自然收口时才设为 true。"
+    "9. 允许自然变短、自然停住，不以把对话写完整为目标。"
+    "10. 你必须主动避免机械重复、原地打转、只换说法复述上一轮、或让双方异常理想化地持续推进。"
+    "11. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 
 BRANCH_REPLY_SYSTEM_PROMPT = (
@@ -112,10 +129,11 @@ BRANCH_REPLY_SYSTEM_PROMPT = (
     "2. 用户实时输入是事实源；persona_self 只能帮助理解用户风格，不能覆盖、改写或忽略用户刚说的话。"
     "3. persona_other 是主要生成约束，回复长度、语气、回避/承接方式和关系推进上限都必须受它约束。"
     "4. session_memory_pack 中的 cutoff-safe 材料可作为角色当时可知上下文；未来原时间线证据若出现，只能影响风险和保守程度，不能写成 other 已知内容。"
-    "5. 若 persona_other.deterministic_style_profile 指定偏短句、单泡或压力下保留边界，必须优先服从，不能长篇分析或无限拆泡。"
-    "6. 回复必须符合当前 branch transcript 和 current_branch_state，不要突然变得更热、更深、更会沟通。"
-    "7. state_after_turn 只估计这条 other 回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
-    "8. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+    "5. 当前 branch transcript 和 pending self 输入是分支事实源；不要把原时间线后续事件强行搬进分支。"
+    "6. 若 persona_other.deterministic_style_profile 指定偏短句、单泡或压力下保留边界，必须优先服从，不能长篇分析或无限拆泡。"
+    "7. 回复必须符合当前 branch transcript 和 current_branch_state，不要突然变得更热、更深、更会沟通。"
+    "8. state_after_turn 只估计这条 other 回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
+    "9. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 
 
@@ -309,6 +327,12 @@ def _build_branch_prompt(*, context_pack: dict[str, Any]) -> str:
         "- 若上下文不足、关系信号矛盾、改写影响非常细微，则应更低",
         "- 不要因为你写得完整就给高 confidence",
         "",
+        "7b. `modeler_only_risk_sources` 与 `leakage_boundary_notes` 的职责",
+        "- `modeler_only_risk_sources` 只记录来自 modeler-only future evidence 的风险信号，例如长期拒绝、偏好边界、后续防御或关系收缩证据",
+        "- 这些风险来源可以让 branch_direction、risk_flags、confidence 更保守，但不能写成 other 在 cutoff 当下知道或说过",
+        "- `leakage_boundary_notes` 要简洁说明哪些事实可作为角色已知，哪些只是 modeler-only 约束，哪些只来自当前分支",
+        "- 如果没有 future evidence，应保持为空或说明未使用 modeler-only evidence，不要编造未来风险来源",
+        "",
         "8. 关键判断提醒",
         "- 更柔和 ≠ 明显 closer",
         "- 更体面 ≠ 风险消失",
@@ -360,6 +384,7 @@ def _build_branch_prompt(*, context_pack: dict[str, Any]) -> str:
         "- 有没有把风险写没了",
         "- 有没有越界开始生成回复内容",
         "- 有没有把首轮可接性变化夸大成长期关系变化",
+        "- 有没有把 modeler-only future evidence 写成角色当时已经知道的事实",
         "",
         "推演请求 JSON:",
         _to_json_line(
@@ -379,7 +404,22 @@ def _build_branch_prompt(*, context_pack: dict[str, Any]) -> str:
         "",
         "对方人格画像 JSON:",
         _to_json_line(context_pack.get("persona_other") or {}),
+        "",
+        "证据分层策略 JSON:",
+        _to_json_line(context_pack.get("evidence_policy") or {}),
+        "",
+        "modeler-only future evidence JSONL:",
     ]
+    lines.extend(_to_json_line(item) for item in (context_pack.get("future_evidence_digests") or []))
+    lines.extend(
+        [
+            "",
+            "branch-only facts JSON:",
+            _to_json_line(context_pack.get("branch_facts") or {}),
+            "",
+            "cutoff-safe related topic digests JSONL:",
+        ]
+    )
     lines.extend(_to_json_line(item) for item in (context_pack.get("related_topic_digests") or []))
     lines.extend(
         [
@@ -459,6 +499,13 @@ def _build_first_reply_prompt(*, context_pack: dict[str, Any], assessment: dict[
         "- 不要提前生成第二轮、第三轮会发生的事",
         "- 不要为了显得好而去掉仍然存在的保留、顾虑和风险",
         "",
+        "6.5. 证据边界与 future evidence 泄漏禁止",
+        "- cutoff-safe facts 和当前分支对话记录是角色可知事实，可以影响首轮回复的具体表达",
+        "- modeler-only future evidence 只能影响表达强度、风险保守度和是否更有限，不能进入 `first_reply_text`",
+        "- 如果 future evidence 显示对方后来明确拒绝、长期不接受某类推进或偏好慢一点，回复应更克制、更有限，但不得透露这些未来证据",
+        "- 不得引用、复述或暗示 cutoff 后才发生的拒绝、偏好、解释、关系状态或后续对话",
+        "- 不得说“后来”“我之后说过”“我其实一直喜欢/不喜欢”“我后来告诉过你我喜欢……”这类把未来事实包装成角色当下认知的话",
+        "",
         "7. 质量要求：回复文本层",
         "- 要像即时发出的聊天消息，而不是分析报告",
         "- 优先自然、口语化、符合该人平时表达密度",
@@ -511,6 +558,7 @@ def _build_first_reply_prompt(*, context_pack: dict[str, Any], assessment: dict[
         "- 有没有忽视当前关系状态，把回复写得太热或太深",
         "- 有没有把 assessment 里的有限改善夸大成明显转向",
         "- 有没有在 first reply 里偷偷写进后续几轮内容",
+        "- 有没有把 modeler-only future evidence 写进 `first_reply_text`",
         "- 有没有让 `state_after_turn` 跳变过大",
         "",
         "分支请求 JSON:",
@@ -524,19 +572,38 @@ def _build_first_reply_prompt(*, context_pack: dict[str, Any], assessment: dict[
         "分支判断结果 JSON:",
         _to_json_line(assessment),
         "",
-        "当前关系状态 JSON:",
-        _to_json_line(context_pack.get("moment_state_estimate") or {}),
+        "证据分层策略 JSON:",
+        _to_json_line(context_pack.get("evidence_policy") or {}),
         "",
-        "对方人格画像 JSON:",
-        _to_json_line(persona_other),
-        "",
-        "对方 deterministic style profile JSON:",
-        _to_json_line(other_style_profile),
-        "",
-        "对方风格护栏 JSONL:",
+        "modeler-only future evidence JSONL:",
     ]
-    lines.extend(_to_json_line(item) for item in _style_hint_lines(other_style_profile))
+    lines.extend(_to_json_line(item) for item in (context_pack.get("future_evidence_digests") or []))
+    lines.extend(
+        [
+            "",
+            "branch-only facts JSON:",
+            _to_json_line(context_pack.get("branch_facts") or {}),
+            "",
+            "cutoff-safe related topic digests JSONL:",
+        ]
+    )
     lines.extend(_to_json_line(item) for item in (context_pack.get("related_topic_digests") or []))
+    lines.extend(
+        [
+            "",
+            "当前关系状态 JSON:",
+            _to_json_line(context_pack.get("moment_state_estimate") or {}),
+            "",
+            "对方人格画像 JSON:",
+            _to_json_line(persona_other),
+            "",
+            "对方 deterministic style profile JSON:",
+            _to_json_line(other_style_profile),
+            "",
+            "对方风格护栏 JSONL:",
+        ]
+    )
+    lines.extend(_to_json_line(item) for item in _style_hint_lines(other_style_profile))
     lines.extend(
         [
             "",
@@ -611,6 +678,12 @@ def _build_next_turn_prompt(
         "- 不要强行制造重大情绪升级或重大关系进展",
         "- 不要把 transcript 里没有铺垫的信息突然说出来",
         "",
+        "7.5. 证据边界与 branch transcript 优先级",
+        "- 当前 branch transcript 是分支内事实源，后续生成只能沿着它自然继续",
+        "- modeler-only future evidence 只用于人格稳定、风险保守度和关系推进上限，不能作为角色台词来源",
+        "- 如果用户在分支中改变了走向，以当前分支为准，不要把原时间线后续事件强行搬进分支",
+        "- 不得说“后来”“我之后才发现”“我后来告诉过你我喜欢/不喜欢”这类暴露 cutoff 后事实的话",
+        "",
         "8. 边界示例",
         "",
         "示例1：当前状态只是略有缓和，上一轮也只是轻接一下",
@@ -647,6 +720,7 @@ def _build_next_turn_prompt(
         "- 有没有忽视指定说话者 persona",
         "- 有没有把 state_after_turn 写得跳变过大",
         "- 有没有为了凑轮次硬继续，而不是自然推进或自然收束",
+        "- 有没有把 modeler-only future evidence 或原时间线后续事件搬进当前分支",
         "",
         "下一轮请求 JSON:",
         _to_json_line({"speaker_role": speaker_role}),
@@ -654,19 +728,38 @@ def _build_next_turn_prompt(
         "分支判断结果 JSON:",
         _to_json_line(assessment),
         "",
-        "当前分支状态 JSON:",
-        _to_json_line(current_state),
+        "证据分层策略 JSON:",
+        _to_json_line(context_pack.get("evidence_policy") or {}),
         "",
-        "当前说话者人格画像 JSON:",
-        _to_json_line(speaker_persona),
-        "",
-        "当前说话者 deterministic style profile JSON:",
-        _to_json_line(speaker_style_profile),
-        "",
-        "当前说话者风格护栏 JSONL:",
+        "modeler-only future evidence JSONL:",
     ]
-    lines.extend(_to_json_line(item) for item in _style_hint_lines(speaker_style_profile))
+    lines.extend(_to_json_line(item) for item in (context_pack.get("future_evidence_digests") or []))
+    lines.extend(
+        [
+            "",
+            "branch-only facts JSON:",
+            _to_json_line(context_pack.get("branch_facts") or {}),
+            "",
+            "cutoff-safe related topic digests JSONL:",
+        ]
+    )
     lines.extend(_to_json_line(item) for item in (context_pack.get("related_topic_digests") or []))
+    lines.extend(
+        [
+            "",
+            "当前分支状态 JSON:",
+            _to_json_line(current_state),
+            "",
+            "当前说话者人格画像 JSON:",
+            _to_json_line(speaker_persona),
+            "",
+            "当前说话者 deterministic style profile JSON:",
+            _to_json_line(speaker_style_profile),
+            "",
+            "当前说话者风格护栏 JSONL:",
+        ]
+    )
+    lines.extend(_to_json_line(item) for item in _style_hint_lines(speaker_style_profile))
     lines.extend(
         [
             "",
@@ -685,6 +778,7 @@ def _build_branch_reply_prompt(
     current_branch_state: dict[str, Any],
 ) -> str:
     compatibility_pack = ((session_memory_pack.get("compatibility") or {}).get("cutoff_safe_context_pack") or {})
+    layered_context_pack = session_memory_pack.get("layered_context_pack") or {}
     persona_other = compatibility_pack.get("persona_other") or {}
     other_style_profile = _persona_style_profile(persona_other)
     lines = [
@@ -699,6 +793,8 @@ def _build_branch_reply_prompt(
         "- persona_other 是主要生成约束。",
         "- 若 persona_other.deterministic_style_profile 指定偏短句、单泡或最多两条短泡，必须按该 envelope 控制长度和拆泡。",
         "- 如果 session_memory_pack 中存在 cutoff 后证据，只能用于保守估计风险，不能让 other 说出这些未来事实。",
+        "- 当前 branch_transcript 与 pending_self_messages 是分支事实源；不要把原时间线后续事件强行搬进分支。",
+        "- 不得引用、复述或暗示 future evidence 中的拒绝、偏好、解释或关系状态。",
         "- 如果 pending_self_messages 是连续多条 self 消息，应把它们当作同一轮用户输入一起回应。",
         "",
         "输出字段要求：",
@@ -707,20 +803,33 @@ def _build_branch_reply_prompt(
         "- `state_after_turn`：这条 other 回复之后的即时分支状态。",
         "- `generation_notes`：用 1 到 3 句说明回复如何受 persona_other、当前状态和用户最新输入约束。",
         "",
-        "session_memory_pack JSON:",
-        _to_json_line(session_memory_pack),
+        "证据分层策略 JSON:",
+        _to_json_line(layered_context_pack.get("evidence_policy") or {}),
         "",
-        "current_branch_state JSON:",
-        _to_json_line(current_branch_state),
-        "",
-        "persona_other JSON:",
-        _to_json_line(persona_other),
-        "",
-        "persona_other deterministic style profile JSON:",
-        _to_json_line(other_style_profile),
-        "",
-        "persona_other 风格护栏 JSONL:",
+        "modeler-only future evidence JSONL:",
     ]
+    lines.extend(_to_json_line(item) for item in (layered_context_pack.get("future_evidence_digests") or []))
+    lines.extend(
+        [
+            "",
+            "branch-only facts JSON:",
+            _to_json_line(layered_context_pack.get("branch_facts") or {}),
+            "",
+            "session_memory_pack JSON:",
+            _to_json_line(session_memory_pack),
+            "",
+            "current_branch_state JSON:",
+            _to_json_line(current_branch_state),
+            "",
+            "persona_other JSON:",
+            _to_json_line(persona_other),
+            "",
+            "persona_other deterministic style profile JSON:",
+            _to_json_line(other_style_profile),
+            "",
+            "persona_other 风格护栏 JSONL:",
+        ]
+    )
     lines.extend(_to_json_line(item) for item in _style_hint_lines(other_style_profile))
     lines.extend(
         [

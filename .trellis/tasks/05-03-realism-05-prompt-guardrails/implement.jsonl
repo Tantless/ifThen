@@ -1,0 +1,5 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": "plan\\realism-05-prompt-guardrails.md", "reason": "Source plan for realism-05 prompt guardrails"}
+{"file": "src\\if_then_mvp\\simulation.py", "reason": "Prompt builders and assessment payloads"}
+{"file": "tests\\test_simulations.py", "reason": "Prompt and simulation regressions"}

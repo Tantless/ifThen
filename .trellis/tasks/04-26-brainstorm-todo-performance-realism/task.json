@@ -49,7 +49,8 @@
     "05-03-05-03-realism-02-layered-evidence-context",
     "05-03-05-03-realism-02-memory-pack-review-fixes",
     "05-03-realism-03-retrieval-ranking-budget",
-    "05-03-05-03-realism-04-persona-style-enrichment"
+    "05-03-05-03-realism-04-persona-style-enrichment",
+    "05-03-realism-05-prompt-guardrails"
   ],
   "parent": null,
   "relatedFiles": [],

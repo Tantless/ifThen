@@ -1271,6 +1271,92 @@ def test_simulation_engine_returns_first_reply_and_short_thread(tmp_path, monkey
     assert '"message_text": "好呀，那我们就慢慢聊，别着急。"' in next_turn_prompt
 
 
+def test_simulation_prompts_treat_future_evidence_as_modeler_only_guardrail(tmp_path, monkeypatch):
+    context_pack = _seed_engine_context_pack(
+        tmp_path,
+        monkeypatch,
+        replacement_content="如果你不想继续聊也没关系，我听你的节奏",
+    )
+    context_pack["future_evidence_digests"] = [
+        {
+            "evidence_kind": "topic_linked_future_summary",
+            "topic_name": "推进边界",
+            "summary_text": "后续对方明确说不想被追问，也更喜欢慢一点确认边界。",
+            "supporting_segment_id": 99,
+            "relationship_impact": "negative",
+            "selection_reasons": ["target_topic_overlap", "sensitive_future_constraint"],
+        }
+    ]
+
+    fake_llm = FakeSimulationLLM(
+        [
+            BranchAssessmentPayload(
+                branch_direction="limited_positive_with_high_guardrail",
+                state_shift_summary="改写降低了压迫感，但 modeler-only evidence 显示推进边界长期敏感，因此只能判断为有限缓和。",
+                other_immediate_feeling="压力下降但仍保留",
+                reply_strategy="guarded_acknowledgement",
+                risk_flags=["推进边界仍敏感"],
+                modeler_only_risk_sources=["future_evidence: 后续明确拒绝被追问"],
+                leakage_boundary_notes="future evidence 只用于保守判断，不作为 other 当下已知事实。",
+                confidence=0.62,
+            ),
+            FirstReplyPayload(
+                first_reply_text="嗯，先慢慢来吧。",
+                strategy_used="guarded_acknowledgement",
+                first_reply_style_notes="保留式轻接，没有暴露 future evidence。",
+                state_after_turn=TurnStatePayload(**_state_payload(openness_level="medium")),
+            ),
+            NextTurnPayload(
+                message_text="好，我不催你。",
+                strategy_used="self_low_pressure_follow_up",
+                state_after_turn=TurnStatePayload(**_state_payload(openness_level="medium")),
+                generation_notes="顺着当前分支继续低压力表达。",
+                should_stop=True,
+                stopping_reason="继续推进会显得不自然。",
+            ),
+        ]
+    )
+
+    assessment = assess_branch(llm_client=fake_llm, context_pack=context_pack)
+    first_reply = generate_first_reply(
+        llm_client=fake_llm,
+        context_pack=context_pack,
+        assessment=assessment,
+    )
+    simulate_short_thread(
+        llm_client=fake_llm,
+        context_pack=context_pack,
+        assessment=assessment,
+        first_reply=first_reply,
+        turn_count=2,
+    )
+
+    assert assessment["modeler_only_risk_sources"] == ["future_evidence: 后续明确拒绝被追问"]
+    assert "later" not in first_reply.first_reply_text.lower()
+    assert "后来" not in first_reply.first_reply_text
+    assert "后续对方明确说不想被追问" not in first_reply.first_reply_text
+
+    branch_prompt = fake_llm.calls[0]["user_prompt"]
+    assert "modeler-only future evidence JSONL:" in branch_prompt
+    assert "modeler_only_risk_sources" in branch_prompt
+    assert "这些风险来源可以让 branch_direction、risk_flags、confidence 更保守" in branch_prompt
+    assert "后续对方明确说不想被追问，也更喜欢慢一点确认边界。" in branch_prompt
+    assert "不能写成 other 在 cutoff 当下知道或说过" in branch_prompt
+
+    first_reply_prompt = fake_llm.calls[1]["user_prompt"]
+    assert "6.5. 证据边界与 future evidence 泄漏禁止" in first_reply_prompt
+    assert "modeler-only future evidence 只能影响表达强度、风险保守度和是否更有限" in first_reply_prompt
+    assert "不得引用、复述或暗示 cutoff 后才发生的拒绝、偏好、解释、关系状态或后续对话" in first_reply_prompt
+    assert "我后来告诉过你我喜欢" in first_reply_prompt
+    assert "后续对方明确说不想被追问，也更喜欢慢一点确认边界。" in first_reply_prompt
+
+    next_turn_prompt = fake_llm.calls[2]["user_prompt"]
+    assert "7.5. 证据边界与 branch transcript 优先级" in next_turn_prompt
+    assert "当前 branch transcript 是分支内事实源" in next_turn_prompt
+    assert "不要把原时间线后续事件强行搬进分支" in next_turn_prompt
+    assert "后续对方明确说不想被追问，也更喜欢慢一点确认边界。" in next_turn_prompt
+
+
 def test_simulation_engine_supports_single_reply_mode(tmp_path, monkeypatch):
     context_pack = _seed_engine_context_pack(
         tmp_path,
@@ -1306,6 +1392,8 @@ def test_simulation_engine_supports_single_reply_mode(tmp_path, monkeypatch):
 
     assert first_reply.first_reply_text == "好，那晚点聊也没事。"
     assert len(fake_llm.calls) == 2
+    assert "modeler-only future evidence JSONL:" in fake_llm.calls[0]["user_prompt"]
+    assert "modeler-only future evidence JSONL:" in fake_llm.calls[1]["user_prompt"]
 
 
 def test_simulation_engine_stops_short_thread_when_repeated_turns_recur(tmp_path, monkeypatch):
