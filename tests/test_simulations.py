@@ -309,6 +309,496 @@ def _seed_uncovered_target_case(tmp_path, monkeypatch) -> None:
         )
 
 
+def test_context_builder_prioritizes_sensitive_future_evidence_on_target_topic(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=7,
+        )
+        session.add(batch)
+        session.flush()
+
+        messages = [
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=1,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:15:00",
+                content_text="我们先随便聊聊",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=2,
+                speaker_name="Tantless",
+                speaker_role="self",
+                timestamp="2025-03-02T20:16:00",
+                content_text="我想问下你会不会觉得我太急",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=3,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:17:00",
+                content_text="先别太快推进吧",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=4,
+                speaker_name="Tantless",
+                speaker_role="self",
+                timestamp="2025-03-02T20:18:00",
+                content_text="目标消息",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=5,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:22:00",
+                content_text="我还是想慢一点，不太适合现在说这个",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=6,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:24:00",
+                content_text="刚刚路上看到一只猫",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=7,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:25:00",
+                content_text="天气也还行",
+                message_type="text",
+            ),
+        ]
+        session.add_all(messages)
+        session.flush()
+
+        prior_segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=messages[0].id,
+            end_message_id=messages[2].id,
+            start_time="2025-03-02T20:15:00",
+            end_time="2025-03-02T20:17:00",
+            message_count=3,
+            self_message_count=1,
+            other_message_count=2,
+            segment_kind="normal",
+            source_message_ids=[messages[0].id, messages[1].id, messages[2].id],
+        )
+        target_segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=messages[3].id,
+            end_message_id=messages[3].id,
+            start_time="2025-03-02T20:18:00",
+            end_time="2025-03-02T20:18:00",
+            message_count=1,
+            self_message_count=1,
+            other_message_count=0,
+            segment_kind="normal",
+            source_message_ids=[messages[3].id],
+        )
+        future_sensitive_segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=messages[4].id,
+            end_message_id=messages[4].id,
+            start_time="2025-03-02T20:22:00",
+            end_time="2025-03-02T20:22:00",
+            message_count=1,
+            self_message_count=0,
+            other_message_count=1,
+            segment_kind="normal",
+            source_message_ids=[messages[4].id],
+        )
+        future_smalltalk_segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=messages[5].id,
+            end_message_id=messages[5].id,
+            start_time="2025-03-02T20:24:00",
+            end_time="2025-03-02T20:24:00",
+            message_count=1,
+            self_message_count=0,
+            other_message_count=1,
+            segment_kind="normal",
+            source_message_ids=[messages[5].id],
+        )
+        future_weather_segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=messages[6].id,
+            end_message_id=messages[6].id,
+            start_time="2025-03-02T20:25:00",
+            end_time="2025-03-02T20:25:00",
+            message_count=1,
+            self_message_count=0,
+            other_message_count=1,
+            segment_kind="normal",
+            source_message_ids=[messages[6].id],
+        )
+        session.add_all(
+            [
+                prior_segment,
+                target_segment,
+                future_sensitive_segment,
+                future_smalltalk_segment,
+                future_weather_segment,
+            ]
+        )
+        session.flush()
+
+        session.add_all(
+            [
+                SegmentSummary(
+                    segment_id=prior_segment.id,
+                    summary_text="之前已经出现推进节奏和边界感的试探。",
+                    main_topics=["推进节奏"],
+                    self_stance="想靠近",
+                    other_stance="提醒慢一点",
+                    emotional_tone="谨慎",
+                    interaction_pattern="边界试探",
+                    has_conflict=False,
+                    has_repair=False,
+                    has_closeness_signal=False,
+                    outcome="暂时缓和",
+                    relationship_impact="mixed",
+                    confidence=0.8,
+                ),
+                SegmentSummary(
+                    segment_id=future_sensitive_segment.id,
+                    summary_text="对方明确表示想慢一点，暂时不适合推进。",
+                    main_topics=["推进节奏", "边界"],
+                    self_stance="未出现",
+                    other_stance="明确保留",
+                    emotional_tone="克制",
+                    interaction_pattern="边界确认",
+                    has_conflict=True,
+                    has_repair=False,
+                    has_closeness_signal=False,
+                    outcome="保持边界",
+                    relationship_impact="negative",
+                    confidence=0.9,
+                ),
+                SegmentSummary(
+                    segment_id=future_smalltalk_segment.id,
+                    summary_text="后续只是轻松闲聊，没有关系推进。",
+                    main_topics=["日常闲聊"],
+                    self_stance="未出现",
+                    other_stance="闲聊",
+                    emotional_tone="轻松",
+                    interaction_pattern="日常互动",
+                    has_conflict=False,
+                    has_repair=False,
+                    has_closeness_signal=False,
+                    outcome="继续聊天",
+                    relationship_impact="neutral",
+                    confidence=0.7,
+                ),
+                SegmentSummary(
+                    segment_id=future_weather_segment.id,
+                    summary_text="天气话题继续延伸。",
+                    main_topics=["天气"],
+                    self_stance="未出现",
+                    other_stance="闲聊",
+                    emotional_tone="轻松",
+                    interaction_pattern="日常互动",
+                    has_conflict=False,
+                    has_repair=False,
+                    has_closeness_signal=False,
+                    outcome="继续聊天",
+                    relationship_impact="neutral",
+                    confidence=0.6,
+                ),
+            ]
+        )
+
+        target_topic = Topic(
+            conversation_id=conversation.id,
+            topic_name="推进节奏",
+            topic_summary="围绕聊天推进速度与边界的讨论。",
+            first_seen_at="2025-03-02T20:15:00",
+            last_seen_at="2025-03-02T20:22:00",
+            segment_count=3,
+            topic_status="ongoing",
+        )
+        smalltalk_topic = Topic(
+            conversation_id=conversation.id,
+            topic_name="日常闲聊",
+            topic_summary="轻松过渡话题。",
+            first_seen_at="2025-03-02T20:24:00",
+            last_seen_at="2025-03-02T20:24:00",
+            segment_count=1,
+            topic_status="ongoing",
+        )
+        weather_topic = Topic(
+            conversation_id=conversation.id,
+            topic_name="天气",
+            topic_summary="无关紧要的天气闲聊。",
+            first_seen_at="2025-03-02T20:25:00",
+            last_seen_at="2025-03-02T20:25:00",
+            segment_count=1,
+            topic_status="ongoing",
+        )
+        session.add_all([target_topic, smalltalk_topic, weather_topic])
+        session.flush()
+
+        session.add_all(
+            [
+                TopicLink(topic_id=target_topic.id, segment_id=prior_segment.id, link_reason="同一边界主题", score=0.91),
+                TopicLink(topic_id=target_topic.id, segment_id=target_segment.id, link_reason="目标段仍在试探推进速度", score=0.95),
+                TopicLink(topic_id=target_topic.id, segment_id=future_sensitive_segment.id, link_reason="后续明确拒绝推进，属于同主题强约束", score=0.66),
+                TopicLink(topic_id=smalltalk_topic.id, segment_id=future_smalltalk_segment.id, link_reason="后续闲聊", score=0.99),
+                TopicLink(topic_id=weather_topic.id, segment_id=future_weather_segment.id, link_reason="无关天气闲聊", score=0.98),
+            ]
+        )
+        session.add(
+            RelationshipSnapshot(
+                conversation_id=conversation.id,
+                as_of_message_id=messages[2].id,
+                as_of_time="2025-03-02T20:17:00",
+                relationship_temperature="neutral",
+                tension_level="medium",
+                openness_level="low",
+                initiative_balance="self_leading",
+                defensiveness_level="medium",
+                unresolved_conflict_flags=["推进节奏"],
+                relationship_phase="uncertain",
+                snapshot_summary="推进速度仍是敏感点。",
+            )
+        )
+
+        session.add_all(
+            [
+                PersonaProfile(
+                    conversation_id=conversation.id,
+                    subject_role="self",
+                    global_persona_summary="会主动补充解释",
+                    style_traits=["直白"],
+                    conflict_traits=["解释"],
+                    relationship_specific_patterns=["急于确认"],
+                    evidence_segment_ids=[prior_segment.id],
+                    confidence=0.8,
+                ),
+                PersonaProfile(
+                    conversation_id=conversation.id,
+                    subject_role="other",
+                    global_persona_summary="会在有压力时保留边界",
+                    style_traits=["简短"],
+                    conflict_traits=["回避"],
+                    relationship_specific_patterns=["先降速"],
+                    evidence_segment_ids=[prior_segment.id],
+                    confidence=0.8,
+                ),
+            ]
+        )
+
+        target_message = session.get(Message, messages[3].id)
+        context_pack = build_conversation_context_pack(
+            session,
+            conversation_id=conversation.id,
+            target_message=target_message,
+            replacement_content="如果你方便，我们慢慢聊也可以",
+        )
+
+    assert context_pack["future_evidence_digests"][0]["supporting_segment_id"] == future_sensitive_segment.id
+    assert context_pack["future_evidence_digests"][0]["topic_name"] == "推进节奏"
+    assert context_pack["retrieval_budget"]["future_evidence_digests"] == {
+        "limit": 3,
+        "candidate_count": 3,
+        "selected_count": 3,
+        "overflow_count": 0,
+    }
+    assert context_pack["retrieval_trace"]["future_evidence_digests"][0]["selection_reasons"] == [
+        "target_topic_overlap",
+        "sensitive_future_constraint",
+        "stable_topic_recurrence",
+        "future_time_proximity",
+    ]
+    assert context_pack["retrieval_trace"]["future_evidence_digests"][0]["selected"] is True
+    assert context_pack["retrieval_trace"]["future_evidence_digests"][0]["supporting_segment_id"] == future_sensitive_segment.id
+    assert context_pack["related_topic_digests"][0]["topic_name"] == "推进节奏"
+    assert context_pack["retrieval_trace"]["related_topic_digests"][0]["selection_reasons"][0] == "target_topic_overlap"
+
+
+def test_context_builder_keeps_snapshot_and_prior_segment_when_topic_links_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="ready",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=3,
+        )
+        session.add(batch)
+        session.flush()
+
+        messages = [
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=1,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:10:00",
+                content_text="先随便说两句",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=2,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:12:00",
+                content_text="晚点再看也行",
+                message_type="text",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=3,
+                speaker_name="Tantless",
+                speaker_role="self",
+                timestamp="2025-03-02T20:13:00",
+                content_text="目标消息",
+                message_type="text",
+            ),
+        ]
+        session.add_all(messages)
+        session.flush()
+
+        prior_segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=messages[0].id,
+            end_message_id=messages[1].id,
+            start_time="2025-03-02T20:10:00",
+            end_time="2025-03-02T20:12:00",
+            message_count=2,
+            self_message_count=0,
+            other_message_count=2,
+            segment_kind="normal",
+            source_message_ids=[messages[0].id, messages[1].id],
+        )
+        target_segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=messages[2].id,
+            end_message_id=messages[2].id,
+            start_time="2025-03-02T20:13:00",
+            end_time="2025-03-02T20:13:00",
+            message_count=1,
+            self_message_count=1,
+            other_message_count=0,
+            segment_kind="normal",
+            source_message_ids=[messages[2].id],
+        )
+        session.add_all([prior_segment, target_segment])
+        session.flush()
+
+        session.add(
+            RelationshipSnapshot(
+                conversation_id=conversation.id,
+                as_of_message_id=messages[1].id,
+                as_of_time="2025-03-02T20:12:00",
+                relationship_temperature="neutral",
+                tension_level="low",
+                openness_level="medium",
+                initiative_balance="balanced",
+                defensiveness_level="low",
+                unresolved_conflict_flags=[],
+                relationship_phase="warming",
+                snapshot_summary="还在正常聊天。",
+            )
+        )
+        session.add_all(
+            [
+                PersonaProfile(
+                    conversation_id=conversation.id,
+                    subject_role="self",
+                    global_persona_summary="正常沟通",
+                    style_traits=["短句"],
+                    conflict_traits=["解释"],
+                    relationship_specific_patterns=["顺着聊"],
+                    evidence_segment_ids=[prior_segment.id],
+                    confidence=0.7,
+                ),
+                PersonaProfile(
+                    conversation_id=conversation.id,
+                    subject_role="other",
+                    global_persona_summary="偏轻松",
+                    style_traits=["短句"],
+                    conflict_traits=["回避"],
+                    relationship_specific_patterns=["先回应一下"],
+                    evidence_segment_ids=[prior_segment.id],
+                    confidence=0.7,
+                ),
+            ]
+        )
+
+        target_message = session.get(Message, messages[2].id)
+        context_pack = build_conversation_context_pack(
+            session,
+            conversation_id=conversation.id,
+            target_message=target_message,
+            replacement_content="如果你方便，我们慢慢聊",
+        )
+
+    assert context_pack["related_topic_digests"] == []
+    assert context_pack["future_evidence_digests"] == []
+    assert context_pack["same_day_prior_segments"][0]["segment_id"] == prior_segment.id
+    assert context_pack["base_relationship_snapshot"]["relationship_phase"] == "warming"
+    assert context_pack["retrieval_budget"]["related_topic_digests"]["candidate_count"] == 0
+    assert context_pack["retrieval_trace"]["related_topic_digests"] == []
+    assert context_pack["retrieval_warnings"] == ["related_topic_digests_empty", "future_evidence_digests_empty"]
+
+
 def test_post_simulations_returns_queued_job_and_latest_job_list(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()

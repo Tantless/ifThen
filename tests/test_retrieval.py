@@ -73,6 +73,10 @@ def test_build_context_pack_excludes_target_and_future_messages():
     assert context["future_evidence_digests"] == []
     assert context["branch_facts"]["rewrite_target"]["target_message_id"] == 2
     assert context["evidence_policy"]["future_evidence_digests"] == "modeler_only_not_character_known"
+    assert context["retrieval_trace"] == {"related_topic_digests": [], "future_evidence_digests": []}
+    assert context["retrieval_budget"]["current_segment_history"]["policy"] == "preserve_all"
+    assert context["retrieval_budget"]["related_topic_digests"]["limit"] == 3
+    assert context["retrieval_budget"]["future_evidence_digests"]["selected_count"] == 0
     assert context["retrieval_warnings"] == ["related_topic_digests_empty", "future_evidence_digests_empty"]
     assert context["strategy_version"] == "layered-evidence-v1"
 
@@ -196,4 +200,75 @@ def test_build_context_pack_collects_same_day_prior_segments_only():
     assert context["cutoff_safe_facts"]["same_day_prior_segments"] == context["same_day_prior_segments"]
     assert context["future_evidence_digests"][0]["supporting_segment_id"] == 104
     assert context["related_topic_digests"] == [{"topic_id": 9, "topic_name": "闲聊"}]
+    assert context["retrieval_budget"]["same_day_prior_segments"]["selected_count"] == 1
     assert context["retrieval_warnings"] == ["base_relationship_snapshot_missing"]
+
+
+def test_build_context_pack_preserves_explicit_retrieval_trace_and_budget():
+    context = build_context_pack(
+        messages=[
+            {
+                "id": 1,
+                "conversation_id": 21,
+                "sequence_no": 1,
+                "timestamp": "2025-03-02T20:18:03",
+                "speaker_role": "other",
+                "content_text": "开场",
+            },
+            {
+                "id": 2,
+                "conversation_id": 21,
+                "sequence_no": 2,
+                "timestamp": "2025-03-02T20:18:04",
+                "speaker_role": "self",
+                "content_text": "目标",
+            },
+        ],
+        segments=[
+            {
+                "id": 11,
+                "source_message_ids": [1, 2],
+                "start_time": "2025-03-02T20:18:03",
+                "end_time": "2025-03-02T20:18:04",
+            }
+        ],
+        target_message_id=2,
+        replacement_content="换个说法",
+        related_topic_digests=[{"topic_id": 3, "topic_name": "边界试探"}],
+        future_evidence_digests=[],
+        base_relationship_snapshot=None,
+        persona_self=None,
+        persona_other=None,
+        retrieval_trace={
+            "related_topic_digests": [
+                {
+                    "topic_id": 3,
+                    "topic_name": "边界试探",
+                    "rank": 1,
+                    "selected": True,
+                    "selection_reasons": ["target_topic_overlap", "sensitive_topic"],
+                }
+            ],
+            "future_evidence_digests": [],
+        },
+        retrieval_budget={
+            "related_topic_digests": {
+                "limit": 3,
+                "candidate_count": 4,
+                "selected_count": 1,
+                "overflow_count": 3,
+            }
+        },
+    )
+
+    assert context["retrieval_trace"]["related_topic_digests"][0]["topic_name"] == "边界试探"
+    assert context["retrieval_trace"]["related_topic_digests"][0]["selection_reasons"] == [
+        "target_topic_overlap",
+        "sensitive_topic",
+    ]
+    assert context["retrieval_budget"]["related_topic_digests"] == {
+        "limit": 3,
+        "candidate_count": 4,
+        "selected_count": 1,
+        "overflow_count": 3,
+    }

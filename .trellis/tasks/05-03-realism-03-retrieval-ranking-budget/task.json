@@ -1,0 +1,39 @@
+{
+  "id": "realism-03-retrieval-ranking-budget",
+  "name": "realism-03-retrieval-ranking-budget",
+  "title": "implement realism-03 retrieval ranking and context budget",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tlll1",
+  "assignee": "tlll1",
+  "createdAt": "2026-05-03",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 5,
+  "next_action": [
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-26-brainstorm-todo-performance-realism",
+  "relatedFiles": [
+    "src/if_then_mvp/context_builder.py",
+    "src/if_then_mvp/retrieval.py",
+    "tests/test_retrieval.py",
+    "tests/test_simulations.py",
+    "PRDS/PRD006-检索排序预算.md"
+  ],
+  "notes": "Implementation and verification are complete; waiting for human test/commit before record-session.",
+  "meta": {}
+}

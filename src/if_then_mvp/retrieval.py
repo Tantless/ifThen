@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+DEFAULT_RELATED_TOPIC_DIGEST_LIMIT = 3
+DEFAULT_FUTURE_EVIDENCE_DIGEST_LIMIT = 3
+DEFAULT_SAME_DAY_PRIOR_SEGMENT_LIMIT = 1
+
 
 def _message_position(message: dict[str, Any]) -> tuple[str, int]:
     return str(message["timestamp"]), int(message["sequence_no"])
@@ -56,6 +60,8 @@ def build_context_pack(
     base_relationship_snapshot: dict[str, Any] | None,
     persona_self: dict[str, Any] | None,
     persona_other: dict[str, Any] | None,
+    retrieval_trace: dict[str, Any] | None = None,
+    retrieval_budget: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     message_lookup = {int(message["id"]): message for message in messages}
     target = message_lookup.get(target_message_id)
@@ -158,6 +164,45 @@ def build_context_pack(
         },
         "generated_branch_messages": [],
     }
+    resolved_retrieval_trace = {
+        "related_topic_digests": [],
+        "future_evidence_digests": [],
+    }
+    if retrieval_trace:
+        for key, value in retrieval_trace.items():
+            resolved_retrieval_trace[key] = value
+
+    resolved_retrieval_budget = {
+        "current_segment_history": {
+            "policy": "preserve_all",
+            "selected_count": len(current_segment_history),
+        },
+        "same_day_prior_segments": {
+            "limit": DEFAULT_SAME_DAY_PRIOR_SEGMENT_LIMIT,
+            "selected_count": len(same_day_prior_segments),
+            "overflow_count": max(0, len(same_day_prior_segments) - DEFAULT_SAME_DAY_PRIOR_SEGMENT_LIMIT),
+        },
+        "related_topic_digests": {
+            "limit": DEFAULT_RELATED_TOPIC_DIGEST_LIMIT,
+            "candidate_count": len(related_topic_digests),
+            "selected_count": len(related_topic_digests),
+            "overflow_count": 0,
+        },
+        "future_evidence_digests": {
+            "limit": DEFAULT_FUTURE_EVIDENCE_DIGEST_LIMIT,
+            "candidate_count": len(future_evidence_digests),
+            "selected_count": len(future_evidence_digests),
+            "overflow_count": 0,
+        },
+    }
+    if retrieval_budget:
+        for key, value in retrieval_budget.items():
+            if isinstance(value, dict) and isinstance(resolved_retrieval_budget.get(key), dict):
+                merged_value = dict(resolved_retrieval_budget[key])
+                merged_value.update(value)
+                resolved_retrieval_budget[key] = merged_value
+            else:
+                resolved_retrieval_budget[key] = value
 
     return {
         "conversation_id": target["conversation_id"],
@@ -178,6 +223,8 @@ def build_context_pack(
         "moment_state_estimate": moment_state_estimate,
         "persona_self": persona_self,
         "persona_other": persona_other,
+        "retrieval_trace": resolved_retrieval_trace,
+        "retrieval_budget": resolved_retrieval_budget,
         "retrieval_warnings": retrieval_warnings,
         "strategy_version": "layered-evidence-v1",
     }
