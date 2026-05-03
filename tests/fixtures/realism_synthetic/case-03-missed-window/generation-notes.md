@@ -2,7 +2,7 @@
 
 ## 生成约束
 
-- 通过 `scripts/generate_realism_synthetic_corpus.py` 调用本地 `llm_match_config.env` 中的 Responses API 配置生成。
+- 通过 `scripts/generate_realism_synthetic_corpus.py` 调用本地 `llm_config.env` 中的 Responses API 配置生成。
 - API key 只在本地读取，未写入本文件或语料。
 - LLM 输出 JSON 消息数组，脚本统一写成 QQChatExporter 兼容文本。
 - 脚本校验消息数量、说话人、锚点消息、单行内容和隐私风险词。

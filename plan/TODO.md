@@ -19,6 +19,10 @@
   - 已新增 branch session/message/reply job 后端闭环，支持用户 self 消息追加、LLM 只回复 other、`input_revision` 过期丢弃和会话级 memory pack。
 - [x] `realism-07` 实时聊天前端交互（已完成 2026-05-02）
   - 已将改写后主体验接入 branch session，支持 idle window 后串行创建 reply job、运行中消息合并、typing/失败状态和 other 拆泡延迟展示。
+- [x] `realism-08` 前端自动化质量收口（已完成 2026-05-03）
+  - 已用桌面端 Vitest 覆盖 realtime branch debounce、running job 合并不并行触发、失败重试、typing/等待、拆泡延迟和旧 simulation result 兼容。
+- [x] `realism-provider-regression-runner` provider 回归入口（已完成 2026-05-03）
+  - 已新增固定 baseline 样例的 provider 回归命令，支持真实 provider、replay/fake 输出、future leakage 检测、JSON/Markdown 报告和缺少 LLM 配置时的 skipped 报告。
 
 ## 真实性提升阶段性 TODO
 
@@ -64,3 +68,8 @@
 第三批收敛质量与兼容：
 
 - [x] 完成 `realism-08`，沉淀验收脚本、回归用例和 rollout 策略。
+
+剩余非本地验收：
+
+- [ ] 使用本地 `llm_config.env`，用 `python scripts/run_realism_provider_regression.py --require-provider` 跑固定样例真实 provider 回归，并人工审查过度乐观、过度成熟和治疗腔。
+- [ ] 基于 `D:\ifThen\tests\fixtures\realism_synthetic` 下的合成真实性测试集复跑完整分析性能抽样，确认真实性改造没有显著增加完整 pipeline 耗时。

@@ -1,0 +1,8 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "desktop\\tests\\visualShell.test.tsx", "reason": "Realtime branch frontend validation tests"}
+{"file": "PRDS\\PRD010-前端质量.md", "reason": "PRD delivery record"}
+{"file": "plan\\realism-08-quality-and-rollout.md", "reason": "Rollout checklist to update after frontend tests"}
+{"file": "AGENTS.md", "reason": "Temporary roadmap state corrected"}
+{"file": "docs\\realism-quality-rollout.md", "reason": "Rollout checks updated after frontend closure"}
+ness"}

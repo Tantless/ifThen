@@ -1,0 +1,33 @@
+{
+  "id": "realism-roadmap-validation-status",
+  "name": "realism-roadmap-validation-status",
+  "title": "realism roadmap validation status",
+  "description": "Record remaining realism roadmap validation status after local gates.",
+  "status": "completed",
+  "dev_type": "docs",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tlll1",
+  "assignee": "tlll1",
+  "createdAt": "2026-05-03",
+  "completedAt": "2026-05-03",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 6,
+  "next_action": [],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-26-brainstorm-todo-performance-realism",
+  "relatedFiles": [
+    "plan/realism-00-roadmap.md",
+    "plan/realism-08-quality-and-rollout.md",
+    "docs/realism-quality-rollout.md",
+    "PRDS/PRD011-路线验收.md"
+  ],
+  "notes": "Local automated gates passed; provider/manual/performance validation remains blocked on LLM config or human review.",
+  "meta": {}
+}

@@ -66,17 +66,27 @@
 - [x] 实时分支会话成为改写后的主入口，LLM 只生成 other 消息。
 - [x] 实时分支会话中同一会话只允许一个 LLM 回复任务运行。
 
+## 当前剩余验收
+
+- `realism-02` 到 `realism-08` 的实现型任务已完成，本地后端与桌面端自动化门禁已通过。
+- 当前真实性测试集定位为 `D:\ifThen\tests\fixtures\realism_synthetic`，固定 baseline 样例通过 `source_fixture` 回指该目录下三段合成语料。
+- 已新增 provider 回归运行器：`python scripts/run_realism_provider_regression.py`。它会读取固定 baseline 样例、检测 `first_reply_text` 中的 modeler-only future evidence 泄漏，并输出 JSON/Markdown 报告。
+- provider 回归运行器默认读取本地 `llm_config.env`，使用 `API_BASE_URL`、`API_KEY`、`MODEL_NAME` 通过 Responses API JSON object 格式请求 LLM；2026-05-04 已完成 1 个真实 provider smoke，0 泄漏、0 错误。
+- 仍未勾选的“推演输出更少过度乐观/过度成熟/过度会沟通”需要扩大 `--require-provider` 样例范围并进行人工抽样验收。
+- 仍未勾选的“不显著增加完整分析 pipeline 耗时”应基于 `D:\ifThen\tests\fixtures\realism_synthetic` 下的合成真实性测试集复跑完整分析性能/耗时抽样，而不是旧外部 5000 条数据集。
+- 本地已完成的验证命令：`PYTHONPATH=src pytest -q` 122 项通过，`npm test` 128 项通过，`npm run typecheck` 通过，`python scripts/report_realism_baseline.py` 能输出 12 个固定样例覆盖矩阵。
+
 ## 建议 PR 顺序
 
 1. PR1-pre：构筑合成拟真长消息测试集。（已完成）
 2. PR1：建立评估样例和当前失败分类。（已完成）
 3. PR2：新增实时分支会话后端模型和接口。（已完成）
 4. PR3：新增实时分支会话前端体验。（已完成）
-5. PR4：扩展 context pack，加入分层证据结构和会话级 memory pack。
-6. PR5：修改 prompt，加入未来证据使用、只生成 other、运行中消息合并的护栏。
-7. PR6：实现检索排序和上下文预算。
-8. PR7：加入 persona/style 低成本统计。
-9. PR8：补齐质量验收、回归脚本和 rollout 文档。
+5. PR4：扩展 context pack，加入分层证据结构和会话级 memory pack。（已完成）
+6. PR5：修改 prompt，加入未来证据使用、只生成 other、运行中消息合并的护栏。（已完成）
+7. PR6：实现检索排序和上下文预算。（已完成）
+8. PR7：加入 persona/style 低成本统计。（已完成）
+9. PR8：补齐质量验收、回归脚本和 rollout 文档。（已完成，provider 回归入口已补齐，仍需配置后跑真实 provider/人工验收收口）
 
 ## 不做
 

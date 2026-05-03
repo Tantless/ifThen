@@ -1,0 +1,42 @@
+{
+  "id": "realism-dataset-env-correction",
+  "name": "realism-dataset-env-correction",
+  "title": "Realism Dataset And Env Correction",
+  "description": "",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tlll1",
+  "assignee": "tlll1",
+  "createdAt": "2026-05-04",
+  "completedAt": "2026-05-04",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 6,
+  "next_action": [
+    {
+      "phase": 6,
+      "action": "completed"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-26-brainstorm-todo-performance-realism",
+  "relatedFiles": [
+    "scripts/run_realism_provider_regression.py",
+    "tests/test_realism_provider_regression.py",
+    "scripts/generate_realism_synthetic_corpus.py",
+    "docs/realism-quality-rollout.md",
+    "plan/realism-00-roadmap.md",
+    "plan/realism-08-quality-and-rollout.md",
+    "plan/TODO.md",
+    "PRDS/PRD013-数据集配置.md"
+  ],
+  "notes": "Corrected realism dataset memory to tests/fixtures/realism_synthetic and updated provider regression to read llm_config.env through Responses API. Verified with targeted tests, full backend pytest, and one live provider smoke.",
+  "meta": {}
+}

@@ -1,0 +1,6 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/shared/git-conventions.md", "reason": "Commit convention after task"}
+{"file": ".trellis/spec/shared/code-quality.md", "reason": "Script and test quality rules"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse existing Responses API/env parsing patterns"}
+{"file": "scripts/generate_realism_synthetic_corpus.py", "reason": "Existing Responses API env-file client pattern"}

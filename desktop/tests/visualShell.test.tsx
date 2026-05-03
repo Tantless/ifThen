@@ -1219,6 +1219,333 @@ describe('App frontUI integration', () => {
     expect(mockedCreateBranchReplyJob).toHaveBeenCalledWith(501)
   })
 
+  it('实时分支运行中追加 self 消息会合并输入且不并行触发 reply job', async () => {
+    vi.useFakeTimers()
+
+    const settings: SettingRead[] = [
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+    ]
+    const conversations: ConversationRead[] = [
+      {
+        id: 7,
+        title: '和小李的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '小李',
+        source_format: 'qq_export_v5',
+        status: 'ready',
+      },
+    ]
+    const messages: MessageRead[] = [
+      {
+        id: 11,
+        sequence_no: 1,
+        speaker_name: '小李',
+        speaker_role: 'other',
+        timestamp: '2026-04-08T10:01:00',
+        content_text: '收到，稍后回你',
+        message_type: 'text',
+        resource_items: null,
+      },
+      {
+        id: 12,
+        sequence_no: 2,
+        speaker_name: '我',
+        speaker_role: 'self',
+        timestamp: '2026-04-08T10:02:00',
+        content_text: '那我们先这样吧',
+        message_type: 'text',
+        resource_items: null,
+      },
+    ]
+    const completedJob: JobRead = {
+      id: 19,
+      status: 'completed',
+      current_stage: 'completed',
+      progress_percent: 100,
+      current_stage_percent: 100,
+      current_stage_total_units: 1,
+      current_stage_completed_units: 1,
+      overall_total_units: 1,
+      overall_completed_units: 1,
+      status_message: null,
+    }
+    const initialBranchSession = makeBranchSession()
+    const appendedMessage = {
+      id: 703,
+      branch_session_id: 501,
+      sequence_no: 2,
+      speaker_role: 'self',
+      content_text: '我再补一句。',
+      source: 'user',
+      delivery_state: 'committed',
+      metadata_json: { input_revision: 2 },
+    }
+    const branchAfterSelf = makeBranchSession({
+      input_revision: 2,
+      messages: [...initialBranchSession.messages, appendedMessage],
+      reply_jobs: [makeBranchReplyJob({ status: 'superseded', current_stage: 'superseded' })],
+    })
+    const deferredAppend = createDeferred<Awaited<ReturnType<typeof appendBranchMessage>>>()
+
+    mockedReadSettings.mockResolvedValue(settings)
+    mockedListConversations.mockResolvedValue(conversations)
+    mockedListMessages.mockResolvedValue([...messages].reverse())
+    mockedListConversationJobs.mockResolvedValue([completedJob])
+    mockedReadJob.mockResolvedValue(completedJob)
+    mockedCreateBranchSession.mockResolvedValueOnce(initialBranchSession)
+    mockedCreateBranchReplyJob
+      .mockResolvedValueOnce(
+        makeBranchReplyJob({
+          status: 'running',
+          current_stage: 'generating',
+          status_message: '正在生成回复',
+        }),
+      )
+      .mockResolvedValueOnce(makeBranchReplyJob({ id: 602, input_revision: 2 }))
+    mockedAppendBranchMessage.mockReturnValueOnce(deferredAppend.promise)
+    mockedReadBranchSession.mockResolvedValueOnce(branchAfterSelf)
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(10)
+
+    const rewriteTarget = container.querySelector('[data-chat-message-id="message-12"] .cursor-pointer')
+    expect(rewriteTarget).not.toBeNull()
+
+    await act(async () => {
+      if (rewriteTarget) {
+        getReactProps<{ onDoubleClick?: () => void }>(rewriteTarget).onDoubleClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    const rewriteEditor = container.querySelector('textarea')
+    expect(rewriteEditor).not.toBeNull()
+
+    await act(async () => {
+      if (rewriteEditor) {
+        getReactProps<{
+          onChange?: (event: { target: { value: string } }) => void
+          onKeyDown?: (event: { key: string; shiftKey: boolean; preventDefault: () => void }) => void
+        }>(rewriteEditor).onChange?.({
+          target: { value: '我想先冷静一下，晚点继续聊可以吗？' },
+        })
+      }
+    })
+    await flushAsyncWork(4)
+
+    await act(async () => {
+      if (rewriteEditor) {
+        getReactProps<{
+          onKeyDown?: (event: { key: string; shiftKey: boolean; preventDefault: () => void }) => void
+        }>(rewriteEditor).onKeyDown?.({
+          key: 'Enter',
+          shiftKey: false,
+          preventDefault: () => undefined,
+        })
+      }
+    })
+    await flushAsyncWork(8)
+
+    await advanceTimersAndFlush(1800, 8)
+    expect(mockedCreateBranchReplyJob).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('对方正在输入')
+
+    const composer = container.querySelector('textarea') as HTMLTextAreaElement | null
+    expect(composer).not.toBeNull()
+
+    await act(async () => {
+      if (composer) {
+        composer.value = '我再补一句。'
+        getReactProps<{
+          onChange?: (event: { target: { value: string } }) => void
+        }>(composer).onChange?.({
+          target: { value: '我再补一句。' },
+        })
+      }
+    })
+    await flushAsyncWork(4)
+
+    const sendButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent === '发送(S)',
+    )
+    expect(sendButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (sendButton) {
+        getReactProps<{ onClick?: () => void }>(sendButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    expect(mockedAppendBranchMessage).toHaveBeenCalledWith(501, { content_text: '我再补一句。' })
+    expect(container.textContent).toContain('正在合并新消息')
+
+    await advanceTimersAndFlush(1800, 4)
+    expect(mockedCreateBranchReplyJob).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      deferredAppend.resolve(appendedMessage)
+    })
+    await flushAsyncWork(8)
+    expect(container.textContent).toContain('等待补充消息')
+
+    await advanceTimersAndFlush(1799, 4)
+    expect(mockedCreateBranchReplyJob).toHaveBeenCalledTimes(1)
+
+    await advanceTimersAndFlush(1, 8)
+    expect(mockedCreateBranchReplyJob).toHaveBeenCalledTimes(2)
+    expect(mockedCreateBranchReplyJob).toHaveBeenLastCalledWith(501)
+  })
+
+  it('实时分支回复失败后显示错误并允许重试', async () => {
+    vi.useFakeTimers()
+
+    const settings: SettingRead[] = [
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+    ]
+    const conversations: ConversationRead[] = [
+      {
+        id: 7,
+        title: '和小李的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '小李',
+        source_format: 'qq_export_v5',
+        status: 'ready',
+      },
+    ]
+    const messages: MessageRead[] = [
+      {
+        id: 11,
+        sequence_no: 1,
+        speaker_name: '小李',
+        speaker_role: 'other',
+        timestamp: '2026-04-08T10:01:00',
+        content_text: '收到，稍后回你',
+        message_type: 'text',
+        resource_items: null,
+      },
+      {
+        id: 12,
+        sequence_no: 2,
+        speaker_name: '我',
+        speaker_role: 'self',
+        timestamp: '2026-04-08T10:02:00',
+        content_text: '那我们先这样吧',
+        message_type: 'text',
+        resource_items: null,
+      },
+    ]
+    const completedJob: JobRead = {
+      id: 19,
+      status: 'completed',
+      current_stage: 'completed',
+      progress_percent: 100,
+      current_stage_percent: 100,
+      current_stage_total_units: 1,
+      current_stage_completed_units: 1,
+      overall_total_units: 1,
+      overall_completed_units: 1,
+      status_message: null,
+    }
+
+    mockedReadSettings.mockResolvedValue(settings)
+    mockedListConversations.mockResolvedValue(conversations)
+    mockedListMessages.mockResolvedValue([...messages].reverse())
+    mockedListConversationJobs.mockResolvedValue([completedJob])
+    mockedReadJob.mockResolvedValue(completedJob)
+    mockedCreateBranchSession.mockResolvedValueOnce(makeBranchSession())
+    mockedCreateBranchReplyJob
+      .mockResolvedValueOnce(makeBranchReplyJob())
+      .mockResolvedValueOnce(makeBranchReplyJob({ id: 602 }))
+    mockedListBranchReplyJobs.mockResolvedValueOnce([
+      makeBranchReplyJob({
+        status: 'failed',
+        current_stage: 'failed',
+        error_message: 'provider timeout',
+      }),
+    ])
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(10)
+
+    const rewriteTarget = container.querySelector('[data-chat-message-id="message-12"] .cursor-pointer')
+    expect(rewriteTarget).not.toBeNull()
+
+    await act(async () => {
+      if (rewriteTarget) {
+        getReactProps<{ onDoubleClick?: () => void }>(rewriteTarget).onDoubleClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    const rewriteEditor = container.querySelector('textarea')
+    expect(rewriteEditor).not.toBeNull()
+
+    await act(async () => {
+      if (rewriteEditor) {
+        getReactProps<{
+          onChange?: (event: { target: { value: string } }) => void
+          onKeyDown?: (event: { key: string; shiftKey: boolean; preventDefault: () => void }) => void
+        }>(rewriteEditor).onChange?.({
+          target: { value: '我想先冷静一下，晚点继续聊可以吗？' },
+        })
+      }
+    })
+    await flushAsyncWork(4)
+
+    await act(async () => {
+      if (rewriteEditor) {
+        getReactProps<{
+          onKeyDown?: (event: { key: string; shiftKey: boolean; preventDefault: () => void }) => void
+        }>(rewriteEditor).onKeyDown?.({
+          key: 'Enter',
+          shiftKey: false,
+          preventDefault: () => undefined,
+        })
+      }
+    })
+    await flushAsyncWork(8)
+
+    await advanceTimersAndFlush(1800, 10)
+    await flushAsyncWork(12)
+    expect(mockedCreateBranchReplyJob).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('provider timeout')
+
+    const retryButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent === '重试',
+    )
+    expect(retryButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (retryButton) {
+        getReactProps<{ onClick?: () => void }>(retryButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+    expect(container.textContent).toContain('等待补充消息')
+
+    await advanceTimersAndFlush(1799, 4)
+    expect(mockedCreateBranchReplyJob).toHaveBeenCalledTimes(1)
+
+    await advanceTimersAndFlush(1, 8)
+    expect(mockedCreateBranchReplyJob).toHaveBeenCalledTimes(2)
+    expect(mockedCreateBranchReplyJob).toHaveBeenLastCalledWith(501)
+  })
+
   it('保存设置时会一并持久化默认推演模式和轮数', async () => {
     mockedReadSettings.mockResolvedValue([
       { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },

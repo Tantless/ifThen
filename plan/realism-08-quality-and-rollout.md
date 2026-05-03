@@ -28,13 +28,13 @@
 
 ### 前端
 
-- [ ] 用户连续消息触发 debounce，而不是每条都请求 LLM。
-- [ ] running job 时不会并行触发新 job。
-- [ ] other 回复拆泡延迟展示。
-- [ ] typing、error、retry 状态展示正确。
-- [ ] 原 simulation result 展示不回归。
+- [x] 用户连续消息触发 debounce，而不是每条都请求 LLM。
+- [x] running job 时不会并行触发新 job。
+- [x] other 回复拆泡延迟展示。
+- [x] typing、error、retry 状态展示正确。
+- [x] 原 simulation result 展示不回归。
 
-首版 rollout 文档已记录前端人工验收矩阵；前端自动化 E2E 不纳入 `realism-08` 本轮实现。
+当前前端自动化覆盖集中在 `desktop/tests/visualShell.test.tsx` 和 `desktop/tests/frontUiAdapters.test.ts`。完整 Playwright/E2E 不纳入本轮实现，仍以 Vitest 集成测试和人工验收矩阵为主。
 
 ### 评估样例
 
@@ -42,6 +42,7 @@
 - [x] 每个样例能标注是否出现未来泄漏。
 - [x] 每个样例能标注是否存在 persona 违背。
 - [x] 高风险未来证据样例不会轻易翻盘。
+- [x] 固定样例已有 provider 回归入口：`python scripts/run_realism_provider_regression.py`。
 
 ## 人工验收标准
 
@@ -79,7 +80,17 @@
 ## 验收标准
 
 - [x] 所有新增后端测试通过。
-- [ ] 所有新增前端测试通过。（本轮未新增前端自动化，见 rollout 文档人工矩阵。）
-- [ ] 固定样例无未来泄漏。（已接入固定样例泄漏标注合同；真实输出无泄漏仍需 provider 回归或人工验收确认。）
+- [x] 所有新增前端测试通过。
+- [ ] 固定样例无未来泄漏。（已新增 provider 回归运行器；真实输出无泄漏仍需配置 provider 后运行并人工验收确认。）
 - [x] 旧推演入口兼容。
 - [x] 实时分支会话在失败和切换会话场景下可恢复或可重试。
+
+## 2026-05-03 本地验证记录
+
+- `PYTHONPATH=src pytest -q`：122 项通过。
+- `npm test`（在 `desktop/` 下）：13 个测试文件 128 项通过。
+- `npm run typecheck`（在 `desktop/` 下）：通过。
+- `python scripts/report_realism_baseline.py`：输出 12 个固定基线样例，覆盖 3 个场景和 8 类失败类型。
+- 当前真实性测试集定位为 `D:\ifThen\tests\fixtures\realism_synthetic`，固定基线样例均回指该目录下的合成语料。
+- `python scripts/run_realism_provider_regression.py --require-provider --max-cases 1 --output-json .pytest-tmp/realism-provider-live-smoke.json --output-markdown .pytest-tmp/realism-provider-live-smoke.md`：使用本地 `llm_config.env` 的 Responses API 配置完成 1 个 provider 回归抽样，0 泄漏、0 错误。
+- 未运行完整合成真实性测试集分析性能复测；后续性能抽样应基于 `D:\ifThen\tests\fixtures\realism_synthetic`。

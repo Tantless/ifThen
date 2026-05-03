@@ -20,7 +20,7 @@
 | `case-02-conflict-repair` | 2584 | 拟真性 4 / 故事一致性 5 / 项目标准 5 | 可解析、可分析、可完成 `single_reply` |
 | `case-03-missed-window` | 2385 | 拟真性 4 / 故事一致性 4 / 项目标准 4 | 可解析、可分析、可完成 `single_reply` |
 
-生成脚本为 `scripts/generate_realism_synthetic_corpus.py`。脚本只从本地 `llm_match_config.env` 读取 API 配置，不写入密钥；最终语料位于 `tests/fixtures/realism_synthetic/`。
+生成脚本为 `scripts/generate_realism_synthetic_corpus.py`。脚本只从本地 `llm_config.env` 读取 Responses API 配置，不写入密钥；最终语料位于 `tests/fixtures/realism_synthetic/`。
 
 ## 输出
 

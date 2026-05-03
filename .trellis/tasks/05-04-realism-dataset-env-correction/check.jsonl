@@ -1,0 +1,6 @@
+{"file": ".agents/skills/finish-work/SKILL.md", "reason": "Finish work checklist"}
+{"file": ".agents/skills/check/SKILL.md", "reason": "Code quality check spec"}
+{"file": "tests/test_realism_provider_regression.py", "reason": "Provider runner tests"}
+{"file": "scripts/run_realism_provider_regression.py", "reason": "Provider regression runner being corrected"}
+{"file": ".trellis/spec/shared/git-conventions.md", "reason": "Commit convention"}
+}

@@ -16,7 +16,7 @@ import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = ROOT / "tests" / "fixtures" / "realism_synthetic"
-DEFAULT_ENV_FILE = ROOT / "llm_match_config.env"
+DEFAULT_ENV_FILE = ROOT / "llm_config.env"
 EXPORT_TIME = "2026-05-02 20:00:00"
 SELF_NAME = "我"
 
@@ -164,7 +164,7 @@ def main() -> int:
 
     config = load_env_file(args.env_file)
     client = ResponsesJsonClient(
-        base_url=config["API_URL"],
+        base_url=config["API_BASE_URL"],
         api_key=config["API_KEY"],
         model=config["MODEL_NAME"],
     )
@@ -197,7 +197,9 @@ def load_env_file(path: Path) -> dict[str, str]:
             continue
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip('"').strip("'")
-    missing = [key for key in ("API_URL", "API_KEY", "MODEL_NAME") if not values.get(key)]
+    if values.get("API_URL") and not values.get("API_BASE_URL"):
+        values["API_BASE_URL"] = values["API_URL"]
+    missing = [key for key in ("API_BASE_URL", "API_KEY", "MODEL_NAME") if not values.get(key)]
     if missing:
         raise LLMGenerationError(f"env file missing required keys: {', '.join(missing)}")
     return values
@@ -643,7 +645,7 @@ def render_generation_notes(
         "",
         "## 生成约束",
         "",
-        "- 通过 `scripts/generate_realism_synthetic_corpus.py` 调用本地 `llm_match_config.env` 中的 Responses API 配置生成。",
+        "- 通过 `scripts/generate_realism_synthetic_corpus.py` 调用本地 `llm_config.env` 中的 Responses API 配置生成。",
         "- API key 只在本地读取，未写入本文件或语料。",
         "- LLM 输出 JSON 消息数组，脚本统一写成 QQChatExporter 兼容文本。",
         "- 脚本校验消息数量、说话人、锚点消息、单行内容和隐私风险词。",

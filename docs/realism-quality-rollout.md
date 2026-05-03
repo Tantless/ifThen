@@ -28,8 +28,20 @@ PYTHONPATH=src pytest -q
 For desktop-side realtime interaction changes, also run the desktop test suite from `desktop/`:
 
 ```bash
+npm test -- desktop/tests/visualShell.test.tsx
 npm test
 ```
+
+For live-provider realism validation, run the fixed baseline provider regression from the repo root:
+
+```bash
+python scripts/run_realism_provider_regression.py \
+  --env-file llm_config.env \
+  --output-json .pytest-tmp/realism-provider-regression.json \
+  --output-markdown .pytest-tmp/realism-provider-regression.md
+```
+
+The runner defaults to `llm_config.env` and uses `API_BASE_URL`, `API_KEY`, and `MODEL_NAME` with the Responses API JSON object format. Use `--require-provider` in a blocking validation environment. Without provider configuration the command writes a skipped report instead of claiming live validation passed.
 
 ## Quality Gates
 
@@ -41,6 +53,9 @@ npm test
 - Branch reply prompts must include committed branch transcript messages in sequence.
 - Deleting a conversation must remove branch sessions, branch messages, and reply jobs.
 - Baseline fixtures must retain explicit future leakage labels so regressions can be detected.
+- Provider regression reports must have `leakage_case_count = 0` before live validation is accepted.
+- Realism validation datasets must come from the committed synthetic corpus under `D:\ifThen\tests\fixtures\realism_synthetic`.
+- Desktop realtime branch tests must cover debounce, queued/running merge behavior, typing/error/retry states, delayed split-bubble delivery, and legacy simulation result compatibility.
 
 ## Manual Acceptance
 
@@ -68,3 +83,29 @@ Track these during rollout:
 - Future leakage quality-gate failures.
 - Branch reply job supersede/conflict counts.
 - User retry count and branch reply failure count.
+
+## Latest Local Verification
+
+2026-05-04 local gates:
+
+```bash
+PYTHONPATH=src pytest -q
+python scripts/report_realism_baseline.py
+python scripts/run_realism_provider_regression.py --require-provider --max-cases 1 --output-json .pytest-tmp/realism-provider-live-smoke.json --output-markdown .pytest-tmp/realism-provider-live-smoke.md
+cd desktop && npm test
+cd desktop && npm run typecheck
+```
+
+Results:
+
+- Backend: 122 pytest cases passed.
+- Baseline report: 12 fixed cases across 3 scenarios and 8 failure types.
+- Provider regression runner: reads `llm_config.env`, uses Responses API, and completed a 1-case live smoke with 0 leakage and 0 errors.
+- Desktop: 128 Vitest cases passed.
+- Desktop TypeScript: typecheck passed.
+
+Remaining non-local validation:
+
+- Run live provider regression for fixed baseline samples with `--require-provider` and inspect future leakage.
+- Run manual realism review for over-optimistic, over-mature, and over-therapeutic replies.
+- Rerun full-analysis performance sampling on the committed synthetic realism corpus under `D:\ifThen\tests\fixtures\realism_synthetic`.

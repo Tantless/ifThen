@@ -1,0 +1,6 @@
+{"file": ".agents/skills/finish-work/SKILL.md", "reason": "Finish work checklist"}
+{"file": ".agents/skills/check/SKILL.md", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/shared/timestamp.md", "reason": "Validate report timestamp format"}
+{"file": ".trellis/spec/shared/code-quality.md", "reason": "Review script and tests against mandatory quality rules"}
+{"file": "scripts/report_realism_baseline.py", "reason": "Compare report script style and fixture loading"}
+{"file": "src/if_then_mvp/runtime_llm.py", "reason": "Check provider config handling matches existing loader"}

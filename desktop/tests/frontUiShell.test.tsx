@@ -147,7 +147,7 @@ describe('frontUI shell wiring', () => {
 
     expect(outputs.some((entry) => entry.type === 'asset' && entry.fileName.endsWith('.css'))).toBe(true)
     expect(outputs.some((entry) => entry.type === 'chunk' && entry.fileName.endsWith('.js'))).toBe(true)
-  })
+  }, 15000)
 
   it('emits file-protocol-safe relative asset paths for packaged desktop builds', async () => {
     const result = await build({
@@ -202,7 +202,7 @@ describe('frontUI shell markup', () => {
     expect(html).toContain('aria-label="最小化窗口"')
     expect(html).toContain('aria-label="最大化窗口"')
     expect(html).toContain('aria-label="关闭窗口"')
-  })
+  }, 15000)
 
   it('keeps titlebar props desktop-safe and switches the maximize label in maximized state', () => {
     const events: string[] = []

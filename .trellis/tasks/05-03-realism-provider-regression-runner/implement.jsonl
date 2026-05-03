@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/shared/timestamp.md", "reason": "Report timestamp format"}
+{"file": ".trellis/spec/shared/code-quality.md", "reason": "Mandatory code-quality rules for script and tests"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse runtime LLM and baseline fixture patterns"}
+{"file": "src/if_then_mvp/runtime_llm.py", "reason": "Existing local/env provider configuration loader"}
+{"file": "scripts/report_realism_baseline.py", "reason": "Existing baseline fixture report loading pattern"}

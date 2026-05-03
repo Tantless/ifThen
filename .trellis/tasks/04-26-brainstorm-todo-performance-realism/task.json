@@ -51,7 +51,11 @@
     "05-03-realism-03-retrieval-ranking-budget",
     "05-03-05-03-realism-04-persona-style-enrichment",
     "05-03-realism-05-prompt-guardrails",
-    "05-03-realism-08-quality-rollout"
+    "05-03-realism-08-quality-rollout",
+    "05-03-realism-08-frontend-quality-closure",
+    "05-03-realism-roadmap-validation-status",
+    "05-03-realism-provider-regression-runner",
+    "05-04-realism-dataset-env-correction"
   ],
   "parent": null,
   "relatedFiles": [],
