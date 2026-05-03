@@ -19,15 +19,19 @@ Implemented layered context pack and realtime memory pack upgrade for realism-02
 
 ### Main Changes
 
-(Add details)
+- Added `src/if_then_mvp/context_builder.py` to unify context-pack assembly across API and worker paths.
+- Extended `src/if_then_mvp/retrieval.py` with layered evidence fields: `cutoff_safe_facts`, `future_evidence_digests`, `branch_facts`, and `evidence_policy`.
+- Upgraded `src/if_then_mvp/branch_sessions.py` realtime `session_memory_pack` to an explicit layered structure with a compatibility projection for existing prompt readers.
+- Updated retrieval, branch-session, and simulation tests to cover the new contract and shared builder path.
 
 ### Git Commits
 
-(No commits - planning session)
+- `3c84033` `feat(project): add layered evidence context pack`
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `PYTHONPATH=src pytest tests/test_retrieval.py tests/test_branch_sessions.py tests/test_simulations.py -q`
+- [OK] `PYTHONPATH=src pytest -q`
 
 ### Status
 

@@ -29,7 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
-| 1 | 2026-05-03 | realism-02 layered evidence context | - | `main` |
+| 1 | 2026-05-03 | realism-02 layered evidence context | `3c84033` | `main` |
 <!-- @@@/auto:session-history -->
 
 ---
