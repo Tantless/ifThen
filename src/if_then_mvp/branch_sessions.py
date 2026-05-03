@@ -53,6 +53,7 @@ def create_branch_session(
         )
     )
     session.flush()
+    refresh_branch_session_memory_pack(session, branch_session=branch_session)
     return branch_session
 
 
@@ -86,6 +87,7 @@ def append_branch_self_message(
     )
     session.add(message)
     session.flush()
+    refresh_branch_session_memory_pack(session, branch_session=branch_session)
     return message
 
 
@@ -296,10 +298,90 @@ def _build_session_memory_pack(*, context_pack: dict) -> dict:
             "evidence_policy": context_pack.get("evidence_policy") or {},
         },
         "compatibility": {
-            "cutoff_safe_context_pack": context_pack,
+            "cutoff_safe_context_pack": _build_cutoff_safe_compatibility_pack(context_pack=context_pack),
         },
         "persona_priority": {
             "primary_generation_target": "persona_other",
             "self_interpretation_context": "persona_self",
         },
     }
+
+
+def refresh_branch_session_memory_pack(session, *, branch_session: BranchSession) -> None:
+    context_pack = branch_session.context_pack_snapshot or {}
+    memory_pack = dict(branch_session.session_memory_pack or _build_session_memory_pack(context_pack=context_pack))
+    layered_context_pack = dict(memory_pack.get("layered_context_pack") or {})
+    branch_facts = dict(layered_context_pack.get("branch_facts") or context_pack.get("branch_facts") or {})
+
+    branch_facts["rewrite_target"] = dict(
+        branch_facts.get("rewrite_target")
+        or {
+            "target_message_id": branch_session.target_message_id,
+            "replacement_content": branch_session.replacement_content,
+        }
+    )
+    branch_facts["generated_branch_messages"] = _load_generated_branch_messages(
+        session,
+        branch_session_id=branch_session.id,
+    )
+    layered_context_pack["branch_facts"] = branch_facts
+    memory_pack["layered_context_pack"] = layered_context_pack
+    branch_session.session_memory_pack = memory_pack
+
+
+def _build_cutoff_safe_compatibility_pack(*, context_pack: dict) -> dict:
+    cutoff_safe_facts = context_pack.get("cutoff_safe_facts") or {}
+    return {
+        "conversation_id": context_pack.get("conversation_id"),
+        "target_message_id": context_pack.get("target_message_id"),
+        "cutoff_timestamp": context_pack.get("cutoff_timestamp"),
+        "cutoff_sequence_no": context_pack.get("cutoff_sequence_no"),
+        "original_message_text": context_pack.get("original_message_text"),
+        "replacement_content": context_pack.get("replacement_content"),
+        "current_segment_history": cutoff_safe_facts.get("current_segment_history")
+        or context_pack.get("current_segment_history")
+        or [],
+        "current_segment_brief": cutoff_safe_facts.get("current_segment_brief")
+        or context_pack.get("current_segment_brief")
+        or {},
+        "same_day_prior_segments": cutoff_safe_facts.get("same_day_prior_segments")
+        or context_pack.get("same_day_prior_segments")
+        or [],
+        "related_topic_digests": cutoff_safe_facts.get("related_topic_digests")
+        or context_pack.get("related_topic_digests")
+        or [],
+        "base_relationship_snapshot": cutoff_safe_facts.get("base_relationship_snapshot")
+        if "base_relationship_snapshot" in cutoff_safe_facts
+        else context_pack.get("base_relationship_snapshot"),
+        "moment_state_estimate": context_pack.get("moment_state_estimate") or {},
+        "persona_self": context_pack.get("persona_self") or {},
+        "persona_other": context_pack.get("persona_other") or {},
+        "retrieval_warnings": context_pack.get("retrieval_warnings") or [],
+        "strategy_version": context_pack.get("strategy_version"),
+    }
+
+
+def _load_generated_branch_messages(session, *, branch_session_id: int) -> list[dict]:
+    messages = (
+        session.execute(
+            select(BranchMessage)
+            .where(
+                BranchMessage.branch_session_id == branch_session_id,
+                BranchMessage.sequence_no > 1,
+                BranchMessage.delivery_state == "committed",
+            )
+            .order_by(BranchMessage.sequence_no.asc(), BranchMessage.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "sequence_no": message.sequence_no,
+            "speaker_role": message.speaker_role,
+            "message_text": message.content_text,
+            "source": message.source,
+            "delivery_state": message.delivery_state,
+        }
+        for message in messages
+    ]

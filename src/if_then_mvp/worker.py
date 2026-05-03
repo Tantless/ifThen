@@ -24,6 +24,7 @@ from if_then_mvp.analysis import (
 from if_then_mvp.branch_sessions import (
     apply_branch_reply_job_progress,
     claim_next_branch_reply_job,
+    refresh_branch_session_memory_pack,
     utcnow as branch_utcnow,
 )
 from if_then_mvp.config import get_settings
@@ -1289,6 +1290,7 @@ def run_next_branch_reply_job(*, llm_client=None) -> bool:
 
         fresh_branch_session.current_branch_state = reply.state_after_turn.model_dump()
         fresh_branch_session.updated_at = branch_utcnow()
+        refresh_branch_session_memory_pack(session, branch_session=fresh_branch_session)
         apply_branch_reply_job_progress(
             fresh_job,
             current_stage="completed",

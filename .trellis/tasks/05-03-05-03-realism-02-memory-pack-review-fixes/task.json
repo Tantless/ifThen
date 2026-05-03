@@ -1,0 +1,38 @@
+{
+  "id": "05-03-realism-02-memory-pack-review-fixes",
+  "name": "05-03-realism-02-memory-pack-review-fixes",
+  "title": "fix realism-02 memory pack review findings",
+  "description": "Repair follow-up memory pack contract issues after realism-02 review.",
+  "status": "in_progress",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tlll1",
+  "assignee": "tlll1",
+  "createdAt": "2026-05-03",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 5,
+  "next_action": [
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-26-brainstorm-todo-performance-realism",
+  "relatedFiles": [
+    "src/if_then_mvp/branch_sessions.py",
+    "src/if_then_mvp/worker.py",
+    "tests/test_branch_sessions.py",
+    "PRDS/PRD005-分层证据上下文.md"
+  ],
+  "notes": "Implementation and verification are complete; waiting for human test/commit before record-session.",
+  "meta": {}
+}

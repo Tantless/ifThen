@@ -288,10 +288,14 @@ def test_branch_session_api_creates_session_and_supersedes_stale_reply_jobs(tmp_
             assert branch_session.session_memory_pack["layered_context_pack"]["evidence_policy"][
                 "future_evidence_digests"
             ] == "modeler_only_not_character_known"
-            assert (
-                branch_session.session_memory_pack["compatibility"]["cutoff_safe_context_pack"]["target_message_id"]
-                == target_message_id
-            )
+            compatibility_pack = branch_session.session_memory_pack["compatibility"]["cutoff_safe_context_pack"]
+            assert compatibility_pack["target_message_id"] == target_message_id
+            assert "future_evidence_digests" not in compatibility_pack
+            assert "branch_facts" not in compatibility_pack
+            assert "evidence_policy" not in compatibility_pack
+            assert branch_session.session_memory_pack["layered_context_pack"]["branch_facts"][
+                "generated_branch_messages"
+            ] == []
 
         first_job = client.post("/branch-sessions/1/reply-jobs")
         assert first_job.status_code == 202
@@ -338,6 +342,18 @@ def test_run_next_branch_reply_job_persists_only_other_reply(tmp_path, monkeypat
         assert job.status == "completed"
         branch_session = session.query(BranchSession).one()
         assert branch_session.current_branch_state["openness_level"] == "medium_high"
+        generated_branch_messages = branch_session.session_memory_pack["layered_context_pack"]["branch_facts"][
+            "generated_branch_messages"
+        ]
+        assert generated_branch_messages == [
+            {
+                "sequence_no": 2,
+                "speaker_role": "other",
+                "message_text": "好，那我们慢慢说。",
+                "source": "llm",
+                "delivery_state": "committed",
+            }
+        ]
 
     assert llm.calls[0]["response_model"] is BranchReplyPayload
     assert "只能生成 other" in llm.calls[0]["system_prompt"]
@@ -387,6 +403,35 @@ def test_second_branch_reply_prompt_contains_full_transcript(tmp_path, monkeypat
     assert "如果你方便的话，我们慢慢聊就好" in prompt
     assert "可以，我们慢慢聊。" in prompt
     assert "那我接着说一点。" in prompt
+
+    with session_scope() as session:
+        branch_session = session.query(BranchSession).one()
+        generated_branch_messages = branch_session.session_memory_pack["layered_context_pack"]["branch_facts"][
+            "generated_branch_messages"
+        ]
+        assert generated_branch_messages == [
+            {
+                "sequence_no": 2,
+                "speaker_role": "other",
+                "message_text": "可以，我们慢慢聊。",
+                "source": "llm",
+                "delivery_state": "committed",
+            },
+            {
+                "sequence_no": 3,
+                "speaker_role": "self",
+                "message_text": "那我接着说一点。",
+                "source": "user",
+                "delivery_state": "committed",
+            },
+            {
+                "sequence_no": 4,
+                "speaker_role": "other",
+                "message_text": "嗯，你说。",
+                "source": "llm",
+                "delivery_state": "committed",
+            },
+        ]
 
 
 def test_delete_conversation_removes_branch_session_rows(tmp_path, monkeypatch):
