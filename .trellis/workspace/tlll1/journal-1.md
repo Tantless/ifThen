@@ -40,3 +40,36 @@ Implemented layered context pack and realtime memory pack upgrade for realism-02
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Align realism dataset and env config
+
+**Date**: 2026-05-04
+**Task**: Align realism dataset and env config
+**Branch**: `main`
+
+### Summary
+
+Corrected realism dataset references to tests/fixtures/realism_synthetic, updated provider regression to read llm_config.env via Responses API, verified live provider smoke and full test gates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1c082a7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
