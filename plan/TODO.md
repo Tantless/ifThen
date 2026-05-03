@@ -53,14 +53,14 @@
 - [x] 完成 `realism-01`，拿到失败样例与评估标准。
 - [x] 完成 `realism-06` 的最小后端闭环，新增 branch session/message/reply job，并让 LLM 只回复 other。
 - [x] 完成 `realism-07` 的最小前端闭环，用户改写后进入实时分支聊天。
-- [ ] 完成 `realism-05` 的实时版 prompt 护栏，禁止 LLM 生成 self 台词，并确保未来证据不进入角色台词。
+- [x] 完成 `realism-05` 的实时版 prompt 护栏，禁止 LLM 生成 self 台词，并确保未来证据不进入角色台词。
 
 第二批增强长期记忆真实性：
 
-- [ ] 完成 `realism-02`，让 context pack 支持分层证据，并为实时分支提供会话级 memory pack。
-- [ ] 完成 `realism-03`，优化相关证据召回与预算。
-- [ ] 完成 `realism-04`，补充表达风格统计和 persona 证据定位。
+- [x] 完成 `realism-02`，让 context pack 支持分层证据，并为实时分支提供会话级 memory pack。
+- [x] 完成 `realism-03`，优化相关证据召回与预算。
+- [x] 完成 `realism-04`，补充表达风格统计和 persona 证据定位。
 
 第三批收敛质量与兼容：
 
-- [ ] 完成 `realism-08`，沉淀验收脚本、回归用例和 rollout 策略。
+- [x] 完成 `realism-08`，沉淀验收脚本、回归用例和 rollout 策略。

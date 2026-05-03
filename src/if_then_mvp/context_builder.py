@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from if_then_mvp.config import get_settings
 from if_then_mvp.models import Message, PersonaProfile, RelationshipSnapshot, Segment, SegmentSummary, Topic, TopicLink
 from if_then_mvp.retrieval import (
     DEFAULT_FUTURE_EVIDENCE_DIGEST_LIMIT,
@@ -64,6 +65,7 @@ def build_conversation_context_pack(
     target_message: Message,
     replacement_content: str,
 ) -> dict[str, object]:
+    settings = get_settings()
     messages = (
         session.execute(
             select(Message)
@@ -116,14 +118,25 @@ def build_conversation_context_pack(
         active_sensitive_topics=active_sensitive_topics,
         limit=MAX_RELATED_TOPIC_DIGESTS,
     )
-    future_evidence_digests, future_evidence_trace, future_evidence_budget = _load_future_evidence_digests_with_trace(
-        session=session,
-        conversation_id=conversation_id,
-        target_message=target_message,
-        target_topic_ids=target_topic_ids,
-        active_sensitive_topics=active_sensitive_topics,
-        limit=MAX_FUTURE_EVIDENCE_ITEMS,
-    )
+    if settings.enable_future_evidence:
+        (
+            future_evidence_digests,
+            future_evidence_trace,
+            future_evidence_budget,
+        ) = _load_future_evidence_digests_with_trace(
+            session=session,
+            conversation_id=conversation_id,
+            target_message=target_message,
+            target_topic_ids=target_topic_ids,
+            active_sensitive_topics=active_sensitive_topics,
+            limit=MAX_FUTURE_EVIDENCE_ITEMS,
+        )
+        future_evidence_disabled = False
+    else:
+        future_evidence_digests = []
+        future_evidence_trace = []
+        future_evidence_budget = _build_budget(limit=MAX_FUTURE_EVIDENCE_ITEMS, candidate_count=0, selected_count=0)
+        future_evidence_disabled = True
     personas = (
         session.execute(select(PersonaProfile).where(PersonaProfile.conversation_id == conversation_id))
         .scalars()
@@ -137,7 +150,7 @@ def build_conversation_context_pack(
     persona_self = next((item for item in personas if item.subject_role == "self"), None)
     persona_other = next((item for item in personas if item.subject_role == "other"), None)
 
-    return build_context_pack(
+    context_pack = build_context_pack(
         messages=[message_to_context_dict(item) for item in messages],
         segments=[segment_to_context_dict(item) for item in segments],
         target_message_id=target_message.id,
@@ -162,6 +175,12 @@ def build_conversation_context_pack(
             "future_evidence_digests": future_evidence_budget,
         },
     )
+    if future_evidence_disabled:
+        retrieval_warnings = list(context_pack.get("retrieval_warnings") or [])
+        if "future_evidence_disabled" not in retrieval_warnings:
+            retrieval_warnings.append("future_evidence_disabled")
+        context_pack["retrieval_warnings"] = retrieval_warnings
+    return context_pack
 
 
 def message_to_context_dict(message: Message) -> dict[str, object]:

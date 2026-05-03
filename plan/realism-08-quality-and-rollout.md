@@ -18,13 +18,13 @@
 
 ### 后端
 
-- [ ] context pack 分层字段存在且含义正确。
-- [ ] future evidence 不混入 cutoff-safe topic digest。
-- [ ] future evidence 能影响 assessment 风险字段。
-- [ ] first reply 不引用 future evidence 原文。
-- [ ] realtime branch session 同一时间只有一个 running job。
-- [ ] branch transcript 按顺序进入下一轮 prompt。
-- [ ] 删除会话/重跑分析能清理或失效相关 branch 数据。
+- [x] context pack 分层字段存在且含义正确。
+- [x] future evidence 不混入 cutoff-safe topic digest。
+- [x] future evidence 能影响 assessment 风险字段。
+- [x] first reply 不引用 future evidence 原文。
+- [x] realtime branch session 同一时间只有一个 running job。
+- [x] branch transcript 按顺序进入下一轮 prompt。
+- [x] 删除会话/重跑分析能清理或失效相关 branch 数据。
 
 ### 前端
 
@@ -34,12 +34,14 @@
 - [ ] typing、error、retry 状态展示正确。
 - [ ] 原 simulation result 展示不回归。
 
+首版 rollout 文档已记录前端人工验收矩阵；前端自动化 E2E 不纳入 `realism-08` 本轮实现。
+
 ### 评估样例
 
-- [ ] 固定样例能批量跑出当前输出。
-- [ ] 每个样例能标注是否出现未来泄漏。
-- [ ] 每个样例能标注是否存在 persona 违背。
-- [ ] 高风险未来证据样例不会轻易翻盘。
+- [x] 固定样例能批量跑出当前输出。
+- [x] 每个样例能标注是否出现未来泄漏。
+- [x] 每个样例能标注是否存在 persona 违背。
+- [x] 高风险未来证据样例不会轻易翻盘。
 
 ## 人工验收标准
 
@@ -67,17 +69,17 @@
 
 ## 实施 TODO
 
-- [ ] 建立后端测试矩阵。
-- [ ] 建立前端测试矩阵。
-- [ ] 将固定评估样例接入回归流程。
-- [ ] 增加 feature flag 或设置项，允许关闭 future evidence。
-- [ ] 增加 rollout 文档，记录如何从短链入口切到实时分支入口。
-- [ ] 每完成一个 realism TODO，就在本文件勾选对应测试和验收项。
+- [x] 建立后端测试矩阵。
+- [x] 建立前端测试矩阵。
+- [x] 将固定评估样例接入回归流程。
+- [x] 增加 feature flag 或设置项，允许关闭 future evidence。
+- [x] 增加 rollout 文档，记录如何从短链入口切到实时分支入口。
+- [x] 每完成一个 realism TODO，就在本文件勾选对应测试和验收项。
 
 ## 验收标准
 
-- [ ] 所有新增后端测试通过。
-- [ ] 所有新增前端测试通过。
-- [ ] 固定样例无未来泄漏。
-- [ ] 旧推演入口兼容。
-- [ ] 实时分支会话在失败和切换会话场景下可恢复或可重试。
+- [x] 所有新增后端测试通过。
+- [ ] 所有新增前端测试通过。（本轮未新增前端自动化，见 rollout 文档人工矩阵。）
+- [ ] 固定样例无未来泄漏。（已接入固定样例泄漏标注合同；真实输出无泄漏仍需 provider 回归或人工验收确认。）
+- [x] 旧推演入口兼容。
+- [x] 实时分支会话在失败和切换会话场景下可恢复或可重试。

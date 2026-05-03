@@ -1,0 +1,5 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": "plan\\realism-08-quality-and-rollout.md", "reason": "Source plan for realism-08 quality and rollout"}
+{"file": "src\\if_then_mvp\\context_builder.py", "reason": "Future evidence feature flag integration"}
+{"file": "tests/", "type": "directory", "reason": "Quality gate tests"}

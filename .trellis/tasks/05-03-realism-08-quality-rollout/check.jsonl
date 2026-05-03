@@ -1,0 +1,4 @@
+{"file": ".agents/skills/finish-work/SKILL.md", "reason": "Finish work checklist"}
+{"file": ".agents/skills/check/SKILL.md", "reason": "Code quality check spec"}
+{"file": ".trellis\\spec\\shared\\code-quality.md", "reason": "Shared quality requirements"}
+{"file": ".trellis\\spec\\guides\\cross-layer-thinking-guide.md", "reason": "Regression matrix crosses context, simulation, branch session"}
