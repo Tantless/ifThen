@@ -43,6 +43,18 @@ python scripts/run_realism_provider_regression.py \
 
 The runner defaults to `llm_config.env` and uses `API_BASE_URL`, `API_KEY`, and `MODEL_NAME` with the Responses API JSON object format. Use `--require-provider` in a blocking validation environment. Without provider configuration the command writes a skipped report instead of claiming live validation passed.
 
+For full-analysis performance sampling on the committed synthetic realism corpus, run:
+
+```bash
+python scripts/run_realism_analysis_performance.py \
+  --env-file llm_config.env \
+  --analysis-llm-max-concurrency 1 \
+  --output-json .pytest-tmp/realism-analysis-performance.json \
+  --output-markdown .pytest-tmp/realism-analysis-performance.md
+```
+
+This command runs the real worker analysis pipeline in isolated `IF_THEN_DATA_DIR` directories under `.data/perf-runs/`. It currently uses the same `llm_config.env` provider path as live realism regression.
+
 ## Quality Gates
 
 - Context packs must keep `cutoff_safe_facts`, `future_evidence_digests`, and `branch_facts` separate.
@@ -104,8 +116,17 @@ Results:
 - Desktop: 128 Vitest cases passed.
 - Desktop TypeScript: typecheck passed.
 
+2026-05-04 additional live validation:
+
+- `python scripts/run_realism_provider_regression.py --require-provider --output-json .pytest-tmp/realism-provider-live-full.json --output-markdown .pytest-tmp/realism-provider-live-full.md`
+  - 12 fixed baseline cases attempted.
+  - 11 completed, 0 leakage failures, 0 risk-review flags, 1 transient `HTTPStatusError`.
+  - The failed case `c03-rp1-walk-invite` passed when retried individually, so the remaining issue is provider stability rather than a deterministic leakage regression.
+- `python scripts/run_realism_analysis_performance.py --require-provider --analysis-llm-max-concurrency 1 --case-id case-01-hidden-trauma-confession --output-json .pytest-tmp/realism-analysis-performance-case01-c1.json --output-markdown .pytest-tmp/realism-analysis-performance-case01-c1.md`
+  - The synthetic full-analysis performance runner now exists and drives the real worker pipeline from committed fixtures.
+  - Live long-run sampling is still blocked by provider `HTTPStatusError` / `ReadTimeout` during segment summarization, so the full performance acceptance item remains open.
+
 Remaining non-local validation:
 
-- Run live provider regression for fixed baseline samples with `--require-provider` and inspect future leakage.
-- Run manual realism review for over-optimistic, over-mature, and over-therapeutic replies.
-- Rerun full-analysis performance sampling on the committed synthetic realism corpus under `D:\ifThen\tests\fixtures\realism_synthetic`.
+- Perform manual realism review for over-optimistic, over-mature, and over-therapeutic replies.
+- Rerun full-analysis performance sampling on the committed synthetic realism corpus after a more stable live provider/model channel is available.

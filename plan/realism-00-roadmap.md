@@ -72,8 +72,10 @@
 - 当前真实性测试集定位为 `D:\ifThen\tests\fixtures\realism_synthetic`，固定 baseline 样例通过 `source_fixture` 回指该目录下三段合成语料。
 - 已新增 provider 回归运行器：`python scripts/run_realism_provider_regression.py`。它会读取固定 baseline 样例、检测 `first_reply_text` 中的 modeler-only future evidence 泄漏，并输出 JSON/Markdown 报告。
 - provider 回归运行器默认读取本地 `llm_config.env`，使用 `API_BASE_URL`、`API_KEY`、`MODEL_NAME` 通过 Responses API JSON object 格式请求 LLM；2026-05-04 已完成 1 个真实 provider smoke，0 泄漏、0 错误。
-- 仍未勾选的“推演输出更少过度乐观/过度成熟/过度会沟通”需要扩大 `--require-provider` 样例范围并进行人工抽样验收。
-- 仍未勾选的“不显著增加完整分析 pipeline 耗时”应基于 `D:\ifThen\tests\fixtures\realism_synthetic` 下的合成真实性测试集复跑完整分析性能/耗时抽样，而不是旧外部 5000 条数据集。
+- 2026-05-04 已执行 12 个固定 baseline 样例的真实 provider 回归：11 个 completed、0 泄漏、0 risk-review flag、1 个瞬时 `HTTPStatusError`；失败样例 `c03-rp1-walk-invite` 单独重试后通过，因此当前剩余的是人工拟真性抽样确认，而不是泄漏性回归阻塞。
+- 已新增 synthetic 完整分析性能抽样命令：`python scripts/run_realism_analysis_performance.py`。该命令能复用真实 worker 全分析链路和隔离数据目录执行 committed synthetic corpus。
+- 仍未勾选的“推演输出更少过度乐观/过度成熟/过度会沟通”现在只剩人工抽样验收。
+- 仍未勾选的“不显著增加完整分析 pipeline 耗时”仍需基于 `D:\ifThen\tests\fixtures\realism_synthetic` 下的合成真实性测试集完成 live full-analysis 成功样本；当前阻塞是 provider 长跑中的 `HTTPStatusError` / `ReadTimeout`，而不是缺少性能抽样入口。
 - 本地已完成的验证命令：`PYTHONPATH=src pytest -q` 122 项通过，`npm test` 128 项通过，`npm run typecheck` 通过，`python scripts/report_realism_baseline.py` 能输出 12 个固定样例覆盖矩阵。
 
 ## 建议 PR 顺序

@@ -1,0 +1,44 @@
+{
+  "id": "realism-final-validation",
+  "name": "realism-final-validation",
+  "title": "Realism Final Validation",
+  "description": "",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tlll1",
+  "assignee": "tlll1",
+  "createdAt": "2026-05-04",
+  "completedAt": "2026-05-04",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 6,
+  "next_action": [
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "04-26-brainstorm-todo-performance-realism",
+  "relatedFiles": [
+    "scripts/run_realism_provider_regression.py",
+    "scripts/run_realism_analysis_performance.py",
+    "tests/test_realism_provider_regression.py",
+    "tests/test_realism_analysis_performance.py",
+    "docs/realism-quality-rollout.md",
+    "docs/analysis-performance-realism-synthetic-20260504.md",
+    "plan/realism-00-roadmap.md",
+    "plan/realism-08-quality-and-rollout.md",
+    "plan/TODO.md",
+    "PRDS/PRD014-最终验收.md"
+  ],
+  "notes": "Added a reusable synthetic full-analysis performance runner, extracted a shared Responses API client for llm_config.env-backed validation scripts, ran 12-case live provider regression with 11 completed cases and one transient provider failure that passed on retry, and documented that full-analysis performance acceptance is now blocked by live provider long-run stability rather than missing tooling.",
+  "meta": {}
+}

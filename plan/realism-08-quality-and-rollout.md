@@ -81,7 +81,7 @@
 
 - [x] 所有新增后端测试通过。
 - [x] 所有新增前端测试通过。
-- [ ] 固定样例无未来泄漏。（已新增 provider 回归运行器；真实输出无泄漏仍需配置 provider 后运行并人工验收确认。）
+- [ ] 固定样例无未来泄漏。（2026-05-04 已跑 12 个 live baseline case，11 个 completed 中 0 泄漏；另 1 个瞬时 provider `HTTPStatusError` 在单 case 重试后通过。仍需结合人工拟真性验收最终签收。）
 - [x] 旧推演入口兼容。
 - [x] 实时分支会话在失败和切换会话场景下可恢复或可重试。
 
@@ -93,4 +93,5 @@
 - `python scripts/report_realism_baseline.py`：输出 12 个固定基线样例，覆盖 3 个场景和 8 类失败类型。
 - 当前真实性测试集定位为 `D:\ifThen\tests\fixtures\realism_synthetic`，固定基线样例均回指该目录下的合成语料。
 - `python scripts/run_realism_provider_regression.py --require-provider --max-cases 1 --output-json .pytest-tmp/realism-provider-live-smoke.json --output-markdown .pytest-tmp/realism-provider-live-smoke.md`：使用本地 `llm_config.env` 的 Responses API 配置完成 1 个 provider 回归抽样，0 泄漏、0 错误。
-- 未运行完整合成真实性测试集分析性能复测；后续性能抽样应基于 `D:\ifThen\tests\fixtures\realism_synthetic`。
+- `python scripts/run_realism_provider_regression.py --require-provider --output-json .pytest-tmp/realism-provider-live-full.json --output-markdown .pytest-tmp/realism-provider-live-full.md`：12 个固定 baseline case 中 11 个 completed、0 泄漏、0 risk-review flag、1 个瞬时 `HTTPStatusError`；失败样例单独重试通过。
+- `python scripts/run_realism_analysis_performance.py --require-provider --analysis-llm-max-concurrency 1 --case-id case-01-hidden-trauma-confession --output-json .pytest-tmp/realism-analysis-performance-case01-c1.json --output-markdown .pytest-tmp/realism-analysis-performance-case01-c1.md`：性能抽样 runner 已建成并能驱动真实 worker 全分析链路，但 live provider 长跑在 summary 阶段遭遇 `HTTPStatusError` / `ReadTimeout`，因此完整性能验收仍未完成。

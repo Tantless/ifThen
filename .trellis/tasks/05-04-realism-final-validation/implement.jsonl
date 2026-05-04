@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and required trace/commit steps"}
+{"file": ".trellis/spec/shared/git-conventions.md", "reason": "Commit convention for the validation task"}
+{"file": ".trellis/spec/shared/code-quality.md", "reason": "Script and test quality rules"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse existing worker/import/provider patterns"}
+{"file": "scripts/run_realism_provider_regression.py", "reason": "Existing realism validation runner to reuse"}
+{"file": "src/if_then_mvp/worker.py", "reason": "Existing full-analysis execution entrypoint"}
+{"file": "src/if_then_mvp/api.py", "reason": "Existing import and analysis job creation pattern"}

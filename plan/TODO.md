@@ -71,5 +71,5 @@
 
 剩余非本地验收：
 
-- [ ] 使用本地 `llm_config.env`，用 `python scripts/run_realism_provider_regression.py --require-provider` 跑固定样例真实 provider 回归，并人工审查过度乐观、过度成熟和治疗腔。
-- [ ] 基于 `D:\ifThen\tests\fixtures\realism_synthetic` 下的合成真实性测试集复跑完整分析性能抽样，确认真实性改造没有显著增加完整 pipeline 耗时。
+- [ ] 基于已生成的 live provider 回归结果，人工审查过度乐观、过度成熟和治疗腔。（2026-05-04 已跑 12 个固定 baseline case，11 个 completed、0 泄漏，另 1 个瞬时 provider 错误单独重试通过。）
+- [ ] 基于 `D:\ifThen\tests\fixtures\realism_synthetic` 下的合成真实性测试集完成 live 完整分析性能抽样，确认真实性改造没有显著增加完整 pipeline 耗时。（性能 runner 已新增为 `python scripts/run_realism_analysis_performance.py`，当前阻塞是 provider 长跑稳定性而不是缺少命令入口。）
