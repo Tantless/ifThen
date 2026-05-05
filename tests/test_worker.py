@@ -2,6 +2,7 @@ from pathlib import Path
 from threading import Event, Lock
 
 from if_then_mvp.db import init_db, session_scope
+from if_then_mvp.conversation_lifecycle import queue_rerun_analysis
 from if_then_mvp.models import (
     AnalysisJob,
     AppSetting,
@@ -74,6 +75,34 @@ class FailingFirstSummaryLLM(FakeLLM):
         if response_model.__name__ == "SegmentSummaryPayload":
             self.summary_call_count += 1
             raise RuntimeError("summary boom")
+        return super().chat_json(system_prompt=system_prompt, user_prompt=user_prompt, response_model=response_model)
+
+
+class FailingSecondSummaryLLM(FakeLLM):
+    def __init__(self) -> None:
+        self.summary_call_count = 0
+
+    def chat_json(self, *, system_prompt, user_prompt, response_model):
+        if response_model.__name__ == "SegmentSummaryPayload":
+            self.summary_call_count += 1
+            if self.summary_call_count == 2:
+                raise RuntimeError("second summary boom")
+        return super().chat_json(system_prompt=system_prompt, user_prompt=user_prompt, response_model=response_model)
+
+
+class FailingTopicAssignmentLLM(FakeLLM):
+    def chat_json(self, *, system_prompt, user_prompt, response_model):
+        if response_model.__name__ == "TopicAssignmentPayload":
+            raise RuntimeError("topic boom")
+        return super().chat_json(system_prompt=system_prompt, user_prompt=user_prompt, response_model=response_model)
+
+
+class RecordingLLM(FakeLLM):
+    def __init__(self) -> None:
+        self.response_model_names: list[str] = []
+
+    def chat_json(self, *, system_prompt, user_prompt, response_model):
+        self.response_model_names.append(response_model.__name__)
         return super().chat_json(system_prompt=system_prompt, user_prompt=user_prompt, response_model=response_model)
 
 
@@ -693,14 +722,94 @@ def test_run_next_job_marks_job_failed_when_stage_raises(tmp_path, monkeypatch):
         assert job.current_stage == "failed"
         assert job.progress_percent > 0
         assert "boom" in job.error_message
-        assert session.query(Message).count() == 0
-        assert session.query(Segment).count() == 0
+        assert session.query(Message).count() == 6
+        assert session.query(Segment).count() >= 1
         assert session.query(SegmentSummary).count() == 0
         assert session.query(Topic).count() == 0
         assert session.query(PersonaProfile).count() == 0
         assert session.query(RelationshipSnapshot).count() == 0
         conversation = session.query(Conversation).one()
         assert conversation.status == "failed"
+
+
+def test_rerun_failed_topic_stage_reuses_completed_summaries(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    fixture_path = tmp_path / "topic_retry_segments.txt"
+    _write_multi_segment_fixture(fixture_path)
+    init_db()
+    _seed_job(fixture_path=fixture_path)
+
+    processed = run_next_job(llm_client=FailingTopicAssignmentLLM())
+
+    assert processed is True
+
+    with session_scope() as session:
+        failed_job = session.query(AnalysisJob).one()
+        assert failed_job.status == "failed"
+        assert "topic boom" in failed_job.error_message
+        assert session.query(Segment).count() == 3
+        assert session.query(SegmentSummary).count() == 3
+        retry_job = queue_rerun_analysis(session, conversation_id=1)
+        assert retry_job.current_stage == "topic_persona_snapshot"
+        assert retry_job.payload_json["resume_from_stage"] == "topic_persona_snapshot"
+
+    retry_llm = RecordingLLM()
+    processed = run_next_job(llm_client=retry_llm)
+
+    assert processed is True
+    assert "SegmentSummaryPayload" not in retry_llm.response_model_names
+    assert "TopicAssignmentPayload" in retry_llm.response_model_names
+    with session_scope() as session:
+        jobs = session.query(AnalysisJob).order_by(AnalysisJob.id.asc()).all()
+        assert [job.status for job in jobs] == ["failed", "completed"]
+        assert session.query(Message).count() == 6
+        assert session.query(Segment).count() == 3
+        assert session.query(SegmentSummary).count() == 3
+        assert session.query(Topic).count() >= 1
+        assert session.query(PersonaProfile).count() == 2
+        assert session.query(RelationshipSnapshot).count() == 3
+        assert session.query(Conversation).one().status == "ready"
+
+
+def test_rerun_failed_summary_stage_continues_missing_summaries(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    monkeypatch.setenv("IF_THEN_ANALYSIS_LLM_MAX_CONCURRENCY", "1")
+    fixture_path = tmp_path / "summary_retry_segments.txt"
+    _write_multi_segment_fixture(fixture_path)
+    init_db()
+    _seed_job(fixture_path=fixture_path)
+
+    failing_llm = FailingSecondSummaryLLM()
+    processed = run_next_job(llm_client=failing_llm)
+
+    assert processed is True
+    assert failing_llm.summary_call_count == 2
+
+    with session_scope() as session:
+        failed_job = session.query(AnalysisJob).one()
+        assert failed_job.status == "failed"
+        assert "second summary boom" in failed_job.error_message
+        assert session.query(Segment).count() == 3
+        assert session.query(SegmentSummary).count() == 1
+        retry_job = queue_rerun_analysis(session, conversation_id=1)
+        assert retry_job.current_stage == "summarizing"
+        assert retry_job.payload_json["resume_from_stage"] == "summarizing"
+
+    retry_llm = RecordingLLM()
+    processed = run_next_job(llm_client=retry_llm)
+
+    assert processed is True
+    assert retry_llm.response_model_names.count("SegmentSummaryPayload") == 2
+    with session_scope() as session:
+        jobs = session.query(AnalysisJob).order_by(AnalysisJob.id.asc()).all()
+        assert [job.status for job in jobs] == ["failed", "completed"]
+        assert session.query(Message).count() == 6
+        assert session.query(Segment).count() == 3
+        assert session.query(SegmentSummary).count() == 3
+        assert session.query(Topic).count() >= 1
+        assert session.query(PersonaProfile).count() == 2
+        assert session.query(RelationshipSnapshot).count() == 3
+        assert session.query(Conversation).one().status == "ready"
 
 
 def test_run_next_job_stops_submitting_summary_calls_after_first_failure(tmp_path, monkeypatch):

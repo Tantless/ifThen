@@ -7,6 +7,7 @@ import { BranchView } from '../src/components/BranchView'
 import { MessageBubble } from '../src/components/MessageBubble'
 import { RewritePanel } from '../src/components/RewritePanel'
 import {
+  createLatestHistoryView,
   enterBranchView,
   exitBranchView,
   isRewriteRequestCurrent,
@@ -46,7 +47,7 @@ describe('chatState', () => {
   it('switches from history to branch', () => {
     expect(
       enterBranchView(
-        { mode: 'history' },
+        createLatestHistoryView(),
         {
           targetMessageId: 12,
           replacementContent: '换个说法',
@@ -72,7 +73,7 @@ describe('chatState', () => {
         simulation,
         targetMessageTimestamp: '2026-04-07T12:00:00Z',
       }),
-    ).toEqual({ mode: 'history' })
+    ).toEqual(createLatestHistoryView())
   })
 
   it('prefers the branch target timestamp for inspector snapshots', () => {
@@ -95,7 +96,7 @@ describe('chatState', () => {
   it('returns null in history mode so snapshot tab can直接请求后端最新快照', () => {
     expect(
       resolveInspectorSnapshotAt(
-        { mode: 'history' },
+        createLatestHistoryView(),
         [
           { id: 1, timestamp: '2026-04-07T08:00:00Z' },
           { id: 2, timestamp: '2026-04-07T09:00:00Z' },

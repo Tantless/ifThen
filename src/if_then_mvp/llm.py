@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 TModel = TypeVar("TModel", bound=BaseModel)
+logger = logging.getLogger(__name__)
+TRANSIENT_HTTP_STATUS_CODES = {429, 502, 503, 504}
 
 
 class ChatJSONClient(Protocol):
@@ -24,40 +28,108 @@ class LLMClientError(RuntimeError):
 @dataclass(slots=True)
 class OpenAICompatibleTransport:
     timeout_seconds: float = 60.0
+    max_attempts: int = 3
+    retry_backoff_seconds: float = 5.0
 
     def post_chat_completion(self, *, base_url: str, api_key: str, payload: dict[str, Any]) -> str:
         import httpx
 
         headers = {"Authorization": f"Bearer {api_key}"}
-        try:
-            with httpx.Client(timeout=self.timeout_seconds) as client:
-                endpoint = f"{base_url.rstrip('/')}/chat/completions"
-                response = client.post(endpoint, json=payload, headers=headers)
-                response.raise_for_status()
+        endpoint = f"{base_url.rstrip('/')}/chat/completions"
+        max_attempts = max(1, self.max_attempts)
+        last_error: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with httpx.Client(timeout=self.timeout_seconds) as client:
+                    response = client.post(endpoint, json=payload, headers=headers)
+                    response.raise_for_status()
 
-                try:
-                    response_payload = response.json()
-                except ValueError as exc:
-                    raise LLMClientError("Chat completion response did not contain valid JSON") from exc
+                    try:
+                        response_payload = response.json()
+                    except ValueError as exc:
+                        raise LLMClientError("Chat completion response did not contain valid JSON") from exc
 
-                try:
-                    return _extract_message_content(response_payload)
-                except LLMClientError as exc:
-                    if not _should_retry_with_stream(response_payload, exc):
-                        raise
+                    try:
+                        return _extract_message_content(response_payload)
+                    except LLMClientError as exc:
+                        if not _should_retry_with_stream(response_payload, exc):
+                            raise
 
-                    stream_response = client.post(
-                        endpoint,
-                        json={**payload, "stream": True},
-                        headers=headers,
-                    )
-                    stream_response.raise_for_status()
-                    return _extract_streaming_message_content(
-                        stream_response.text,
-                        missing_content_error=str(exc),
-                    )
-        except httpx.HTTPError as exc:
-            raise LLMClientError("Chat completion request failed") from exc
+                        stream_response = client.post(
+                            endpoint,
+                            json={**payload, "stream": True},
+                            headers=headers,
+                        )
+                        stream_response.raise_for_status()
+                        return _extract_streaming_message_content(
+                            stream_response.text,
+                            missing_content_error=str(exc),
+                        )
+            except httpx.HTTPStatusError as exc:
+                last_error = exc
+                status_code = exc.response.status_code if exc.response is not None else None
+                should_retry = status_code in TRANSIENT_HTTP_STATUS_CODES and attempt < max_attempts
+                _log_chat_completion_http_error(
+                    error=exc,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    status_code=status_code,
+                    will_retry=should_retry,
+                )
+                if should_retry:
+                    time.sleep(self.retry_backoff_seconds * attempt)
+                    continue
+                raise LLMClientError(_chat_completion_request_error_message(exc, status_code=status_code)) from exc
+            except httpx.TimeoutException as exc:
+                last_error = exc
+                should_retry = attempt < max_attempts
+                _log_chat_completion_http_error(
+                    error=exc,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    status_code=None,
+                    will_retry=should_retry,
+                )
+                if should_retry:
+                    time.sleep(self.retry_backoff_seconds * attempt)
+                    continue
+                raise LLMClientError(_chat_completion_request_error_message(exc, status_code=None)) from exc
+            except httpx.HTTPError as exc:
+                _log_chat_completion_http_error(
+                    error=exc,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    status_code=None,
+                    will_retry=False,
+                )
+                raise LLMClientError(_chat_completion_request_error_message(exc, status_code=None)) from exc
+
+        if last_error is not None:
+            raise LLMClientError(_chat_completion_request_error_message(last_error, status_code=None)) from last_error
+        raise LLMClientError("Chat completion request failed")
+
+
+def _chat_completion_request_error_message(error: Exception, *, status_code: int | None) -> str:
+    status_part = f" status_code={status_code}" if status_code is not None else ""
+    return f"Chat completion request failed: {type(error).__name__}{status_part}"
+
+
+def _log_chat_completion_http_error(
+    *,
+    error: Exception,
+    attempt: int,
+    max_attempts: int,
+    status_code: int | None,
+    will_retry: bool,
+) -> None:
+    logger.warning(
+        "chat_completion_request_failed error_type=%s status_code=%s attempt=%s max_attempts=%s will_retry=%s",
+        type(error).__name__,
+        status_code,
+        attempt,
+        max_attempts,
+        will_retry,
+    )
 
 
 @dataclass(slots=True)

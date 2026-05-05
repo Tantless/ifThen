@@ -2,6 +2,8 @@ import type { SimulationRead } from '../types/api'
 
 export type HistoryChatViewState = {
   mode: 'history'
+  messageWindowMode: 'latest' | 'anchored'
+  anchorMessageId: number | null
 }
 
 export type BranchChatViewState = {
@@ -46,6 +48,22 @@ export type MessageLoadState =
   | { status: 'loaded' }
   | { status: 'failed' }
 
+export function createLatestHistoryView(): HistoryChatViewState {
+  return {
+    mode: 'history',
+    messageWindowMode: 'latest',
+    anchorMessageId: null,
+  }
+}
+
+export function createAnchoredHistoryView(anchorMessageId: number): HistoryChatViewState {
+  return {
+    mode: 'history',
+    messageWindowMode: 'anchored',
+    anchorMessageId,
+  }
+}
+
 export function enterBranchView(_state: HistoryChatViewState, input: EnterBranchViewInput): BranchChatViewState {
   return {
     mode: 'branch',
@@ -54,7 +72,7 @@ export function enterBranchView(_state: HistoryChatViewState, input: EnterBranch
 }
 
 export function exitBranchView(_state: BranchChatViewState): HistoryChatViewState {
-  return { mode: 'history' }
+  return createLatestHistoryView()
 }
 
 export function resolveInspectorSnapshotAt(state: ChatViewState, _messages: TimestampMessage[]): string | null {

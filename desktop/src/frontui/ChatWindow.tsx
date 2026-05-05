@@ -13,6 +13,12 @@ import type { FrontAnalysisProgress, FrontAnalysisStage, FrontChatMessage, Front
 
 const TOP_LOAD_TRIGGER_PX = 24
 const TOP_LOAD_REARM_PX = 72
+const BOTTOM_LOAD_TRIGGER_PX = 24
+const BOTTOM_LOAD_REARM_PX = 72
+const JUMP_SCROLL_RETRY_DELAY_MS = 24
+const JUMP_SCROLL_MAX_ATTEMPTS = 10
+const JUMP_CENTER_TOLERANCE_PX = 4
+const JUMP_PAGING_SUPPRESSION_MS = 180
 
 type BranchChatStatus =
   | 'idle'
@@ -37,6 +43,7 @@ type RewriteState =
 
 type FrontChatWindowProps = {
   state: FrontChatWindowState
+  messageWindowMode?: 'latest' | 'anchored'
   analysisProgress?: FrontAnalysisProgress | null
   onSendMessage: (text: string) => void
   conversationKey?: string
@@ -55,8 +62,13 @@ type FrontChatWindowProps = {
   hasOlderMessages?: boolean
   olderMessagesPending?: boolean
   onLoadOlderMessages?: () => Promise<void> | void
+  hasNewerMessages?: boolean
+  newerMessagesPending?: boolean
+  onLoadNewerMessages?: () => Promise<void> | void
   showStartAnalysisButton?: boolean
   onStartAnalysis?: () => void
+  showRetryAnalysisButton?: boolean
+  onRetryAnalysis?: () => void
   startAnalysisPending?: boolean
   jumpToMessageRequest?: {
     messageId: number
@@ -66,6 +78,7 @@ type FrontChatWindowProps = {
 
 export function FrontChatWindow({
   state,
+  messageWindowMode = 'latest',
   analysisProgress = null,
   onSendMessage,
   conversationKey,
@@ -84,13 +97,18 @@ export function FrontChatWindow({
   hasOlderMessages = false,
   olderMessagesPending = false,
   onLoadOlderMessages,
+  hasNewerMessages = false,
+  newerMessagesPending = false,
+  onLoadNewerMessages,
   showStartAnalysisButton = false,
   onStartAnalysis,
+  showRetryAnalysisButton = false,
+  onRetryAnalysis,
   startAnalysisPending = false,
   jumpToMessageRequest = null,
 }: FrontChatWindowProps) {
   const [inputText, setInputText] = useState('')
-  const [historyLoadHint, setHistoryLoadHint] = useState<'hidden' | 'loading' | 'loaded'>('hidden')
+  const [historyLoadHint, setHistoryLoadHint] = useState<'hidden' | 'loading_older' | 'loaded_older' | 'loading_newer' | 'loaded_newer'>('hidden')
   const [contextMenu, setContextMenu] = useState<{ messageId: number; x: number; y: number } | null>(null)
   const [showCompletionMotion, setShowCompletionMotion] = useState(false)
   const [showAnalysisProgressDetails, setShowAnalysisProgressDetails] = useState(false)
@@ -101,6 +119,11 @@ export function FrontChatWindow({
   const completionMotionTimerRef = useRef<number | null>(null)
   const jumpHighlightTimerRef = useRef<number | null>(null)
   const previousRewriteStateRef = useRef<RewriteState>(null)
+  const handledJumpRequestKeyRef = useRef<number | null>(null)
+  const resetConversationKeyRef = useRef<string | undefined>(conversationKey)
+  const suppressHistoryPagingRef = useRef(false)
+  const jumpRetryTimerRef = useRef<number | null>(null)
+  const jumpRetryAttemptsRef = useRef(0)
   const conversationMessages = state.mode === 'conversation' ? state.messages : []
   const previousMessageStateRef = useRef<{
     conversationKey?: string
@@ -112,9 +135,16 @@ export function FrontChatWindow({
     messageId: string
     topOffset: number
   } | null>(null)
+  const newerMessageAnchorRef = useRef<{
+    messageId: string
+    topOffset: number
+  } | null>(null)
   const olderLoadArmedRef = useRef(true)
+  const newerLoadArmedRef = useRef(true)
   const previousOlderMessagesPendingRef = useRef(false)
+  const previousNewerMessagesPendingRef = useRef(false)
   const historyLoadHintTimerRef = useRef<number | null>(null)
+  const historyPagingSuppressionTimerRef = useRef<number | null>(null)
 
   const clearHistoryLoadHintTimer = () => {
     if (historyLoadHintTimerRef.current !== null) {
@@ -165,9 +195,81 @@ export function FrontChatWindow({
     }
   }
 
+  const clearHistoryPagingSuppressionTimer = () => {
+    if (historyPagingSuppressionTimerRef.current !== null) {
+      window.clearTimeout(historyPagingSuppressionTimerRef.current)
+      historyPagingSuppressionTimerRef.current = null
+    }
+  }
+
+  const clearJumpRetryTimer = () => {
+    if (jumpRetryTimerRef.current !== null) {
+      window.clearTimeout(jumpRetryTimerRef.current)
+      jumpRetryTimerRef.current = null
+    }
+  }
+
+  const extendHistoryPagingSuppression = () => {
+    suppressHistoryPagingRef.current = true
+    clearHistoryPagingSuppressionTimer()
+    historyPagingSuppressionTimerRef.current = window.setTimeout(() => {
+      suppressHistoryPagingRef.current = false
+      historyPagingSuppressionTimerRef.current = null
+    }, JUMP_PAGING_SUPPRESSION_MS)
+  }
+
+  const centerMessageInViewport = (targetElement: HTMLElement) => {
+    if (!scrollContainerRef.current) {
+      return false
+    }
+
+    const container = scrollContainerRef.current
+    const containerRect = container.getBoundingClientRect()
+    const targetRect = targetElement.getBoundingClientRect()
+    const offsetWithinContainer = targetRect.top - containerRect.top
+    const desiredScrollTop =
+      container.scrollTop + offsetWithinContainer - Math.max(0, (container.clientHeight - targetRect.height) / 2)
+    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
+    const nextScrollTop = Math.min(maxScrollTop, Math.max(0, desiredScrollTop))
+
+    container.scrollTop = nextScrollTop
+
+    const settledRect = targetElement.getBoundingClientRect()
+    const settledMiddle = settledRect.top - containerRect.top + settledRect.height / 2
+    const desiredMiddle = container.clientHeight / 2
+
+    return Math.abs(settledMiddle - desiredMiddle) <= JUMP_CENTER_TOLERANCE_PX
+  }
+
+  const refreshPendingViewportAnchor = () => {
+    const nextAnchor = captureFirstVisibleMessageAnchor()
+
+    if (!nextAnchor) {
+      return
+    }
+
+    if (olderMessagesPending && olderMessageAnchorRef.current) {
+      olderMessageAnchorRef.current = nextAnchor
+    }
+
+    if (newerMessagesPending && newerMessageAnchorRef.current) {
+      newerMessageAnchorRef.current = nextAnchor
+    }
+  }
+
   const generatedMessages = rewriteState?.generatedMessages ?? []
   const historyHintLabel =
-    historyLoadHint === 'loading' ? '正在加载聊天记录...' : hasOlderMessages ? '已加载更早消息' : '已到最早消息'
+    historyLoadHint === 'loading_older'
+      ? '正在加载更早消息...'
+      : historyLoadHint === 'loaded_older'
+        ? hasOlderMessages
+          ? '已加载更早消息'
+          : '已到最早消息'
+        : historyLoadHint === 'loading_newer'
+          ? '正在加载后续消息...'
+          : hasNewerMessages
+            ? '已加载后续消息'
+            : '已到最新消息'
   const hasActiveRewrite = rewriteState !== null
   const renderedMessages = useMemo(
     () =>
@@ -184,6 +286,8 @@ export function FrontChatWindow({
   useEffect(() => {
     return () => {
       clearHistoryLoadHintTimer()
+      clearHistoryPagingSuppressionTimer()
+      clearJumpRetryTimer()
       clearCompletionMotionTimer()
       clearJumpHighlightTimer()
     }
@@ -196,11 +300,24 @@ export function FrontChatWindow({
   }, [analysisProgress])
 
   useEffect(() => {
+    if (resetConversationKeyRef.current === conversationKey) {
+      return
+    }
+
+    resetConversationKeyRef.current = conversationKey
     clearHistoryLoadHintTimer()
     setHistoryLoadHint('hidden')
     previousOlderMessagesPendingRef.current = false
+    previousNewerMessagesPendingRef.current = false
     olderMessageAnchorRef.current = null
+    newerMessageAnchorRef.current = null
     olderLoadArmedRef.current = true
+    newerLoadArmedRef.current = true
+    suppressHistoryPagingRef.current = false
+    clearHistoryPagingSuppressionTimer()
+    clearJumpRetryTimer()
+    jumpRetryAttemptsRef.current = 0
+    handledJumpRequestKeyRef.current = null
     setContextMenu(null)
     setShowCompletionMotion(false)
     setJumpHighlightMessageId(null)
@@ -229,14 +346,26 @@ export function FrontChatWindow({
   useEffect(() => {
     if (olderMessagesPending) {
       clearHistoryLoadHintTimer()
-      setHistoryLoadHint('loading')
+      setHistoryLoadHint('loading_older')
     } else if (previousOlderMessagesPendingRef.current) {
-      setHistoryLoadHint('loaded')
+      setHistoryLoadHint('loaded_older')
       scheduleHideHistoryLoadHint()
     }
 
     previousOlderMessagesPendingRef.current = olderMessagesPending
   }, [hasOlderMessages, olderMessagesPending])
+
+  useEffect(() => {
+    if (newerMessagesPending) {
+      clearHistoryLoadHintTimer()
+      setHistoryLoadHint('loading_newer')
+    } else if (previousNewerMessagesPendingRef.current) {
+      setHistoryLoadHint('loaded_newer')
+      scheduleHideHistoryLoadHint()
+    }
+
+    previousNewerMessagesPendingRef.current = newerMessagesPending
+  }, [hasNewerMessages, newerMessagesPending])
 
   useEffect(() => {
     if (rewriteState?.state !== 'editing') {
@@ -275,7 +404,12 @@ export function FrontChatWindow({
     const conversationChanged = previous.conversationKey !== conversationKey
     const appendedNewMessage = !conversationChanged && renderedMessages.length > previous.count && lastMessageId !== previous.lastMessageId
     const initialConversationLoad = !conversationChanged && previous.count === 0 && renderedMessages.length > 0
-    const shouldScrollToBottom = conversationChanged || appendedNewMessage || initialConversationLoad
+    const hasPendingJumpRequest =
+      jumpToMessageRequest !== null && handledJumpRequestKeyRef.current !== jumpToMessageRequest.requestKey
+    const shouldScrollToBottom =
+      messageWindowMode === 'latest' &&
+      !hasPendingJumpRequest &&
+      (conversationChanged || appendedNewMessage || initialConversationLoad)
 
     if (olderMessageAnchorRef.current && scrollContainerRef.current) {
       const containerRect = scrollContainerRef.current.getBoundingClientRect()
@@ -289,6 +423,18 @@ export function FrontChatWindow({
       }
 
       olderMessageAnchorRef.current = null
+    } else if (newerMessageAnchorRef.current && scrollContainerRef.current) {
+      const containerRect = scrollContainerRef.current.getBoundingClientRect()
+      const anchorElement = scrollContainerRef.current.querySelector<HTMLElement>(
+        `[data-chat-message-id="${newerMessageAnchorRef.current.messageId}"]`,
+      )
+
+      if (anchorElement) {
+        const anchorTop = anchorElement.getBoundingClientRect().top - containerRect.top
+        scrollContainerRef.current.scrollTop += anchorTop - newerMessageAnchorRef.current.topOffset
+      }
+
+      newerMessageAnchorRef.current = null
     } else if (shouldScrollToBottom) {
       messagesEndRef.current?.scrollIntoView({ behavior: conversationChanged || initialConversationLoad ? 'auto' : 'smooth' })
     }
@@ -299,58 +445,141 @@ export function FrontChatWindow({
       lastMessageId,
       count: renderedMessages.length,
     }
-  }, [conversationKey, renderedMessages, state.mode])
+  }, [conversationKey, jumpToMessageRequest, messageWindowMode, renderedMessages, state.mode])
 
   useLayoutEffect(() => {
     if (!jumpToMessageRequest || state.mode !== 'conversation' || !scrollContainerRef.current) {
       return
     }
 
-    const messageDomId = `message-${jumpToMessageRequest.messageId}`
-    const targetElement = scrollContainerRef.current.querySelector<HTMLElement>(`[data-chat-message-id="${messageDomId}"]`)
-
-    if (!targetElement) {
+    if (handledJumpRequestKeyRef.current === jumpToMessageRequest.requestKey) {
       return
     }
 
-    targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    clearJumpHighlightTimer()
-    setJumpHighlightMessageId(messageDomId)
-    jumpHighlightTimerRef.current = window.setTimeout(() => {
-      setJumpHighlightMessageId((current) => (current === messageDomId ? null : current))
-      jumpHighlightTimerRef.current = null
-    }, 1800)
+    const messageDomId = `message-${jumpToMessageRequest.messageId}`
+    clearJumpRetryTimer()
+    jumpRetryAttemptsRef.current = 0
+    let primedViewport = false
+
+    const attemptJump = () => {
+      if (!scrollContainerRef.current) {
+        return
+      }
+
+      const targetElement = scrollContainerRef.current.querySelector<HTMLElement>(`[data-chat-message-id="${messageDomId}"]`)
+
+      if (!targetElement) {
+        if (jumpRetryAttemptsRef.current >= JUMP_SCROLL_MAX_ATTEMPTS) {
+          return
+        }
+
+        jumpRetryAttemptsRef.current += 1
+        jumpRetryTimerRef.current = window.setTimeout(() => {
+          jumpRetryTimerRef.current = null
+          attemptJump()
+        }, JUMP_SCROLL_RETRY_DELAY_MS)
+        return
+      }
+
+      olderMessageAnchorRef.current = null
+      newerMessageAnchorRef.current = null
+      extendHistoryPagingSuppression()
+
+      if (handledJumpRequestKeyRef.current !== jumpToMessageRequest.requestKey) {
+        handledJumpRequestKeyRef.current = jumpToMessageRequest.requestKey
+        clearJumpHighlightTimer()
+        setJumpHighlightMessageId(messageDomId)
+        jumpHighlightTimerRef.current = window.setTimeout(() => {
+          setJumpHighlightMessageId((current) => (current === messageDomId ? null : current))
+          jumpHighlightTimerRef.current = null
+        }, 1800)
+      }
+
+      if (!primedViewport) {
+        targetElement.scrollIntoView({ behavior: 'auto', block: 'center' })
+        primedViewport = true
+      }
+
+      const centered = centerMessageInViewport(targetElement)
+
+      if (!centered && jumpRetryAttemptsRef.current < JUMP_SCROLL_MAX_ATTEMPTS) {
+        jumpRetryAttemptsRef.current += 1
+        jumpRetryTimerRef.current = window.setTimeout(() => {
+          jumpRetryTimerRef.current = null
+          attemptJump()
+        }, JUMP_SCROLL_RETRY_DELAY_MS)
+      }
+    }
+
+    attemptJump()
   }, [jumpToMessageRequest?.requestKey, renderedMessages, state.mode])
 
   const handleScroll = async () => {
     const currentScrollTop = scrollContainerRef.current?.scrollTop ?? 0
+    refreshPendingViewportAnchor()
 
     if (currentScrollTop > TOP_LOAD_REARM_PX) {
       olderLoadArmedRef.current = true
     }
 
+    const distanceToBottom =
+      (scrollContainerRef.current?.scrollHeight ?? 0) -
+      (currentScrollTop + (scrollContainerRef.current?.clientHeight ?? 0))
+
+    if (distanceToBottom > BOTTOM_LOAD_REARM_PX) {
+      newerLoadArmedRef.current = true
+    }
+
     if (
       state.mode !== 'conversation' ||
-      !hasOlderMessages ||
-      olderMessagesPending ||
-      !onLoadOlderMessages ||
-      !scrollContainerRef.current ||
-      currentScrollTop > TOP_LOAD_TRIGGER_PX ||
-      !olderLoadArmedRef.current
+      !scrollContainerRef.current
     ) {
       return
     }
 
-    olderLoadArmedRef.current = false
-    olderMessageAnchorRef.current = captureFirstVisibleMessageAnchor()
-    clearHistoryLoadHintTimer()
-    setHistoryLoadHint('loading')
+    if (suppressHistoryPagingRef.current) {
+      return
+    }
 
-    try {
-      await onLoadOlderMessages()
-    } catch {
-      olderMessageAnchorRef.current = null
-      setHistoryLoadHint('hidden')
+    if (
+      hasOlderMessages &&
+      !olderMessagesPending &&
+      onLoadOlderMessages &&
+      currentScrollTop <= TOP_LOAD_TRIGGER_PX &&
+      olderLoadArmedRef.current
+    ) {
+      olderLoadArmedRef.current = false
+      olderMessageAnchorRef.current = captureFirstVisibleMessageAnchor()
+      clearHistoryLoadHintTimer()
+      setHistoryLoadHint('loading_older')
+
+      try {
+        await onLoadOlderMessages()
+      } catch {
+        olderMessageAnchorRef.current = null
+        setHistoryLoadHint('hidden')
+      }
+      return
+    }
+
+    if (
+      hasNewerMessages &&
+      !newerMessagesPending &&
+      onLoadNewerMessages &&
+      distanceToBottom <= BOTTOM_LOAD_TRIGGER_PX &&
+      newerLoadArmedRef.current
+    ) {
+      newerLoadArmedRef.current = false
+      newerMessageAnchorRef.current = captureFirstVisibleMessageAnchor()
+      clearHistoryLoadHintTimer()
+      setHistoryLoadHint('loading_newer')
+
+      try {
+        await onLoadNewerMessages()
+      } catch {
+        newerMessageAnchorRef.current = null
+        setHistoryLoadHint('hidden')
+      }
     }
   }
 
@@ -445,6 +674,24 @@ export function FrontChatWindow({
             </div>
           </div>
         ) : null}
+        {showRetryAnalysisButton && onRetryAnalysis ? (
+          <div className="border-t border-[color:var(--if-divider)] bg-[var(--if-bg-panel)] px-5 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-[var(--if-text-primary)]">分析未完成</p>
+                <p className="mt-1 text-[12px] text-[var(--if-text-secondary)]">保留已完成结果，从失败阶段继续分析</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-[8px] border border-[rgba(7,193,96,0.2)] bg-[var(--if-accent)] px-4 py-2 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-[var(--if-accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={onRetryAnalysis}
+                disabled={startAnalysisPending}
+              >
+                {startAnalysisPending ? '启动中…' : '重试失败阶段'}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {rewriteState?.state === 'completed' ? (
           <div className="border-t border-[color:var(--if-divider)] bg-[var(--if-accent-softer)] px-5 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -516,12 +763,12 @@ export function FrontChatWindow({
           <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center">
             <span
               className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-[11px] font-medium tracking-[0.01em] shadow-[0_6px_18px_rgba(0,0,0,0.16)] backdrop-blur-md transition-all duration-300 ${
-                historyLoadHint === 'loading'
+                historyLoadHint === 'loading_older' || historyLoadHint === 'loading_newer'
                   ? 'border-white/10 bg-[rgba(54,49,44,0.88)] text-white'
                   : 'border-white/10 bg-[rgba(72,66,60,0.78)] text-white/92'
               }`}
             >
-              {historyLoadHint === 'loading' ? (
+              {historyLoadHint === 'loading_older' || historyLoadHint === 'loading_newer' ? (
                 <span className="inline-flex items-center gap-1.5" aria-hidden="true">
                   <span className="h-1.5 w-1.5 rounded-full bg-white/90 animate-pulse" />
                   <span className="h-1.5 w-1.5 rounded-full bg-white/70 animate-pulse [animation-delay:120ms]" />

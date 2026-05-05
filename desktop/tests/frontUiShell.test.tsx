@@ -1076,6 +1076,8 @@ describe('frontUI shell markup', () => {
           hasOlderMessages={messages.length < recentMessages.length + olderMessages.length}
           olderMessagesPending={pending}
           onLoadOlderMessages={handleLoadOlderMessages}
+          hasNewerMessages={false}
+          newerMessagesPending={false}
         />
       )
     }
@@ -1171,7 +1173,7 @@ describe('frontUI shell markup', () => {
       await Promise.resolve()
     })
 
-    expect(container.textContent).toContain('正在加载聊天记录')
+    expect(container.textContent).toContain('正在加载更早消息')
     expect(container.innerHTML).toContain('backdrop-blur-md')
     expect(container.innerHTML).toContain('animate-pulse')
 
@@ -1182,6 +1184,190 @@ describe('frontUI shell markup', () => {
     })
 
     expect(scrollContainer.scrollTop).toBeGreaterThan(900)
+  })
+
+  it('updates the viewport anchor while older-message loading is still pending', async () => {
+    activeDom = new JSDOM('<!doctype html><html><body></body></html>')
+    const { window } = activeDom
+    Object.assign(globalThis, {
+      window,
+      document: window.document,
+      HTMLElement: window.HTMLElement,
+      Event: window.Event,
+      MouseEvent: window.MouseEvent,
+      IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
+    })
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: () => undefined,
+      configurable: true,
+    })
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    mountedRoots.push({ root, container })
+
+    const recentMessages = Array.from({ length: 80 }, (_, index) => ({
+      id: `message-${index + 21}`,
+      messageId: index + 21,
+      align: (index + 21) % 2 === 0 ? ('right' as const) : ('left' as const),
+      speakerName: (index + 21) % 2 === 0 ? '我' : '阿青',
+      avatarUrl: 'https://example.test/avatar.png',
+      text: `最近消息 ${index + 21}`,
+      timestampLabel: `10:${String(index).padStart(2, '0')}`,
+      timestampRaw: `2026-04-08T10:${String(index).padStart(2, '0')}:00`,
+      canRewrite: false,
+      source: 'real' as const,
+    }))
+    const olderMessages = Array.from({ length: 20 }, (_, index) => ({
+      id: `message-${index + 1}`,
+      messageId: index + 1,
+      align: (index + 1) % 2 === 0 ? ('right' as const) : ('left' as const),
+      speakerName: (index + 1) % 2 === 0 ? '我' : '阿青',
+      avatarUrl: 'https://example.test/avatar.png',
+      text: `更早消息 ${index + 1}`,
+      timestampLabel: `09:${String(index).padStart(2, '0')}`,
+      timestampRaw: `2026-04-08T09:${String(index).padStart(2, '0')}:00`,
+      canRewrite: false,
+      source: 'real' as const,
+    }))
+    let resolveOlderLoad: (() => void) | null = null
+
+    function Harness() {
+      const [messages, setMessages] = React.useState(recentMessages)
+      const [pending, setPending] = React.useState(false)
+
+      const handleLoadOlderMessages = async () => {
+        setPending(true)
+        await new Promise<void>((resolve) => {
+          resolveOlderLoad = resolve
+        })
+        setMessages((current) => [...olderMessages, ...current])
+        setPending(false)
+      }
+
+      return (
+        <FrontChatWindow
+          state={{ mode: 'conversation', title: '和阿青的聊天', messages }}
+          conversationKey="conversation-7"
+          onSendMessage={() => undefined}
+          hasOlderMessages
+          olderMessagesPending={pending}
+          onLoadOlderMessages={handleLoadOlderMessages}
+          hasNewerMessages={false}
+          newerMessagesPending={false}
+        />
+      )
+    }
+
+    act(() => {
+      root.render(<Harness />)
+    })
+
+    const scrollContainer = container.querySelector('[data-testid="chat-message-scroll"]') as HTMLDivElement | null
+    expect(scrollContainer).not.toBeNull()
+
+    if (!scrollContainer) {
+      throw new Error('expected chat message scroll container to render')
+    }
+
+    Object.defineProperty(scrollContainer, 'clientHeight', {
+      value: 600,
+      configurable: true,
+    })
+    Object.defineProperty(scrollContainer, 'scrollHeight', {
+      value: 1200,
+      configurable: true,
+    })
+    Object.defineProperty(scrollContainer, 'getBoundingClientRect', {
+      value: () => ({
+        top: 100,
+        bottom: 700,
+        left: 0,
+        right: 400,
+        width: 400,
+        height: 600,
+        x: 0,
+        y: 100,
+        toJSON: () => undefined,
+      }),
+      configurable: true,
+    })
+    Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+      value: function getBoundingClientRect() {
+        if (this === scrollContainer) {
+          return {
+            top: 100,
+            bottom: 700,
+            left: 0,
+            right: 400,
+            width: 400,
+            height: 600,
+            x: 0,
+            y: 100,
+            toJSON: () => undefined,
+          }
+        }
+
+        const messageId = this.getAttribute?.('data-chat-message-id')
+        if (!messageId) {
+          return {
+            top: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            width: 0,
+            height: 0,
+            x: 0,
+            y: 0,
+            toJSON: () => undefined,
+          }
+        }
+
+        const messageElements = Array.from(scrollContainer.querySelectorAll('[data-chat-message-id]'))
+        const index = messageElements.indexOf(this as Element)
+        const top = 116 + index * 48 - scrollContainer.scrollTop
+
+        return {
+          top,
+          bottom: top + 40,
+          left: 0,
+          right: 320,
+          width: 320,
+          height: 40,
+          x: 0,
+          y: top,
+          toJSON: () => undefined,
+        }
+      },
+      configurable: true,
+    })
+
+    act(() => {
+      scrollContainer.scrollTop = 0
+      scrollContainer.dispatchEvent(new window.Event('scroll', { bubbles: true }))
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    act(() => {
+      scrollContainer.scrollTop = 240
+      scrollContainer.dispatchEvent(new window.Event('scroll', { bubbles: true }))
+    })
+
+    await act(async () => {
+      resolveOlderLoad?.()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(scrollContainer.scrollTop).toBeGreaterThan(1000)
   })
 
   it('does not auto-trigger another older-message load until the user scrolls away from the top threshold', async () => {
@@ -1233,6 +1419,8 @@ describe('frontUI shell markup', () => {
           hasOlderMessages
           olderMessagesPending={false}
           onLoadOlderMessages={onLoadOlderMessages}
+          hasNewerMessages={false}
+          newerMessagesPending={false}
         />,
       )
     })
@@ -1275,6 +1463,375 @@ describe('frontUI shell markup', () => {
     })
 
     expect(onLoadOlderMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not auto-scroll to bottom when anchored history window receives appended messages', () => {
+    activeDom = new JSDOM('<!doctype html><html><body></body></html>')
+    const { window } = activeDom
+    Object.assign(globalThis, {
+      window,
+      document: window.document,
+      HTMLElement: window.HTMLElement,
+      Event: window.Event,
+      MouseEvent: window.MouseEvent,
+      IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
+    })
+
+    const scrollTargets: string[] = []
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: function scrollIntoView() {
+        scrollTargets.push(this.getAttribute?.('data-chat-message-id') ?? 'other')
+      },
+      configurable: true,
+    })
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    mountedRoots.push({ root, container })
+
+    const initialState: FrontChatWindowState = {
+      mode: 'conversation',
+      title: '和阿岚的聊天',
+      messages: [
+        {
+          id: 'message-500',
+          messageId: 500,
+          align: 'left',
+          speakerName: '阿岚',
+          avatarUrl: 'https://example.test/other.png',
+          text: '不用补考',
+          timestampLabel: '3月27日 20:10',
+          timestampRaw: '2026-03-27T20:10:38',
+          canRewrite: false,
+          source: 'real',
+        },
+      ],
+    }
+
+    act(() => {
+      root.render(
+        <FrontChatWindow
+          state={initialState}
+          messageWindowMode="anchored"
+          conversationKey="conversation-7"
+          onSendMessage={() => undefined}
+          jumpToMessageRequest={{ messageId: 500, requestKey: 1 }}
+        />,
+      )
+    })
+
+    expect(scrollTargets).toContain('message-500')
+    scrollTargets.length = 0
+
+    const nextState: FrontChatWindowState = {
+      ...initialState,
+      messages: [
+        ...initialState.messages,
+        {
+          id: 'message-501',
+          messageId: 501,
+          align: 'right',
+          speakerName: '我',
+          avatarUrl: 'https://example.test/self.png',
+          text: '我不是那个意思',
+          timestampLabel: '3月27日 20:10',
+          timestampRaw: '2026-03-27T20:10:43',
+          canRewrite: true,
+          source: 'real',
+        },
+      ],
+    }
+
+    act(() => {
+      root.render(
+        <FrontChatWindow
+          state={nextState}
+          messageWindowMode="anchored"
+          conversationKey="conversation-7"
+          onSendMessage={() => undefined}
+          jumpToMessageRequest={{ messageId: 500, requestKey: 1 }}
+        />,
+      )
+    })
+
+    expect(scrollTargets).toEqual([])
+  })
+
+  it('does not trigger newer-message paging from the programmatic jump scroll itself', async () => {
+    vi.useFakeTimers()
+    activeDom = new JSDOM('<!doctype html><html><body></body></html>')
+    const { window } = activeDom
+    Object.assign(globalThis, {
+      window,
+      document: window.document,
+      HTMLElement: window.HTMLElement,
+      Event: window.Event,
+      MouseEvent: window.MouseEvent,
+      IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
+    })
+
+    const onLoadNewerMessages = vi.fn(async () => undefined)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    mountedRoots.push({ root, container })
+
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: function scrollIntoView() {
+        const scrollContainer = container.querySelector('[data-testid="chat-message-scroll"]') as HTMLDivElement | null
+        if (!scrollContainer) {
+          return
+        }
+
+        scrollContainer.scrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight)
+        scrollContainer.dispatchEvent(new window.Event('scroll', { bubbles: true }))
+      },
+      configurable: true,
+    })
+
+    act(() => {
+      root.render(
+        <FrontChatWindow
+          state={{
+            mode: 'conversation',
+            title: '和阿岚的聊天',
+            messages: [
+              {
+                id: 'message-500',
+                messageId: 500,
+                align: 'left',
+                speakerName: '阿岚',
+                avatarUrl: 'https://example.test/other.png',
+                text: '不用补考',
+                timestampLabel: '3月27日 20:10',
+                timestampRaw: '2026-03-27T20:10:38',
+                canRewrite: false,
+                source: 'real',
+              },
+            ],
+          }}
+          messageWindowMode="anchored"
+          conversationKey="conversation-7"
+          onSendMessage={() => undefined}
+          hasNewerMessages
+          newerMessagesPending={false}
+          onLoadNewerMessages={onLoadNewerMessages}
+          jumpToMessageRequest={{ messageId: 500, requestKey: 1 }}
+        />,
+      )
+    })
+
+    const scrollContainer = container.querySelector('[data-testid="chat-message-scroll"]') as HTMLDivElement | null
+    expect(scrollContainer).not.toBeNull()
+
+    if (!scrollContainer) {
+      throw new Error('expected chat message scroll container to render')
+    }
+
+    Object.defineProperty(scrollContainer, 'clientHeight', {
+      value: 600,
+      configurable: true,
+    })
+    Object.defineProperty(scrollContainer, 'scrollHeight', {
+      value: 600,
+      configurable: true,
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(300)
+    })
+
+    expect(onLoadNewerMessages).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('re-centers the exact target message after a programmatic jump scroll drifts to later messages', async () => {
+    vi.useFakeTimers()
+    activeDom = new JSDOM('<!doctype html><html><body></body></html>')
+    const { window } = activeDom
+    Object.assign(globalThis, {
+      window,
+      document: window.document,
+      HTMLElement: window.HTMLElement,
+      Event: window.Event,
+      MouseEvent: window.MouseEvent,
+      IS_REACT_ACT_ENVIRONMENT: true,
+    })
+    Object.defineProperty(globalThis, 'navigator', {
+      value: window.navigator,
+      configurable: true,
+    })
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    mountedRoots.push({ root, container })
+
+    const messages = Array.from({ length: 81 }, (_, index) => {
+      const messageId = 1329 + index
+      return {
+        id: `message-${messageId}`,
+        messageId,
+        align: messageId % 2 === 0 ? ('right' as const) : ('left' as const),
+        speakerName: messageId % 2 === 0 ? '我' : '阿岚',
+        avatarUrl: 'https://example.test/avatar.png',
+        text: messageId === 1369 ? '不用补考' : messageId === 1404 ? '尽量这个词很你' : `消息 ${messageId}`,
+        timestampLabel: '3月27日 20:10',
+        timestampRaw: '2026-03-27T20:10:38',
+        canRewrite: false,
+        source: 'real' as const,
+      }
+    })
+
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: function scrollIntoView() {
+        const scrollContainer = container.querySelector('[data-testid="chat-message-scroll"]') as HTMLDivElement | null
+        if (!scrollContainer) {
+          return
+        }
+
+        scrollContainer.scrollTop = 35 * 48
+      },
+      configurable: true,
+    })
+
+    act(() => {
+      root.render(
+        <FrontChatWindow
+          state={{
+            mode: 'conversation',
+            title: '和阿岚的聊天',
+            messages,
+          }}
+          messageWindowMode="anchored"
+          conversationKey="conversation-7"
+          onSendMessage={() => undefined}
+          jumpToMessageRequest={null}
+        />,
+      )
+    })
+
+    const scrollContainer = container.querySelector('[data-testid="chat-message-scroll"]') as HTMLDivElement | null
+    expect(scrollContainer).not.toBeNull()
+
+    if (!scrollContainer) {
+      throw new Error('expected chat message scroll container to render')
+    }
+
+    Object.defineProperty(scrollContainer, 'clientHeight', {
+      value: 600,
+      configurable: true,
+    })
+    Object.defineProperty(scrollContainer, 'scrollHeight', {
+      value: 81 * 48 + 160,
+      configurable: true,
+    })
+    Object.defineProperty(scrollContainer, 'getBoundingClientRect', {
+      value: () => ({
+        top: 100,
+        bottom: 700,
+        left: 0,
+        right: 400,
+        width: 400,
+        height: 600,
+        x: 0,
+        y: 100,
+        toJSON: () => undefined,
+      }),
+      configurable: true,
+    })
+    Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+      value: function getBoundingClientRect() {
+        if (this === scrollContainer) {
+          return {
+            top: 100,
+            bottom: 700,
+            left: 0,
+            right: 400,
+            width: 400,
+            height: 600,
+            x: 0,
+            y: 100,
+            toJSON: () => undefined,
+          }
+        }
+
+        const messageId = this.getAttribute?.('data-chat-message-id')
+        if (!messageId) {
+          return {
+            top: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            width: 0,
+            height: 0,
+            x: 0,
+            y: 0,
+            toJSON: () => undefined,
+          }
+        }
+
+        const messageElements = Array.from(scrollContainer.querySelectorAll('[data-chat-message-id]'))
+        const index = messageElements.indexOf(this as Element)
+        const top = 116 + index * 48 - scrollContainer.scrollTop
+
+        return {
+          top,
+          bottom: top + 40,
+          left: 0,
+          right: 320,
+          width: 320,
+          height: 40,
+          x: 0,
+          y: top,
+          toJSON: () => undefined,
+        }
+      },
+      configurable: true,
+    })
+
+    act(() => {
+      root.render(
+        <FrontChatWindow
+          state={{
+            mode: 'conversation',
+            title: '和阿岚的聊天',
+            messages,
+          }}
+          messageWindowMode="anchored"
+          conversationKey="conversation-7"
+          onSendMessage={() => undefined}
+          jumpToMessageRequest={{ messageId: 1369, requestKey: 1 }}
+        />,
+      )
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(300)
+    })
+
+    const targetElement = scrollContainer.querySelector('[data-chat-message-id="message-1369"]') as HTMLElement | null
+    expect(targetElement).not.toBeNull()
+
+    if (!targetElement) {
+      throw new Error('expected jump target message to render')
+    }
+
+    const containerRect = scrollContainer.getBoundingClientRect()
+    const targetRect = targetElement.getBoundingClientRect()
+    const targetMiddle = targetRect.top - containerRect.top + targetRect.height / 2
+
+    expect(targetMiddle).toBeCloseTo(scrollContainer.clientHeight / 2, 0)
+    vi.useRealTimers()
   })
 })
 

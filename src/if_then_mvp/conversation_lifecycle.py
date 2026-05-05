@@ -78,23 +78,79 @@ def queue_rerun_analysis(session, *, conversation_id: int) -> AnalysisJob:
         raise ValueError("Conversation has no import batch")
 
     clear_conversation_simulations(session, conversation_id=conversation_id)
+    retry_stage = _resolve_retry_stage(session, conversation_id=conversation_id)
 
     conversation = session.get(Conversation, conversation_id)
     if conversation is not None:
         conversation.status = "queued"
 
+    payload_json = {"import_id": latest_batch.id}
+    current_stage = "created"
+    if retry_stage is not None:
+        payload_json["resume_from_stage"] = retry_stage
+        current_stage = retry_stage
+
     job = AnalysisJob(
         conversation_id=conversation_id,
         job_type="full_analysis",
         status="queued",
-        current_stage="created",
+        current_stage=current_stage,
         progress_percent=0,
         retry_count=0,
-        payload_json={"import_id": latest_batch.id},
+        payload_json=payload_json,
     )
     session.add(job)
     session.flush()
     return job
+
+
+def _resolve_retry_stage(session, *, conversation_id: int) -> str | None:
+    failed_job = (
+        session.execute(
+            select(AnalysisJob)
+            .where(
+                AnalysisJob.conversation_id == conversation_id,
+                AnalysisJob.job_type == "full_analysis",
+                AnalysisJob.status == "failed",
+            )
+            .order_by(AnalysisJob.id.desc())
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
+    if failed_job is None:
+        return None
+
+    progress = failed_job.payload_json.get("progress", {}) if isinstance(failed_job.payload_json, dict) else {}
+    raw_stages = progress.get("stages", []) if isinstance(progress, dict) else []
+    failed_stage_ids = {
+        str(stage.get("id"))
+        for stage in raw_stages
+        if isinstance(stage, dict) and stage.get("status") == "failed"
+    }
+    failed_in_summarizing = "summarizing" in failed_stage_ids
+    failed_in_topic_stage = bool(failed_stage_ids & {"topic_resolution", "persona", "snapshots"})
+    if not failed_in_summarizing and not failed_in_topic_stage:
+        return None
+
+    segment_count = len(
+        session.execute(
+            select(Segment.id).where(Segment.conversation_id == conversation_id)
+        ).all()
+    )
+    summary_count = len(
+        session.execute(
+            select(SegmentSummary.id)
+            .join(Segment, SegmentSummary.segment_id == Segment.id)
+            .where(Segment.conversation_id == conversation_id)
+        ).all()
+    )
+    if segment_count > 0 and summary_count < segment_count:
+        return "summarizing"
+    if segment_count > 0 and summary_count == segment_count:
+        return "topic_persona_snapshot"
+    raise ValueError("Failed stage artifacts are missing; import the chat again to run analysis")
 
 
 def delete_conversation_tree(session, *, conversation_id: int) -> list[Path]:

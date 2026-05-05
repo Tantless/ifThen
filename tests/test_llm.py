@@ -14,7 +14,9 @@ class _FakeResponse:
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
-            raise httpx.HTTPStatusError('boom', request=None, response=None)
+            request = httpx.Request('POST', 'https://example.test/v1/chat/completions')
+            response = httpx.Response(self.status_code, request=request)
+            raise httpx.HTTPStatusError('boom', request=request, response=response)
 
     def json(self):
         if self._json_payload is None:
@@ -111,6 +113,47 @@ def test_transport_raises_when_stream_fallback_still_has_no_content(monkeypatch:
     transport = OpenAICompatibleTransport(timeout_seconds=1)
 
     with pytest.raises(LLMClientError, match='Chat completion message content must be a string'):
+        transport.post_chat_completion(
+            base_url='https://example.test/v1',
+            api_key='sk-test',
+            payload={'model': 'gpt-test', 'messages': []},
+        )
+
+
+def test_transport_retries_and_logs_transient_http_status(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    calls: list[dict] = []
+    responses = [
+        _FakeResponse(status_code=503),
+        _FakeResponse(json_payload={'choices': [{'message': {'content': 'ok'}}]}),
+    ]
+    sleep_calls: list[float] = []
+
+    monkeypatch.setattr(httpx, 'Client', lambda timeout: _FakeClient(responses=responses, calls=calls))
+    monkeypatch.setattr('if_then_mvp.llm.time.sleep', lambda seconds: sleep_calls.append(seconds))
+
+    transport = OpenAICompatibleTransport(timeout_seconds=1, retry_backoff_seconds=0.1)
+
+    with caplog.at_level('WARNING', logger='if_then_mvp.llm'):
+        content = transport.post_chat_completion(
+            base_url='https://example.test/v1',
+            api_key='sk-test',
+            payload={'model': 'gpt-test', 'messages': []},
+        )
+
+    assert content == 'ok'
+    assert len(calls) == 2
+    assert sleep_calls == [0.1]
+    assert 'chat_completion_request_failed error_type=HTTPStatusError status_code=503 attempt=1 max_attempts=3 will_retry=True' in caplog.text
+
+
+def test_transport_reports_final_http_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(httpx, 'Client', lambda timeout: _FakeClient(responses=[_FakeResponse(status_code=400)], calls=[]))
+    transport = OpenAICompatibleTransport(timeout_seconds=1, max_attempts=1)
+
+    with pytest.raises(LLMClientError, match='HTTPStatusError status_code=400'):
         transport.post_chat_completion(
             base_url='https://example.test/v1',
             api_key='sk-test',

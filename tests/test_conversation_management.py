@@ -557,6 +557,183 @@ def test_rerun_analysis_uses_latest_import_batch(tmp_path, monkeypatch):
         assert latest_job.payload_json["import_id"] == 2
 
 
+def test_rerun_analysis_resumes_failed_topic_stage_when_summaries_exist(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+    _seed_analysis_settings()
+
+    upload_path = tmp_path / "app_data" / "uploads" / "seed.txt"
+    upload_path.parent.mkdir(parents=True, exist_ok=True)
+    upload_path.write_text("seed", encoding="utf-8")
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="failed",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(upload_path),
+            source_file_hash="abc123",
+            message_count_hint=2,
+        )
+        session.add(batch)
+        session.flush()
+
+        first_message = Message(
+            conversation_id=conversation.id,
+            import_id=batch.id,
+            sequence_no=1,
+            speaker_name="Tantless",
+            speaker_role="self",
+            timestamp="2026-04-08T10:00:00",
+            content_text="你好",
+            message_type="text",
+        )
+        second_message = Message(
+            conversation_id=conversation.id,
+            import_id=batch.id,
+            sequence_no=2,
+            speaker_name="梣ゥ",
+            speaker_role="other",
+            timestamp="2026-04-08T10:01:00",
+            content_text="你好",
+            message_type="text",
+        )
+        session.add_all([first_message, second_message])
+        session.flush()
+
+        segment = Segment(
+            conversation_id=conversation.id,
+            start_message_id=first_message.id,
+            end_message_id=second_message.id,
+            start_time=first_message.timestamp,
+            end_time=second_message.timestamp,
+            message_count=2,
+            self_message_count=1,
+            other_message_count=1,
+            segment_kind="conversation",
+            source_message_ids=[first_message.id, second_message.id],
+        )
+        session.add(segment)
+        session.flush()
+        session.add(
+            SegmentSummary(
+                segment_id=segment.id,
+                summary_text="双方打招呼。",
+                main_topics=["开场"],
+                self_stance="主动开场",
+                other_stance="回应开场",
+                emotional_tone="轻松",
+                interaction_pattern="日常互动",
+                has_conflict=False,
+                has_repair=False,
+                has_closeness_signal=False,
+                outcome="继续聊天",
+                relationship_impact="neutral_positive",
+                confidence=0.8,
+            )
+        )
+        session.add(
+            AnalysisJob(
+                conversation_id=conversation.id,
+                job_type="full_analysis",
+                status="failed",
+                current_stage="failed",
+                progress_percent=80,
+                retry_count=0,
+                error_message="topic boom",
+                payload_json={
+                    "import_id": batch.id,
+                    "progress": {
+                        "stages": [
+                            {"id": "parsing", "status": "completed"},
+                            {"id": "segmenting", "status": "completed"},
+                            {"id": "summarizing", "status": "completed"},
+                            {"id": "topic_resolution", "status": "failed"},
+                            {"id": "snapshots", "status": "failed"},
+                        ]
+                    },
+                },
+            )
+        )
+
+    with TestClient(create_app()) as client:
+        response = client.post("/conversations/1/rerun-analysis")
+
+    assert response.status_code == 202
+    assert response.json()["current_stage"] == "topic_persona_snapshot"
+
+    with session_scope() as session:
+        latest_job = session.query(AnalysisJob).order_by(AnalysisJob.id.desc()).first()
+        assert latest_job is not None
+        assert latest_job.payload_json["resume_from_stage"] == "topic_persona_snapshot"
+
+
+def test_rerun_analysis_rejects_stage_retry_when_failed_artifacts_are_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
+    init_db()
+    _seed_analysis_settings()
+
+    with session_scope() as session:
+        conversation = Conversation(
+            title="梣ゥ",
+            chat_type="private",
+            self_display_name="Tantless",
+            other_display_name="梣ゥ",
+            source_format="qq_chat_exporter_v5",
+            status="failed",
+        )
+        session.add(conversation)
+        session.flush()
+
+        batch = ImportBatch(
+            conversation_id=conversation.id,
+            source_file_name="聊天记录.txt",
+            source_file_path=str(tmp_path / "app_data" / "uploads" / "seed.txt"),
+            source_file_hash="abc123",
+            message_count_hint=2,
+        )
+        session.add(batch)
+        session.flush()
+        session.add(
+            AnalysisJob(
+                conversation_id=conversation.id,
+                job_type="full_analysis",
+                status="failed",
+                current_stage="failed",
+                progress_percent=80,
+                retry_count=0,
+                error_message="topic boom",
+                payload_json={
+                    "import_id": batch.id,
+                    "progress": {
+                        "stages": [
+                            {"id": "parsing", "status": "completed"},
+                            {"id": "segmenting", "status": "completed"},
+                            {"id": "summarizing", "status": "completed"},
+                            {"id": "topic_resolution", "status": "failed"},
+                        ]
+                    },
+                },
+            )
+        )
+
+    with TestClient(create_app()) as client:
+        response = client.post("/conversations/1/rerun-analysis")
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Failed stage artifacts are missing; import the chat again to run analysis"}
+
+
 def test_rerun_analysis_returns_400_when_no_import_batch_exists(tmp_path, monkeypatch):
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()

@@ -54,6 +54,7 @@ AGENTS-CN.md
 model_env.env
 llm_match_config.env
 llm_config.env
+desktop/public/avatars/*.env
 
 # graph
 graphify-out/

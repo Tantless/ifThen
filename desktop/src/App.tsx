@@ -56,7 +56,7 @@ import {
   readSnapshot,
   startAnalysis,
 } from './lib/services/conversationService'
-import { listConversationJobs, readJob } from './lib/services/jobService'
+import { listConversationJobs, readJob, rerunAnalysis } from './lib/services/jobService'
 import { readSettings, writeSetting } from './lib/services/settingsService'
 import { listConversationSimulationJobs, readSimulation } from './lib/services/simulationService'
 import {
@@ -67,6 +67,8 @@ import {
   readBranchSession,
 } from './lib/services/branchSessionService'
 import {
+  createAnchoredHistoryView,
+  createLatestHistoryView,
   isRewriteRequestCurrent,
   resolveInspectorSnapshotAt,
   shouldStartLatestJobLoad,
@@ -164,11 +166,13 @@ const BRANCH_REPLY_JOB_POLL_INTERVAL_MS = 1200
 type MessagePaginationState = {
   hasOlder: boolean
   loadingOlder: boolean
+  hasNewer: boolean
+  loadingNewer: boolean
 }
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<FrontSidebarTab>('chat')
-  const [chatViewState, setChatViewState] = useState<ChatViewState>({ mode: 'history' })
+  const [chatViewState, setChatViewState] = useState<ChatViewState>(() => createLatestHistoryView())
   const [rewriteDraft, setRewriteDraft] = useState<RewriteDraft | null>(null)
   const [branchDeliveredPartCountsByMessageId, setBranchDeliveredPartCountsByMessageId] = useState<Record<number, number>>({})
   const [optimisticBranchMessagesBySessionId, setOptimisticBranchMessagesBySessionId] = useState<Record<number, BranchSessionRead['messages']>>({})
@@ -223,10 +227,12 @@ export default function App() {
   const rewriteRequestCounterRef = useRef(0)
   const activeRewriteRequestRef = useRef<RewriteRequestSnapshot | null>(null)
   const selectedConversationIdRef = useRef<number | null>(null)
+  const selectedJobRef = useRef<JobRead | null>(null)
   const rewriteDraftRef = useRef<RewriteDraft | null>(null)
   const branchReplyIdleTimerRef = useRef<number | null>(null)
   const branchDeliveryTimerRefs = useRef<number[]>([])
   const windowStateRequestIdRef = useRef(0)
+  const messageWindowRequestVersionByConversationRef = useRef<Record<number, number>>({})
   const normalizedChatHistoryKeyword = chatHistoryKeyword.trim()
   const normalizedChatHistoryDate = chatHistoryDate
 
@@ -300,7 +306,7 @@ export default function App() {
       setMessagePaginationByConversation({})
       setMessageLoadStateByConversation({})
       setMessageLoadErrorByConversation({})
-      setChatViewState({ mode: 'history' })
+      setChatViewState(createLatestHistoryView())
       setRewriteDraft(null)
       setInspectorOpen(false)
       setInspectorTab('topics')
@@ -398,7 +404,7 @@ export default function App() {
   useEffect(() => {
     if (!conversations || conversations.length === 0) {
       setSelectedConversationId(null)
-      setChatViewState({ mode: 'history' })
+      setChatViewState(createLatestHistoryView())
       setRewriteDraft(null)
       setBranchDeliveredPartCountsByMessageId({})
       setOptimisticBranchMessagesBySessionId({})
@@ -426,6 +432,11 @@ export default function App() {
     selectedConversationId === null ? undefined : messagePaginationByConversation[selectedConversationId]
   const selectedConversationMessageLoadState =
     selectedConversationId === null ? undefined : messageLoadStateByConversation[selectedConversationId]
+
+  useEffect(() => {
+    selectedJobRef.current = selectedJob
+  }, [selectedJob])
+
   const settingsFormState = useMemo(() => buildSettingsFormState(settings ?? []), [settings])
   const selfAvatarUrl = useMemo(
     () => resolveSettingValue(settings, 'profile.self_avatar_url') || FRONTUI_SELF_AVATAR,
@@ -600,13 +611,19 @@ export default function App() {
     clearBranchReplyIdleTimer()
     clearBranchDeliveryTimers()
     activeRewriteRequestRef.current = null
-    setChatViewState({ mode: 'history' })
+    if (selectedConversationId !== null) {
+      bumpMessageWindowRequestVersion(selectedConversationId)
+    }
+    setChatViewState(createLatestHistoryView())
     setShowChatHistoryDialog(false)
     setChatHistoryActiveTab('all')
   }, [activeTab])
 
   useEffect(() => {
-    setChatViewState({ mode: 'history' })
+    if (selectedConversationId !== null) {
+      bumpMessageWindowRequestVersion(selectedConversationId)
+    }
+    setChatViewState(createLatestHistoryView())
     setRewriteDraft(null)
     setBranchDeliveredPartCountsByMessageId({})
     setOptimisticBranchMessagesBySessionId({})
@@ -770,6 +787,8 @@ export default function App() {
     }
 
     let cancelled = false
+    const conversationId = selectedConversationId
+    const requestVersion = getMessageWindowRequestVersion(conversationId)
     const startedAt =
       selectedConversationMessageLoadState?.status === 'retry_wait'
         ? selectedConversationMessageLoadState.startedAt
@@ -777,11 +796,11 @@ export default function App() {
 
     const loadMessages = async () => {
       try {
-        const messages = await listMessages(selectedConversationId, {
+        const messages = await listMessages(conversationId, {
           order: 'desc',
           limit: INITIAL_MESSAGE_PAGE_SIZE,
         })
-        if (cancelled) {
+        if (cancelled || getMessageWindowRequestVersion(conversationId) !== requestVersion) {
           return
         }
 
@@ -789,26 +808,29 @@ export default function App() {
 
         setMessagesByConversation((current) => ({
           ...current,
-          [selectedConversationId]: normalizedMessages,
+          [conversationId]: normalizedMessages,
         }))
         setMessagePaginationByConversation((current) => ({
           ...current,
-          [selectedConversationId]: {
+          [conversationId]: {
             hasOlder: messages.length === INITIAL_MESSAGE_PAGE_SIZE,
             loadingOlder: false,
+            hasNewer: false,
+            loadingNewer: false,
           },
         }))
 
         const timedOut = Date.now() - startedAt >= MESSAGE_LOAD_TIMEOUT_MS
+        const currentSelectedJob = selectedJobRef.current
         const shouldRetry =
           normalizedMessages.length === 0 &&
           !timedOut &&
-          (!selectedJob || isPollingJob(selectedJob))
+          (!currentSelectedJob || isPollingJob(currentSelectedJob))
 
         if (shouldRetry) {
           setMessageLoadStateByConversation((current) => ({
             ...current,
-            [selectedConversationId]: {
+            [conversationId]: {
               status: 'retry_wait',
               startedAt,
               retryAt: Date.now() + MESSAGE_LOAD_RETRY_INTERVAL_MS,
@@ -816,33 +838,33 @@ export default function App() {
           }))
           setMessageLoadErrorByConversation((current) => ({
             ...current,
-            [selectedConversationId]: false,
+            [conversationId]: false,
           }))
           return
         }
 
-        if (normalizedMessages.length === 0 && timedOut && (!selectedJob || isPollingJob(selectedJob))) {
+        if (normalizedMessages.length === 0 && timedOut && (!currentSelectedJob || isPollingJob(currentSelectedJob))) {
           setMessageLoadStateByConversation((current) => ({
             ...current,
-            [selectedConversationId]: { status: 'failed' },
+            [conversationId]: { status: 'failed' },
           }))
           setMessageLoadErrorByConversation((current) => ({
             ...current,
-            [selectedConversationId]: true,
+            [conversationId]: true,
           }))
           return
         }
 
         setMessageLoadStateByConversation((current) => ({
           ...current,
-          [selectedConversationId]: { status: 'loaded' },
+          [conversationId]: { status: 'loaded' },
         }))
         setMessageLoadErrorByConversation((current) => ({
           ...current,
-          [selectedConversationId]: false,
+          [conversationId]: false,
         }))
       } catch {
-        if (cancelled) {
+        if (cancelled || getMessageWindowRequestVersion(conversationId) !== requestVersion) {
           return
         }
 
@@ -851,7 +873,7 @@ export default function App() {
         if (!timedOut) {
           setMessageLoadStateByConversation((current) => ({
             ...current,
-            [selectedConversationId]: {
+            [conversationId]: {
               status: 'retry_wait',
               startedAt,
               retryAt: Date.now() + MESSAGE_LOAD_RETRY_INTERVAL_MS,
@@ -862,22 +884,24 @@ export default function App() {
 
         setMessageLoadStateByConversation((current) => ({
           ...current,
-          [selectedConversationId]: { status: 'failed' },
+          [conversationId]: { status: 'failed' },
         }))
         setMessagesByConversation((current) => ({
           ...current,
-          [selectedConversationId]: null,
+          [conversationId]: null,
         }))
         setMessagePaginationByConversation((current) => ({
           ...current,
-          [selectedConversationId]: {
+          [conversationId]: {
             hasOlder: false,
             loadingOlder: false,
+            hasNewer: false,
+            loadingNewer: false,
           },
         }))
         setMessageLoadErrorByConversation((current) => ({
           ...current,
-          [selectedConversationId]: true,
+          [conversationId]: true,
         }))
       }
     }
@@ -890,7 +914,6 @@ export default function App() {
   }, [
     selectedConversationId,
     selectedConversationMessageLoadState,
-    selectedJob,
     state.phase,
   ])
 
@@ -984,7 +1007,7 @@ export default function App() {
 
   const handleLoadOlderMessages = async () => {
     if (state.phase !== 'ready' || selectedConversationId === null) {
-      return
+      return false
     }
 
     const currentMessages = messagesByConversation[selectedConversationId]
@@ -996,12 +1019,12 @@ export default function App() {
       !paginationState?.hasOlder ||
       paginationState.loadingOlder
     ) {
-      return
+      return false
     }
 
     const oldestSequence = currentMessages[0]?.sequence_no
     if (!oldestSequence) {
-      return
+      return false
     }
 
     setMessagePaginationByConversation((current) => ({
@@ -1009,6 +1032,8 @@ export default function App() {
       [selectedConversationId]: {
         hasOlder: current[selectedConversationId]?.hasOlder ?? false,
         loadingOlder: true,
+        hasNewer: current[selectedConversationId]?.hasNewer ?? false,
+        loadingNewer: current[selectedConversationId]?.loadingNewer ?? false,
       },
     }))
 
@@ -1035,16 +1060,116 @@ export default function App() {
         [selectedConversationId]: {
           hasOlder: olderMessages.length === OLDER_MESSAGE_PAGE_SIZE,
           loadingOlder: false,
+          hasNewer: current[selectedConversationId]?.hasNewer ?? false,
+          loadingNewer: current[selectedConversationId]?.loadingNewer ?? false,
         },
       }))
+      return normalizedOlderMessages.length > 0
     } catch {
       setMessagePaginationByConversation((current) => ({
         ...current,
         [selectedConversationId]: {
           hasOlder: current[selectedConversationId]?.hasOlder ?? false,
           loadingOlder: false,
+          hasNewer: current[selectedConversationId]?.hasNewer ?? false,
+          loadingNewer: current[selectedConversationId]?.loadingNewer ?? false,
         },
       }))
+      return false
+    }
+  }
+
+  const bumpMessageWindowRequestVersion = (conversationId: number): number => {
+    const nextVersion = (messageWindowRequestVersionByConversationRef.current[conversationId] ?? 0) + 1
+    messageWindowRequestVersionByConversationRef.current = {
+      ...messageWindowRequestVersionByConversationRef.current,
+      [conversationId]: nextVersion,
+    }
+    return nextVersion
+  }
+
+  const getMessageWindowRequestVersion = (conversationId: number): number =>
+    messageWindowRequestVersionByConversationRef.current[conversationId] ?? 0
+
+  const handleLoadNewerMessages = async () => {
+    if (state.phase !== 'ready' || selectedConversationId === null) {
+      return false
+    }
+
+    const currentMessages = messagesByConversation[selectedConversationId]
+    const paginationState = messagePaginationByConversation[selectedConversationId]
+
+    if (
+      !currentMessages ||
+      currentMessages.length === 0 ||
+      !paginationState?.hasNewer ||
+      paginationState.loadingNewer
+    ) {
+      return false
+    }
+
+    const newestSequence = currentMessages[currentMessages.length - 1]?.sequence_no
+    if (!newestSequence) {
+      return false
+    }
+
+    setMessagePaginationByConversation((current) => ({
+      ...current,
+      [selectedConversationId]: {
+        hasOlder: current[selectedConversationId]?.hasOlder ?? false,
+        loadingOlder: current[selectedConversationId]?.loadingOlder ?? false,
+        hasNewer: current[selectedConversationId]?.hasNewer ?? false,
+        loadingNewer: true,
+      },
+    }))
+
+    try {
+      const newerMessages = await listMessages(selectedConversationId, {
+        after: newestSequence,
+        order: 'asc',
+        limit: OLDER_MESSAGE_PAGE_SIZE,
+      })
+
+      setMessagesByConversation((current) => {
+        const existingMessages = current[selectedConversationId] ?? []
+        const existingMessageIds = new Set(existingMessages.map((message) => message.id))
+        const uniqueNewerMessages = newerMessages.filter((message) => !existingMessageIds.has(message.id))
+
+        return {
+          ...current,
+          [selectedConversationId]: [...existingMessages, ...uniqueNewerMessages],
+        }
+      })
+      setMessagePaginationByConversation((current) => ({
+        ...current,
+        [selectedConversationId]: {
+          hasOlder: current[selectedConversationId]?.hasOlder ?? false,
+          loadingOlder: current[selectedConversationId]?.loadingOlder ?? false,
+          hasNewer: newerMessages.length === OLDER_MESSAGE_PAGE_SIZE,
+          loadingNewer: false,
+        },
+      }))
+      if (newerMessages.length < OLDER_MESSAGE_PAGE_SIZE) {
+        setChatViewState((current) =>
+          current.mode === 'history' && current.messageWindowMode === 'anchored'
+            ? createLatestHistoryView()
+            : current,
+        )
+      }
+
+      return newerMessages.length > 0
+    } catch {
+      setMessagePaginationByConversation((current) => ({
+        ...current,
+        [selectedConversationId]: {
+          hasOlder: current[selectedConversationId]?.hasOlder ?? false,
+          loadingOlder: current[selectedConversationId]?.loadingOlder ?? false,
+          hasNewer: current[selectedConversationId]?.hasNewer ?? false,
+          loadingNewer: false,
+        },
+      }))
+
+      return false
     }
   }
 
@@ -1096,43 +1221,44 @@ export default function App() {
     }
 
     const conversationId = selectedConversationId
+    const locateRequestVersion = bumpMessageWindowRequestVersion(conversationId)
     setChatHistoryLocatePendingId(targetMessage.id)
     setChatHistoryError(null)
 
     try {
       const context = await readMessageContext(targetMessage.id, CHAT_HISTORY_LOCATE_CONTEXT_RADIUS)
 
-      if (context.target.id !== targetMessage.id || selectedConversationIdRef.current !== conversationId) {
+      if (
+        context.target.id !== targetMessage.id ||
+        selectedConversationIdRef.current !== conversationId ||
+        getMessageWindowRequestVersion(conversationId) !== locateRequestVersion
+      ) {
         setChatHistoryError('未能定位到这条消息')
         return
       }
 
       const contextMessages = [...context.before, context.target, ...context.after]
-      setMessagesByConversation((current) => {
-        const byId = new Map<number, MessageRead>()
-        for (const message of current[conversationId] ?? []) {
-          byId.set(message.id, message)
-        }
-        for (const message of contextMessages) {
-          byId.set(message.id, message)
-        }
+      const latestLoadedSequence = (messagesByConversation[conversationId] ?? []).at(-1)?.sequence_no ?? 0
+      const firstContextSequence = contextMessages[0]?.sequence_no ?? context.target.sequence_no
+      const lastContextSequence = contextMessages[contextMessages.length - 1]?.sequence_no ?? context.target.sequence_no
+      const hasNewer =
+        context.after.length === CHAT_HISTORY_LOCATE_CONTEXT_RADIUS ||
+        lastContextSequence < latestLoadedSequence
 
-        return {
-          ...current,
-          [conversationId]: [...byId.values()].sort((a, b) => a.sequence_no - b.sequence_no || a.id - b.id),
-        }
-      })
-      setMessagePaginationByConversation((current) => {
-        const firstContextSequence = contextMessages[0]?.sequence_no ?? context.target.sequence_no
-
-        return {
-          ...current,
-          [conversationId]: {
-            hasOlder: context.before.length === CHAT_HISTORY_LOCATE_CONTEXT_RADIUS || firstContextSequence > 1,
-            loadingOlder: false,
-          },
-        }
-      })
+      setChatViewState(hasNewer ? createAnchoredHistoryView(targetMessage.id) : createLatestHistoryView())
+      setMessagesByConversation((current) => ({
+        ...current,
+        [conversationId]: contextMessages,
+      }))
+      setMessagePaginationByConversation((current) => ({
+        ...current,
+        [conversationId]: {
+          hasOlder: context.before.length === CHAT_HISTORY_LOCATE_CONTEXT_RADIUS || firstContextSequence > 1,
+          loadingOlder: false,
+          hasNewer,
+          loadingNewer: false,
+        },
+      }))
       setMessageLoadStateByConversation((current) => ({
         ...current,
         [conversationId]: { status: 'loaded' },
@@ -1290,7 +1416,7 @@ export default function App() {
             return
           }
 
-          setChatViewState({ mode: 'history' })
+          setChatViewState(createLatestHistoryView())
           setRewriteDraft((current) =>
             current && current.simulationJobId === simulationJob.id
               ? {
@@ -1861,6 +1987,7 @@ export default function App() {
         const withoutDuplicate = existing.filter((item) => item.id !== response.conversation.id)
         return [response.conversation, ...withoutDuplicate]
       })
+      bumpMessageWindowRequestVersion(response.conversation.id)
       setActiveTab('chat')
       setSelectedConversationId(response.conversation.id)
       setLatestJobsByConversation((current) => ({
@@ -1880,6 +2007,8 @@ export default function App() {
           [response.conversation.id]: {
             hasOlder: false,
             loadingOlder: false,
+            hasNewer: false,
+            loadingNewer: false,
           },
         }))
         setMessageLoadStateByConversation((current) => ({
@@ -1948,7 +2077,8 @@ export default function App() {
       return
     }
 
-    setChatViewState({ mode: 'history' })
+    bumpMessageWindowRequestVersion(selectedConversationId)
+    setChatViewState(createLatestHistoryView())
     activeRewriteRequestRef.current = null
     setRewriteDraft({
       conversationId: selectedConversationId,
@@ -1984,8 +2114,51 @@ export default function App() {
     clearBranchDeliveryTimers()
     setBranchDeliveredPartCountsByMessageId({})
     setOptimisticBranchMessagesBySessionId({})
+    if (selectedConversationId !== null) {
+      bumpMessageWindowRequestVersion(selectedConversationId)
+      setChatViewState(createLatestHistoryView())
+    }
     setRewriteDraft(null)
     activeRewriteRequestRef.current = null
+  }
+
+  const handleRetryAnalysis = async () => {
+    if (selectedConversationId === null) {
+      return
+    }
+
+    if (!analysisModelSettingsReady) {
+      setSettingsError('请先在设置中填写分析模型配置，再重新分析')
+      setShowSettings(true)
+      return
+    }
+
+    setStartAnalysisPending(true)
+
+    try {
+      const job = await rerunAnalysis(selectedConversationId)
+
+      setLatestJobsByConversation((current) => ({
+        ...current,
+        [selectedConversationId]: job,
+      }))
+      setLatestJobLoadStateByConversation((current) => ({
+        ...current,
+        [selectedConversationId]: { status: 'loaded' },
+      }))
+      setConversations((current) => {
+        if (!current) return current
+        return current.map((conv) =>
+          conv.id === selectedConversationId
+            ? { ...conv, status: 'queued' }
+            : conv
+        )
+      })
+    } catch (error) {
+      console.error('Failed to retry analysis stage:', error)
+    } finally {
+      setStartAnalysisPending(false)
+    }
   }
 
   const handleResetRewriteView = () => {
@@ -1993,6 +2166,10 @@ export default function App() {
     clearBranchDeliveryTimers()
     setBranchDeliveredPartCountsByMessageId({})
     setOptimisticBranchMessagesBySessionId({})
+    if (selectedConversationId !== null) {
+      bumpMessageWindowRequestVersion(selectedConversationId)
+      setChatViewState(createLatestHistoryView())
+    }
     setRewriteDraft(null)
     activeRewriteRequestRef.current = null
   }
@@ -2162,6 +2339,7 @@ export default function App() {
         : MOCK_FILES_TAB_ITEMS
 
   const handleSelectFrontConversation = (conversationId: number) => {
+    bumpMessageWindowRequestVersion(conversationId)
     setActiveTab('chat')
     setSelectedConversationId(conversationId)
   }
@@ -2208,7 +2386,7 @@ export default function App() {
     setSettings((current) => current?.filter((entry) => entry.setting_key !== `conversation.${conversationId}.other_avatar_url`) ?? [])
 
     if (selectedConversationId === conversationId) {
-      setChatViewState({ mode: 'history' })
+      setChatViewState(createLatestHistoryView())
       setRewriteDraft(null)
       setInspectorOpen(false)
       setSelectedConversationId((current) => (current === conversationId ? null : current))
@@ -2434,6 +2612,7 @@ export default function App() {
         window={
           <FrontChatWindow
             state={selectedMessageModels}
+            messageWindowMode={chatViewState.mode === 'history' ? chatViewState.messageWindowMode : 'latest'}
             analysisProgress={activeTab === 'chat' ? selectedConversationProgress : null}
             conversationKey={
               activeTab === 'chat' && selectedConversationId !== null ? `conversation-${selectedConversationId}` : activeTab
@@ -2447,6 +2626,10 @@ export default function App() {
             onToggleInspector={() => setInspectorOpen((current) => !current)}
             showStartAnalysisButton={activeTab === 'chat' && selectedConversation?.status === 'imported'}
             onStartAnalysis={handleStartAnalysis}
+            showRetryAnalysisButton={
+              activeTab === 'chat' && selectedConversation?.status === 'failed' && selectedJob?.status === 'failed'
+            }
+            onRetryAnalysis={handleRetryAnalysis}
             startAnalysisPending={startAnalysisPending}
             rewriteState={
               activeTab === 'chat' && rewriteDraft && rewriteDraft.conversationId === selectedConversationId
@@ -2473,7 +2656,14 @@ export default function App() {
             onSendMessage={handleSendFrontMessage}
             hasOlderMessages={activeTab === 'chat' && selectedMessageModels.mode === 'conversation' && !!selectedConversationPaginationState?.hasOlder}
             olderMessagesPending={activeTab === 'chat' && !!selectedConversationPaginationState?.loadingOlder}
-            onLoadOlderMessages={handleLoadOlderMessages}
+            onLoadOlderMessages={async () => {
+              await handleLoadOlderMessages()
+            }}
+            hasNewerMessages={activeTab === 'chat' && selectedMessageModels.mode === 'conversation' && !!selectedConversationPaginationState?.hasNewer}
+            newerMessagesPending={activeTab === 'chat' && !!selectedConversationPaginationState?.loadingNewer}
+            onLoadNewerMessages={async () => {
+              await handleLoadNewerMessages()
+            }}
             jumpToMessageRequest={activeTab === 'chat' ? jumpToMessageRequest : null}
           />
         }

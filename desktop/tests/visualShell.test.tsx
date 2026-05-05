@@ -18,7 +18,7 @@ import {
   readSnapshot,
   startAnalysis,
 } from '../src/lib/services/conversationService'
-import { listConversationJobs, readJob } from '../src/lib/services/jobService'
+import { listConversationJobs, readJob, rerunAnalysis } from '../src/lib/services/jobService'
 import { createSimulation, listConversationSimulationJobs, readSimulation } from '../src/lib/services/simulationService'
 import {
   appendBranchMessage,
@@ -47,6 +47,7 @@ vi.mock('../src/lib/services/conversationService', () => ({
 vi.mock('../src/lib/services/jobService', () => ({
   listConversationJobs: vi.fn(),
   readJob: vi.fn(),
+  rerunAnalysis: vi.fn(),
 }))
 
 vi.mock('../src/lib/services/settingsService', () => ({
@@ -82,6 +83,7 @@ const mockedDeleteConversation = vi.mocked(deleteConversation)
 const mockedStartAnalysis = vi.mocked(startAnalysis)
 const mockedListConversationJobs = vi.mocked(listConversationJobs)
 const mockedReadJob = vi.mocked(readJob)
+const mockedRerunAnalysis = vi.mocked(rerunAnalysis)
 const mockedCreateSimulation = vi.mocked(createSimulation)
 const mockedListConversationSimulationJobs = vi.mocked(listConversationSimulationJobs)
 const mockedReadSimulation = vi.mocked(readSimulation)
@@ -275,6 +277,7 @@ beforeEach(() => {
   mockedImportConversation.mockRejectedValue(new Error('not used in visual shell tests'))
   mockedDeleteConversation.mockRejectedValue(new Error('not used in visual shell tests'))
   mockedStartAnalysis.mockRejectedValue(new Error('not used in visual shell tests'))
+  mockedRerunAnalysis.mockRejectedValue(new Error('not used in visual shell tests'))
   mockedListConversationJobs.mockResolvedValue([])
   mockedReadJob.mockResolvedValue({
     id: 1,
@@ -2312,6 +2315,75 @@ describe('App frontUI integration', () => {
     expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent?.includes('开始分析') ?? false)).toBe(false)
   })
 
+  it('分析失败后显示重试失败阶段入口并重新排队任务', async () => {
+    const failedConversation: ConversationRead = {
+      id: 7,
+      title: '阿青',
+      chat_type: 'private',
+      self_display_name: '我',
+      other_display_name: '阿青',
+      source_format: 'qq_export_v5',
+      status: 'failed',
+    }
+    const failedAnalysisJob: JobRead = {
+      id: 32,
+      status: 'failed',
+      current_stage: 'failed',
+      progress_percent: 94,
+      current_stage_percent: 31,
+      current_stage_total_units: 211,
+      current_stage_completed_units: 65,
+      overall_total_units: 2804,
+      overall_completed_units: 2658,
+      status_message: 'failed topic_persona_snapshot 65/211 tasks: Chat completion request failed',
+    }
+    const queuedAnalysisJob: JobRead = {
+      id: 33,
+      status: 'queued',
+      current_stage: 'created',
+      progress_percent: 0,
+      current_stage_percent: 0,
+      current_stage_total_units: 0,
+      current_stage_completed_units: 0,
+      overall_total_units: 0,
+      overall_completed_units: 0,
+      status_message: 'queued',
+    }
+
+    mockedReadSettings.mockResolvedValue([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+    ])
+    mockedListConversations.mockResolvedValue([failedConversation])
+    mockedListMessages.mockResolvedValue([])
+    mockedListConversationJobs.mockResolvedValue([failedAnalysisJob])
+    mockedRerunAnalysis.mockResolvedValue(queuedAnalysisJob)
+
+    const { root, container } = setupDom()
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(12)
+
+    const retryButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('重试失败阶段') ?? false,
+    )
+    expect(retryButton).not.toBeUndefined()
+    expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent?.includes('开始分析') ?? false)).toBe(false)
+
+    await act(async () => {
+      if (retryButton) {
+        getReactProps<{ onClick?: () => void }>(retryButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(4)
+
+    expect(mockedRerunAnalysis).toHaveBeenCalledWith(7)
+    expect(Array.from(container.querySelectorAll('button')).some((element) => element.textContent?.includes('重试失败阶段') ?? false)).toBe(false)
+  })
+
   it('聊天记录弹窗默认倒序加载，并在日期筛选后改为正序结果', async () => {
     const baseMessages: MessageRead[] = [
       {
@@ -2641,6 +2713,377 @@ describe('App frontUI integration', () => {
     expect(container.textContent).toContain('需要定位的目标消息')
     expect(container.textContent).not.toContain('聊天记录 - 阿青')
     expect(scrollTargets).toContain('message-90755')
+  })
+
+  it('从聊天记录定位到更早消息后，向下滚动会继续补齐目标窗口和尾部窗口之间的消息', async () => {
+    const scrollTargets: string[] = []
+
+    mockedReadSettings.mockResolvedValue([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+    ])
+    mockedListConversations.mockResolvedValue([
+      {
+        id: 7,
+        title: '和阿青的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '阿青',
+        source_format: 'qq_export_v5',
+        status: 'ready',
+      },
+    ])
+    mockedListConversationJobs.mockResolvedValue([
+      {
+        id: 19,
+        status: 'completed',
+        current_stage: 'completed',
+        progress_percent: 100,
+        current_stage_percent: 100,
+        current_stage_total_units: 1,
+        current_stage_completed_units: 1,
+        overall_total_units: 1,
+        overall_completed_units: 1,
+        status_message: null,
+      },
+    ])
+    mockedListMessageDays.mockResolvedValue([
+      { date: '2026-03-31', message_count: 80 },
+      { date: '2026-04-08', message_count: 80 },
+    ])
+
+    const recentMessages = Array.from({ length: 80 }, (_, index) => {
+      const sequence = 2921 + index
+      return {
+        id: sequence,
+        sequence_no: sequence,
+        speaker_name: sequence % 2 === 0 ? '我' : '阿青',
+        speaker_role: sequence % 2 === 0 ? 'self' : 'other',
+        timestamp: `2026-04-08T10:${String(index).padStart(2, '0')}:00`,
+        content_text: `最近消息 ${sequence}`,
+        message_type: 'text',
+        resource_items: null,
+      } satisfies MessageRead
+    }).reverse()
+
+    const historyDefault: MessageRead[] = [
+      {
+        id: 90755,
+        sequence_no: 90755,
+        speaker_name: '我',
+        speaker_role: 'self',
+        timestamp: '2026-03-31T21:27:53',
+        content_text: '需要定位的目标消息',
+        message_type: 'text',
+        resource_items: null,
+      },
+    ]
+
+    const locateTarget = historyDefault[0]
+    const targetContextBefore: MessageRead[] = Array.from({ length: 40 }, (_, index) => {
+      const sequence = 90715 + index
+      return {
+        id: sequence,
+        sequence_no: sequence,
+        speaker_name: sequence % 2 === 0 ? '我' : '阿青',
+        speaker_role: sequence % 2 === 0 ? 'self' : 'other',
+        timestamp: `2026-03-31T21:${String(index).padStart(2, '0')}:00`,
+        content_text: `目标前消息 ${sequence}`,
+        message_type: 'text',
+        resource_items: null,
+      } satisfies MessageRead
+    })
+    const targetContextAfter: MessageRead[] = Array.from({ length: 40 }, (_, index) => {
+      const sequence = 90756 + index
+      return {
+        id: sequence,
+        sequence_no: sequence,
+        speaker_name: sequence % 2 === 0 ? '我' : '阿青',
+        speaker_role: sequence % 2 === 0 ? 'self' : 'other',
+        timestamp: `2026-03-31T22:${String(index).padStart(2, '0')}:00`,
+        content_text: `目标后消息 ${sequence}`,
+        message_type: 'text',
+        resource_items: null,
+      } satisfies MessageRead
+    })
+    const bridgingMessages: MessageRead[] = Array.from({ length: 50 }, (_, index) => {
+      const sequence = 90796 + index
+      return {
+        id: sequence,
+        sequence_no: sequence,
+        speaker_name: sequence % 2 === 0 ? '我' : '阿青',
+        speaker_role: sequence % 2 === 0 ? 'self' : 'other',
+        timestamp: `2026-04-01T0${Math.floor(index / 10)}:${String(index % 10).padStart(2, '0')}:00`,
+        content_text: `桥接消息 ${sequence}`,
+        message_type: 'text',
+        resource_items: null,
+      } satisfies MessageRead
+    })
+
+    mockedListMessages
+      .mockResolvedValueOnce(recentMessages)
+      .mockResolvedValueOnce(historyDefault)
+      .mockResolvedValueOnce(bridgingMessages)
+    mockedReadMessageContext.mockResolvedValue({
+      before: targetContextBefore,
+      target: locateTarget,
+      after: targetContextAfter,
+    })
+
+    const { root, container } = setupDom()
+
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: function scrollIntoView() {
+        scrollTargets.push(this.getAttribute?.('data-chat-message-id') ?? 'other')
+      },
+      configurable: true,
+    })
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(12)
+
+    const historyButton = container.querySelector('button[aria-label="聊天记录"]')
+    expect(historyButton).not.toBeNull()
+
+    await act(async () => {
+      if (historyButton) {
+        getReactProps<{ onClick?: () => void }>(historyButton as Element).onClick?.()
+      }
+    })
+    await flushAsyncWork(6)
+
+    const historyRow = Array.from(container.querySelectorAll('[data-chat-history-message-id]')).find((element) =>
+      element.textContent?.includes('需要定位的目标消息') ?? false,
+    )
+    const locateButton = historyRow
+      ? Array.from(historyRow.querySelectorAll('button')).find((element) => element.textContent?.includes('定位到此位置') ?? false)
+      : undefined
+    expect(locateButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (locateButton) {
+        await getReactProps<{ onClick?: () => Promise<void> | void }>(locateButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(12)
+
+    const scrollContainer = container.querySelector('[data-testid="chat-message-scroll"]') as HTMLDivElement | null
+    expect(scrollContainer).not.toBeNull()
+
+    if (!scrollContainer) {
+      throw new Error('expected chat message scroll container to render')
+    }
+
+    Object.defineProperty(scrollContainer, 'clientHeight', {
+      value: 600,
+      configurable: true,
+    })
+    Object.defineProperty(scrollContainer, 'scrollHeight', {
+      value: 1200,
+      configurable: true,
+    })
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80))
+    })
+
+    await act(async () => {
+      scrollContainer.scrollTop = 600
+      scrollContainer.dispatchEvent(new window.Event('scroll', { bubbles: true }))
+    })
+    await flushAsyncWork(8)
+
+    expect(mockedListMessages).toHaveBeenNthCalledWith(3, 7, {
+      after: 90795,
+      order: 'asc',
+      limit: 50,
+    })
+    expect(container.textContent).toContain('桥接消息 90796')
+    expect(container.textContent).not.toContain('最近消息 3000')
+    expect(scrollTargets.filter((target) => target === 'message-90755')).toHaveLength(1)
+  })
+
+  it('历史定位成功后，迟到的默认尾部加载结果不会覆盖当前锚点窗口', async () => {
+    const scrollTargets: string[] = []
+    const initialMessagesDeferred = createDeferred<MessageRead[]>()
+
+    mockedReadSettings.mockResolvedValue([
+      { setting_key: 'llm.base_url', setting_value: 'https://example.test/v1', is_secret: false },
+      { setting_key: 'llm.api_key', setting_value: 'secret-key', is_secret: true },
+      { setting_key: 'llm.chat_model', setting_value: 'gpt-5.4', is_secret: false },
+    ])
+    mockedListConversations.mockResolvedValue([
+      {
+        id: 7,
+        title: '和阿岚的聊天',
+        chat_type: 'private',
+        self_display_name: '我',
+        other_display_name: '阿岚',
+        source_format: 'qq_export_v5',
+        status: 'ready',
+      },
+    ])
+    mockedListConversationJobs.mockResolvedValue([
+      {
+        id: 19,
+        status: 'completed',
+        current_stage: 'completed',
+        progress_percent: 100,
+        current_stage_percent: 100,
+        current_stage_total_units: 1,
+        current_stage_completed_units: 1,
+        overall_total_units: 1,
+        overall_completed_units: 1,
+        status_message: null,
+      },
+    ])
+    mockedListMessageDays.mockResolvedValue([
+      { date: '2026-03-27', message_count: 12 },
+      { date: '2026-03-29', message_count: 80 },
+    ])
+
+    const lateTailMessages = Array.from({ length: 80 }, (_, index) => {
+      const sequence = 1000 + index
+      return {
+        id: sequence,
+        sequence_no: sequence,
+        speaker_name: sequence % 2 === 0 ? '我' : '阿岚',
+        speaker_role: sequence % 2 === 0 ? 'self' : 'other',
+        timestamp: `2026-03-29T21:${String(index).padStart(2, '0')}:00`,
+        content_text: sequence === 1074 ? '尽量这个词很你' : `尾部消息 ${sequence}`,
+        message_type: 'text',
+        resource_items: null,
+      } satisfies MessageRead
+    }).reverse()
+
+    const historyDefault: MessageRead[] = [
+      {
+        id: 500,
+        sequence_no: 500,
+        speaker_name: '阿岚',
+        speaker_role: 'other',
+        timestamp: '2026-03-27T20:10:38',
+        content_text: '不用补考',
+        message_type: 'text',
+        resource_items: null,
+      },
+    ]
+
+    const locateTarget = historyDefault[0]
+    const targetContextBefore: MessageRead[] = Array.from({ length: 3 }, (_, index) => {
+      const sequence = 497 + index
+      return {
+        id: sequence,
+        sequence_no: sequence,
+        speaker_name: sequence % 2 === 0 ? '我' : '阿岚',
+        speaker_role: sequence % 2 === 0 ? 'self' : 'other',
+        timestamp: `2026-03-27T20:0${index}:00`,
+        content_text: `定位前消息 ${sequence}`,
+        message_type: 'text',
+        resource_items: null,
+      } satisfies MessageRead
+    })
+    const targetContextAfter: MessageRead[] = [
+      {
+        id: 501,
+        sequence_no: 501,
+        speaker_name: '我',
+        speaker_role: 'self',
+        timestamp: '2026-03-27T20:10:43',
+        content_text: '我不是那个意思',
+        message_type: 'text',
+        resource_items: null,
+      },
+      {
+        id: 502,
+        sequence_no: 502,
+        speaker_name: '阿岚',
+        speaker_role: 'other',
+        timestamp: '2026-03-27T20:13:22',
+        content_text: '我知道',
+        message_type: 'text',
+        resource_items: null,
+      },
+    ]
+
+    mockedListMessages
+      .mockImplementationOnce(() => initialMessagesDeferred.promise)
+      .mockResolvedValueOnce(historyDefault)
+      .mockResolvedValueOnce(historyDefault)
+    mockedReadMessageContext.mockResolvedValue({
+      before: targetContextBefore,
+      target: locateTarget,
+      after: targetContextAfter,
+    })
+
+    const { root, container } = setupDom()
+
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: function scrollIntoView() {
+        scrollTargets.push(this.getAttribute?.('data-chat-message-id') ?? 'other')
+      },
+      configurable: true,
+    })
+
+    await act(async () => {
+      root.render(<App />)
+    })
+    await flushAsyncWork(16)
+
+    expect(mockedListMessages).toHaveBeenCalledTimes(1)
+
+    const historyButton = container.querySelector('button[aria-label="聊天记录"]')
+    expect(historyButton).not.toBeNull()
+
+    await act(async () => {
+      if (historyButton) {
+        getReactProps<{ onClick?: () => void }>(historyButton as Element).onClick?.()
+      }
+    })
+    await flushAsyncWork(6)
+
+    const searchInput = container.querySelector('.chat-history-modal__search input') as HTMLInputElement | null
+    expect(searchInput).not.toBeNull()
+
+    await act(async () => {
+      if (searchInput) {
+        searchInput.value = '不用补考'
+        getReactProps<{ onChange?: (event: { target: { value: string } }) => void }>(searchInput).onChange?.({
+          target: { value: '不用补考' },
+        })
+      }
+    })
+    await flushAsyncWork(8)
+
+    const locateButton = Array.from(container.querySelectorAll('button')).find(
+      (element) => element.textContent?.includes('定位到此位置') ?? false,
+    )
+    expect(locateButton).not.toBeUndefined()
+
+    await act(async () => {
+      if (locateButton) {
+        await getReactProps<{ onClick?: () => Promise<void> | void }>(locateButton).onClick?.()
+      }
+    })
+    await flushAsyncWork(8)
+
+    expect(container.textContent).toContain('不用补考')
+    expect(container.textContent).not.toContain('尽量这个词很你')
+    expect(scrollTargets).toContain('message-500')
+
+    await act(async () => {
+      initialMessagesDeferred.resolve(lateTailMessages)
+      await Promise.resolve()
+    })
+    await flushAsyncWork(10)
+
+    expect(container.textContent).toContain('不用补考')
+    expect(container.textContent).toContain('我不是那个意思')
+    expect(container.textContent).not.toContain('尽量这个词很你')
+    expect(scrollTargets.filter((target) => target === 'message-500')).toHaveLength(1)
   })
 
   it('snapshot 标签在历史视图下直接走后端最新快照，不依赖消息时间戳', async () => {
