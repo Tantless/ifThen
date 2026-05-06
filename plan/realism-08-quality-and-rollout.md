@@ -75,6 +75,7 @@
 - [x] 将固定评估样例接入回归流程。
 - [x] 增加 feature flag 或设置项，允许关闭 future evidence。
 - [x] 增加 rollout 文档，记录如何从短链入口切到实时分支入口。
+- [x] 增加合成真实性测试集 audit：`python scripts/validate_realism_synthetic_corpus.py`，用于检查导出时间、时间语义、future evidence 边界和重复线索。
 - [x] 每完成一个 realism TODO，就在本文件勾选对应测试和验收项。
 
 ## 验收标准

@@ -1,10 +1,25 @@
 from pathlib import Path
+import importlib.util
 import re
+import sys
 
 from if_then_mvp.parser import parse_qq_export
 
 
 FIXTURE_ROOT = Path("tests/fixtures/realism_synthetic")
+VALIDATOR_PATH = Path(__file__).resolve().parents[1] / "scripts" / "validate_realism_synthetic_corpus.py"
+VALIDATOR_SPEC = importlib.util.spec_from_file_location("validate_realism_synthetic_corpus", VALIDATOR_PATH)
+assert VALIDATOR_SPEC is not None
+assert VALIDATOR_SPEC.loader is not None
+validator = importlib.util.module_from_spec(VALIDATOR_SPEC)
+sys.modules[VALIDATOR_SPEC.name] = validator
+VALIDATOR_SPEC.loader.exec_module(validator)
+
+EXPECTED_WAIVED_REALISM_DEBT = {
+    "case-01-hidden-trauma-confession:repeated-clue:别对我太好",
+    "case-02-conflict-repair:future-evidence-before-reveal:T1",
+    "case-03-missed-window:early-sleep-cue:2026-03-26 19:23:25",
+}
 
 CASES = {
     "case-01-hidden-trauma-confession": {
@@ -84,3 +99,47 @@ def test_realism_synthetic_metadata_documents_evaluation_contract():
         assert "modeler-only evidence" in rewrite_points
         assert "modeler-only evidence" in truth_after_cutoff
         assert "是否通过：True" in generation_notes
+
+
+def test_realism_synthetic_quality_audit_has_no_unwaived_findings():
+    report = validator.build_report(FIXTURE_ROOT)
+
+    assert report["status"] == "passed"
+    assert report["summary"]["unwaived_finding_count"] == 0
+    waived_keys = {finding["key"] for finding in report["findings"] if finding["waived"]}
+    assert waived_keys == EXPECTED_WAIVED_REALISM_DEBT
+
+
+def test_realism_synthetic_validator_fails_unwaived_temporal_defects(tmp_path):
+    case_dir = tmp_path / "case-unwaived"
+    case_dir.mkdir()
+    (case_dir / "conversation.txt").write_text(
+        "\n".join(
+            [
+                "[QQChatExporter V5 / https://github.com/shuakami/qq-chat-exporter]",
+                "",
+                "聊天名称: 小禾",
+                "聊天类型: 私聊",
+                "导出时间: 2026-05-02 20:00:00",
+                "消息总数: 2",
+                "时间范围: 2026-05-03 10:00:00 - 2026-05-03 21:00:00",
+                "",
+                "",
+                "我:",
+                "时间: 2026-05-03 10:00:00",
+                "内容: 早",
+                "",
+                "小禾:",
+                "时间: 2026-05-03 21:00:00",
+                "内容: 今天先撑过上午",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    report = validator.build_report(tmp_path)
+
+    assert report["status"] == "failed"
+    unwaived = {finding["check_id"] for finding in report["findings"] if not finding["waived"]}
+    assert {"export-time-before-last-message", "morning-reference-after-noon"} <= unwaived

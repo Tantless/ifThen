@@ -1,0 +1,5 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis\\spec\\shared\\code-quality.md", "reason": "Mandatory shared code quality rules for test/script changes"}
+{"file": ".trellis\\spec\\shared\\timestamp.md", "reason": "Fixture validation includes timestamp consistency"}
+{"file": ".trellis\\spec\\guides\\code-reuse-thinking-guide.md", "reason": "Search and reuse existing fixture validation patterns"}

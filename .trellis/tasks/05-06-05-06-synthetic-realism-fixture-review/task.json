@@ -1,0 +1,42 @@
+{
+  "id": "05-06-synthetic-realism-fixture-review",
+  "name": "05-06-synthetic-realism-fixture-review",
+  "title": "brainstorm: synthetic realism fixture review",
+  "description": "",
+  "status": "completed",
+  "dev_type": "test",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tlll1",
+  "assignee": "tlll1",
+  "createdAt": "2026-05-06",
+  "completedAt": "2026-05-06",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 6,
+  "next_action": [
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "tests/fixtures/realism_synthetic",
+    "tests/test_realism_synthetic_fixtures.py",
+    "scripts/validate_realism_synthetic_corpus.py",
+    "scripts/generate_realism_synthetic_corpus.py",
+    "docs/realism-quality-rollout.md",
+    "plan/realism-08-quality-and-rollout.md",
+    ".trellis/spec/backend/quality.md",
+    "PRDS/PRD016-语料拟真校验.md"
+  ],
+  "notes": "Added a validation-first synthetic realism corpus audit with explicit waivers for current known debt, fixed two low-risk fixture defects, documented the quality gate, and verified with validator plus full backend pytest.",
+  "meta": {}
+}

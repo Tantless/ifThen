@@ -259,6 +259,47 @@ Each procedure test should cover:
 
 ---
 
+### Synthetic Fixture Quality Audits
+
+Long committed fixtures that feed realism or provider regression tests must have an executable audit instead of relying only on parseability checks.
+
+**Contract**:
+
+- Audit command: `PYTHONPATH=src python scripts/validate_realism_synthetic_corpus.py`
+- Default fixture root: `tests/fixtures/realism_synthetic`
+- Report shape: JSON object with `status`, `summary.unwaived_finding_count`, and `findings[]`
+- Passing condition: `status == "passed"` and `summary.unwaived_finding_count == 0`
+
+**Required checks for realism fixtures**:
+
+| Check | Why |
+| ----- | --- |
+| `导出时间` must be >= final message timestamp | Prevents impossible exported QQ logs |
+| Strong time words must match message hour | Catches AI-generated temporal seams |
+| `truth-after-cutoff` evidence must not appear before reveal unless explicitly waived | Protects modeler-only evidence boundaries |
+| Repeated clue phrases need thresholds | Prevents over-signposted hidden states |
+
+**Waiver rule**:
+
+Known corpus debt can be waived only by adding a stable finding key and reason in the validator. Tests must assert the exact waived key set, so new defects cannot be hidden by broad ignore logic.
+
+**Good**:
+
+```bash
+PYTHONPATH=src python scripts/validate_realism_synthetic_corpus.py
+PYTHONPATH=src pytest tests/test_realism_synthetic_fixtures.py -q
+```
+
+**Bad**:
+
+```text
+Only checking that conversation.txt parses and contains anchors.
+```
+
+Parsing-only tests miss impossible export times, time-word contradictions, and future-evidence leaks.
+
+---
+
 ## Summary
 
 | Rule                         | Reason              |

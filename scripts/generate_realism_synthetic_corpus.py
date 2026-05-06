@@ -328,6 +328,7 @@ def build_chunk_prompt(
             "每条 content 必须像即时聊天：大多数 2-24 个汉字，少数严肃消息可以 25-70 个汉字。",
             "允许连续同一人发多条、撤回式补充、话题跳跃、短回复、语气词、轻微重复。",
             "不要让双方机械轮流，不要每条都完整标点，不要写成文学对白。",
+            "避免使用强时段词造成时间语义冲突：早安、晚安、快睡、今天上午等必须和当前 chunk 时间范围一致。",
             "禁止电话、邮箱、链接、微信号、QQ 号、身份证、真实学校/公司/地址。",
             "禁止出现 `时间:`、`内容:`、说话人标签或消息序号。",
             "锚点消息必须逐字出现一次，不要改字，不要拆分。",
@@ -533,7 +534,7 @@ def render_conversation(*, case_plan: CasePlan, messages: list[GeneratedMessage]
         "",
         f"聊天名称: {case_plan.other_name}",
         "聊天类型: 私聊",
-        f"导出时间: {EXPORT_TIME}",
+        f"导出时间: {_safe_export_time(messages)}",
         f"消息总数: {len(messages)}",
         f"时间范围: {messages[0].timestamp} - {messages[-1].timestamp}",
         "",
@@ -549,6 +550,16 @@ def render_conversation(*, case_plan: CasePlan, messages: list[GeneratedMessage]
             ]
         )
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _safe_export_time(messages: list[GeneratedMessage]) -> str:
+    if not messages:
+        return EXPORT_TIME
+    configured = datetime.strptime(EXPORT_TIME, "%Y-%m-%d %H:%M:%S")
+    last_message_at = datetime.strptime(messages[-1].timestamp, "%Y-%m-%d %H:%M:%S")
+    if configured >= last_message_at:
+        return EXPORT_TIME
+    return (last_message_at + timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def render_timeline(case_plan: CasePlan) -> str:

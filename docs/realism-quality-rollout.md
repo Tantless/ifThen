@@ -19,6 +19,7 @@ The primary product path is realtime branch chat: the user continues as `self`, 
 Run these before shipping realism changes:
 
 ```bash
+PYTHONPATH=src python scripts/validate_realism_synthetic_corpus.py
 PYTHONPATH=src pytest tests/test_realism_quality_gate.py -q
 PYTHONPATH=src pytest tests/test_realism_baseline_fixtures.py -q
 PYTHONPATH=src pytest tests/test_simulations.py tests/test_branch_sessions.py tests/test_worker.py -q
@@ -67,6 +68,7 @@ This command runs the real worker analysis pipeline in isolated `IF_THEN_DATA_DI
 - Baseline fixtures must retain explicit future leakage labels so regressions can be detected.
 - Provider regression reports must have `leakage_case_count = 0` before live validation is accepted.
 - Realism validation datasets must come from the committed synthetic corpus under `D:\ifThen\tests\fixtures\realism_synthetic`.
+- Synthetic corpus quality audit must have zero unwaived findings; waived findings document known corpus debt that requires baseline migration or regeneration before removal.
 - Desktop realtime branch tests must cover debounce, queued/running merge behavior, typing/error/retry states, delayed split-bubble delivery, and legacy simulation result compatibility.
 
 ## Manual Acceptance
@@ -130,3 +132,13 @@ Remaining non-local validation:
 
 - Perform manual realism review for over-optimistic, over-mature, and over-therapeutic replies.
 - Rerun full-analysis performance sampling on the committed synthetic realism corpus after a more stable live provider/model channel is available.
+
+2026-05-06 synthetic corpus audit addition:
+
+- `PYTHONPATH=src python scripts/validate_realism_synthetic_corpus.py --output-json .pytest-tmp/realism-synthetic-validation.json`
+  - Status: passed.
+  - Findings: 3 total, 0 unwaived, 3 explicitly waived known corpus-debt items.
+- `PYTHONPATH=src pytest tests/test_realism_synthetic_fixtures.py tests/test_realism_baseline_fixtures.py -q`
+  - 8 tests passed.
+- `PYTHONPATH=src pytest -q`
+  - 133 tests passed.
