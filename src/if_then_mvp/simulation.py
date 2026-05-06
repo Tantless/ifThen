@@ -129,11 +129,12 @@ BRANCH_REPLY_SYSTEM_PROMPT = (
     "2. 用户实时输入是事实源；persona_self 只能帮助理解用户风格，不能覆盖、改写或忽略用户刚说的话。"
     "3. persona_other 是主要生成约束，回复长度、语气、回避/承接方式和关系推进上限都必须受它约束。"
     "4. session_memory_pack 中的 cutoff-safe 材料可作为角色当时可知上下文；未来原时间线证据若出现，只能影响风险和保守程度，不能写成 other 已知内容。"
-    "5. 当前 branch transcript 和 pending self 输入是分支事实源；不要把原时间线后续事件强行搬进分支。"
-    "6. 若 persona_other.deterministic_style_profile 指定偏短句、单泡或压力下保留边界，必须优先服从，不能长篇分析或无限拆泡。"
-    "7. 回复必须符合当前 branch transcript 和 current_branch_state，不要突然变得更热、更深、更会沟通。"
-    "8. state_after_turn 只估计这条 other 回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
-    "9. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
+    "5. objective_moment_facts 若出现，只能作为 other 彼时现实处境背景，帮助理解 other 正在做什么、注意力在哪里、情绪底色如何；不能当作台词素材直接复述、引用或解释来源。"
+    "6. 当前 branch transcript 和 pending self 输入是分支事实源；不要把原时间线后续事件强行搬进分支。"
+    "7. 若 persona_other.deterministic_style_profile 指定偏短句、单泡或压力下保留边界，必须优先服从，不能长篇分析或无限拆泡。"
+    "8. 回复必须符合当前 branch transcript 和 current_branch_state，不要突然变得更热、更深、更会沟通。"
+    "9. state_after_turn 只估计这条 other 回复之后的即时状态，不要把一次回复夸大成长期关系转折。"
+    "10. 只返回一个符合 schema 的 JSON 对象，不要输出解释、备注或推理过程。"
 )
 
 
@@ -792,6 +793,8 @@ def _build_branch_reply_prompt(
         "- 用户实时输入优先于 persona_self；persona_self 只用于理解，不用于改写用户输入。",
         "- persona_other 是主要生成约束。",
         "- 若 persona_other.deterministic_style_profile 指定偏短句、单泡或最多两条短泡，必须按该 envelope 控制长度和拆泡。",
+        "- objective_moment_facts 只能作为 other 此刻处境背景，帮助你理解角色现实状态；不得把背景事实当作台词素材直接复述、引用或解释来源。",
+        "- 如果 pending self 没有自然触发 objective_moment_facts 中的背景，不要主动说出这些背景。",
         "- 如果 session_memory_pack 中存在 cutoff 后证据，只能用于保守估计风险，不能让 other 说出这些未来事实。",
         "- 当前 branch_transcript 与 pending_self_messages 是分支事实源；不要把原时间线后续事件强行搬进分支。",
         "- 不得引用、复述或暗示 future evidence 中的拒绝、偏好、解释或关系状态。",
@@ -805,6 +808,9 @@ def _build_branch_reply_prompt(
         "",
         "证据分层策略 JSON:",
         _to_json_line(layered_context_pack.get("evidence_policy") or {}),
+        "",
+        "objective moment facts JSON:",
+        _to_json_line(layered_context_pack.get("objective_moment_facts") or {}),
         "",
         "modeler-only future evidence JSONL:",
     ]

@@ -58,10 +58,12 @@ This command runs the real worker analysis pipeline in isolated `IF_THEN_DATA_DI
 
 ## Quality Gates
 
-- Context packs must keep `cutoff_safe_facts`, `future_evidence_digests`, and `branch_facts` separate.
+- Context packs must keep `cutoff_safe_facts`, `future_evidence_digests`, `objective_moment_facts`, and `branch_facts` separate.
 - Future evidence must not appear inside cutoff-safe compatibility packs.
+- Objective moment facts must stay outside cutoff-safe compatibility packs and be treated as background-only, not dialogue source material.
 - Branch assessment may use future evidence only for risk, confidence, and conservative direction fields.
 - Reply prompts must mark future evidence as modeler-only and must not instruct the model to quote or reveal it.
+- Realtime branch reply prompts may include objective moment facts only as `other`-background for present-state grounding; they must not instruct the model to quote, justify, or proactively reveal those facts unless the user naturally hits that state.
 - Realtime branch sessions must keep only one active reply job per session; newer self input or newer jobs supersede older jobs.
 - Branch reply prompts must include committed branch transcript messages in sequence.
 - Deleting a conversation must remove branch sessions, branch messages, and reply jobs.
@@ -142,3 +144,12 @@ Remaining non-local validation:
   - 8 tests passed.
 - `PYTHONPATH=src pytest -q`
   - 133 tests passed.
+
+2026-05-06 objective moment background addition:
+
+- `PYTHONPATH=src pytest tests/test_retrieval.py tests/test_branch_sessions.py tests/test_simulations.py tests/test_realism_quality_gate.py -q`
+  - 21 tests passed.
+- `PYTHONPATH=src pytest -q`
+  - 134 tests passed.
+- Added `objective_moment_facts` as a fourth evidence layer for realtime branch grounding.
+- Realtime branch prompts now treat this layer as background-only and keep it outside the cutoff-safe compatibility pack.

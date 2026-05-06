@@ -93,7 +93,13 @@ def _reply(text: str = "好，那我们慢慢说。") -> BranchReplyPayload:
     )
 
 
-def _seed_ready_conversation(tmp_path, monkeypatch, *, include_future_evidence: bool = False) -> int:
+def _seed_ready_conversation(
+    tmp_path,
+    monkeypatch,
+    *,
+    include_future_evidence: bool = False,
+    include_objective_moment: bool = False,
+) -> int:
     monkeypatch.setenv("IF_THEN_DATA_DIR", str(tmp_path / "app_data"))
     init_db()
 
@@ -114,7 +120,7 @@ def _seed_ready_conversation(tmp_path, monkeypatch, *, include_future_evidence: 
             source_file_name="聊天记录.txt",
             source_file_path=str(tmp_path / "seed.txt"),
             source_file_hash="abc123",
-            message_count_hint=6 if include_future_evidence else 4,
+            message_count_hint=4 + (2 if include_future_evidence else 0) + (1 if include_objective_moment else 0),
         )
         session.add(batch)
         session.flush()
@@ -160,21 +166,37 @@ def _seed_ready_conversation(tmp_path, monkeypatch, *, include_future_evidence: 
             message_type="text",
         )
         messages = [prior_other, prior_self, target_other, target_self]
+        next_sequence_no = 5
+        objective_other = None
+        if include_objective_moment:
+            objective_other = Message(
+                conversation_id=conversation.id,
+                import_id=batch.id,
+                sequence_no=next_sequence_no,
+                speaker_name="梣ゥ",
+                speaker_role="other",
+                timestamp="2025-03-02T20:18:20",
+                content_text="在看动漫",
+                message_type="text",
+            )
+            messages.append(objective_other)
+            next_sequence_no += 1
         if include_future_evidence:
             future_self = Message(
                 conversation_id=conversation.id,
                 import_id=batch.id,
-                sequence_no=5,
+                sequence_no=next_sequence_no,
                 speaker_name="Tantless",
                 speaker_role="self",
                 timestamp="2025-03-02T20:30:00",
                 content_text="那我可以多问一点吗",
                 message_type="text",
             )
+            next_sequence_no += 1
             future_other = Message(
                 conversation_id=conversation.id,
                 import_id=batch.id,
-                sequence_no=6,
+                sequence_no=next_sequence_no,
                 speaker_name="梣ゥ",
                 speaker_role="other",
                 timestamp="2025-03-02T20:30:20",
@@ -197,17 +219,20 @@ def _seed_ready_conversation(tmp_path, monkeypatch, *, include_future_evidence: 
             segment_kind="normal",
             source_message_ids=[prior_other.id, prior_self.id],
         )
+        target_message_ids = [target_other.id, target_self.id]
+        if objective_other is not None:
+            target_message_ids.append(objective_other.id)
         target_segment = Segment(
             conversation_id=conversation.id,
             start_message_id=target_other.id,
-            end_message_id=target_self.id,
+            end_message_id=objective_other.id if objective_other is not None else target_self.id,
             start_time="2025-03-02T20:18:03",
-            end_time="2025-03-02T20:18:04",
-            message_count=2,
+            end_time="2025-03-02T20:18:20" if objective_other is not None else "2025-03-02T20:18:04",
+            message_count=len(target_message_ids),
             self_message_count=1,
-            other_message_count=1,
+            other_message_count=2 if objective_other is not None else 1,
             segment_kind="normal",
-            source_message_ids=[target_other.id, target_self.id],
+            source_message_ids=target_message_ids,
         )
         segments = [prior_segment, target_segment]
         future_segment = None
@@ -325,13 +350,18 @@ def _seed_ready_conversation(tmp_path, monkeypatch, *, include_future_evidence: 
         return target_self.id
 
 
-def _create_branch_session(client: TestClient, *, target_message_id: int) -> dict:
+def _create_branch_session(
+    client: TestClient,
+    *,
+    target_message_id: int,
+    replacement_content: str = "如果你方便的话，我们慢慢聊就好",
+) -> dict:
     response = client.post(
         "/branch-sessions",
         json={
             "conversation_id": 1,
             "target_message_id": target_message_id,
-            "replacement_content": "如果你方便的话，我们慢慢聊就好",
+            "replacement_content": replacement_content,
         },
     )
     assert response.status_code == 201
@@ -356,6 +386,7 @@ def test_branch_session_api_creates_session_and_supersedes_stale_reply_jobs(tmp_
             compatibility_pack = branch_session.session_memory_pack["compatibility"]["cutoff_safe_context_pack"]
             assert compatibility_pack["target_message_id"] == target_message_id
             assert "future_evidence_digests" not in compatibility_pack
+            assert "objective_moment_facts" not in compatibility_pack
             assert "branch_facts" not in compatibility_pack
             assert "evidence_policy" not in compatibility_pack
             assert branch_session.session_memory_pack["layered_context_pack"]["branch_facts"][
@@ -446,6 +477,32 @@ def test_realtime_branch_reply_prompt_treats_future_evidence_as_modeler_only(tmp
     assert "当前 branch_transcript 与 pending_self_messages 是分支事实源" in prompt
     assert "不要把原时间线后续事件强行搬进分支" in prompt
     assert '"use_policy": "modeler_only_not_character_known"' in prompt
+
+
+def test_realtime_branch_reply_prompt_uses_objective_moment_facts_as_background_only(tmp_path, monkeypatch):
+    target_message_id = _seed_ready_conversation(tmp_path, monkeypatch, include_objective_moment=True)
+    with TestClient(create_app()) as client:
+        _create_branch_session(client, target_message_id=target_message_id, replacement_content="在看动漫吗")
+        assert client.post("/branch-sessions/1/reply-jobs").status_code == 202
+
+    llm = FakeBranchLLM([_reply("是啊，你怎么知道？")])
+
+    assert run_next_branch_reply_job(llm_client=llm) is True
+
+    with session_scope() as session:
+        branch_session = session.query(BranchSession).one()
+        objective_moment_facts = branch_session.session_memory_pack["layered_context_pack"]["objective_moment_facts"]
+        assert objective_moment_facts["use_policy"] == "background_reference_for_other_private_moment_not_source_disclosure"
+        assert objective_moment_facts["facts"][0]["fact_kind"] == "other_current_activity"
+        assert objective_moment_facts["facts"][0]["fact_text"] == "other 此刻在看动漫"
+
+    prompt = llm.calls[0]["user_prompt"]
+    assert "objective moment facts JSON:" in prompt
+    assert "other 此刻在看动漫" in prompt
+    assert "只能作为 other 此刻处境背景" in prompt
+    assert "不得把背景事实当作台词素材直接复述、引用或解释来源" in prompt
+    assert "如果 pending self 没有自然触发 objective_moment_facts 中的背景，不要主动说出这些背景" in prompt
+    assert "在看动漫吗" in prompt
 
 
 def test_run_next_branch_reply_job_discards_superseded_result(tmp_path, monkeypatch):

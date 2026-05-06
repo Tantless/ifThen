@@ -10,6 +10,7 @@ from if_then_mvp.config import get_settings
 from if_then_mvp.models import Message, PersonaProfile, RelationshipSnapshot, Segment, SegmentSummary, Topic, TopicLink
 from if_then_mvp.retrieval import (
     DEFAULT_FUTURE_EVIDENCE_DIGEST_LIMIT,
+    DEFAULT_OBJECTIVE_MOMENT_FACT_LIMIT,
     DEFAULT_RELATED_TOPIC_DIGEST_LIMIT,
     build_context_pack,
 )
@@ -17,6 +18,9 @@ from if_then_mvp.retrieval import (
 
 MAX_RELATED_TOPIC_DIGESTS = DEFAULT_RELATED_TOPIC_DIGEST_LIMIT
 MAX_FUTURE_EVIDENCE_ITEMS = DEFAULT_FUTURE_EVIDENCE_DIGEST_LIMIT
+MAX_OBJECTIVE_MOMENT_FACTS = DEFAULT_OBJECTIVE_MOMENT_FACT_LIMIT
+OBJECTIVE_MOMENT_WINDOW_MESSAGES = 8
+OBJECTIVE_MOMENT_WINDOW_MINUTES = 10
 RECENT_INTERACTION_WINDOW_MESSAGES = 12
 RECENT_ROLE_STYLE_SAMPLE_SIZE = 6
 SHORT_STYLE_MESSAGE_CHAR_LIMIT = 12
@@ -56,6 +60,45 @@ STYLE_PARTICLES = (
 )
 STYLE_PUNCTUATION = ("。", "，", "？", "！", "…", "~", "～")
 PLACEHOLDER_MESSAGE_PATTERN = re.compile(r"^\[[^\]]+\]$")
+ACTIVITY_STARTERS = (
+    "在",
+    "看",
+    "写",
+    "打",
+    "刷",
+    "玩",
+    "吃",
+    "喝",
+    "洗",
+    "收拾",
+    "躺",
+    "睡",
+    "忙",
+    "复习",
+    "上课",
+    "下课",
+    "回家",
+    "出门",
+    "走路",
+    "坐车",
+)
+MENTAL_STATE_SIGNALS = ("想", "纠结", "担心", "烦", "累", "困", "紧张", "害怕", "难受", "卡着")
+FUTURE_OUTCOME_SIGNALS = (
+    "后来",
+    "之后",
+    "以后",
+    "下次",
+    "明天",
+    "拒绝",
+    "不合适",
+    "不要追问",
+    "别追问",
+    "慢一点",
+    "边界",
+    "告白",
+    "喜欢你",
+    "不喜欢",
+)
 
 
 def build_conversation_context_pack(
@@ -137,6 +180,19 @@ def build_conversation_context_pack(
         future_evidence_trace = []
         future_evidence_budget = _build_budget(limit=MAX_FUTURE_EVIDENCE_ITEMS, candidate_count=0, selected_count=0)
         future_evidence_disabled = True
+    (
+        objective_moment_facts,
+        objective_moment_trace,
+        objective_moment_budget,
+    ) = _load_objective_moment_facts_with_trace(
+        session=session,
+        messages=messages,
+        segments=segments,
+        target_message=target_message,
+        target_segment_id=target_segment_id,
+        target_topic_ids=target_topic_ids,
+        limit=MAX_OBJECTIVE_MOMENT_FACTS,
+    )
     personas = (
         session.execute(select(PersonaProfile).where(PersonaProfile.conversation_id == conversation_id))
         .scalars()
@@ -157,6 +213,7 @@ def build_conversation_context_pack(
         replacement_content=replacement_content,
         related_topic_digests=related_topic_digests,
         future_evidence_digests=future_evidence_digests,
+        objective_moment_facts=objective_moment_facts,
         base_relationship_snapshot=snapshot_to_context_dict(snapshot),
         persona_self=persona_to_context_dict(
             persona_self,
@@ -169,10 +226,12 @@ def build_conversation_context_pack(
         retrieval_trace={
             "related_topic_digests": related_topic_trace,
             "future_evidence_digests": future_evidence_trace,
+            "objective_moment_facts": objective_moment_trace,
         },
         retrieval_budget={
             "related_topic_digests": related_topic_budget,
             "future_evidence_digests": future_evidence_budget,
+            "objective_moment_facts": objective_moment_budget,
         },
     )
     if future_evidence_disabled:
@@ -505,6 +564,215 @@ def _load_future_evidence_digests_with_trace(
             candidate_map[segment.id] = candidate
 
     return _select_ranked_candidates(candidates=list(candidate_map.values()), limit=limit)
+
+
+def _load_objective_moment_facts_with_trace(
+    *,
+    session,
+    messages: list[Message],
+    segments: list[Segment],
+    target_message: Message,
+    target_segment_id: int | None,
+    target_topic_ids: set[int],
+    limit: int,
+) -> tuple[dict[str, object], list[dict[str, object]], dict[str, int]]:
+    candidates = _objective_moment_candidate_messages(
+        session=session,
+        messages=messages,
+        segments=segments,
+        target_message=target_message,
+        target_segment_id=target_segment_id,
+        target_topic_ids=target_topic_ids,
+    )
+    facts: list[dict[str, object]] = []
+    trace: list[dict[str, object]] = []
+    for message, time_relation in candidates:
+        fact = _build_objective_moment_fact(message=message, time_relation=time_relation)
+        selected = fact is not None and len(facts) < limit
+        trace.append(
+            {
+                "message_id": message.id,
+                "sequence_no": message.sequence_no,
+                "speaker_role": message.speaker_role,
+                "time_relation_to_target": time_relation,
+                "selected": selected,
+                "skip_reason": None if fact is not None else "not_objective_moment_background",
+            }
+        )
+        if fact is not None and selected:
+            facts.append(fact)
+
+    return (
+        {
+            "source_scope": "original_timeline_near_target_window",
+            "use_policy": "background_reference_for_other_private_moment_not_source_disclosure",
+            "dialogue_policy": "use_as_situation_background_only_do_not_quote_or_explain_source",
+            "facts": facts,
+        },
+        trace,
+        _build_budget(limit=limit, candidate_count=len(candidates), selected_count=len(facts)),
+    )
+
+
+def _objective_moment_candidate_messages(
+    *,
+    session,
+    messages: list[Message],
+    segments: list[Segment],
+    target_message: Message,
+    target_segment_id: int | None,
+    target_topic_ids: set[int],
+) -> list[tuple[Message, str]]:
+    message_lookup = {int(message.id): message for message in messages}
+    target_position = _message_model_sort_key(target_message)
+    target_segment = next((segment for segment in segments if int(segment.id) == target_segment_id), None)
+    candidates: list[tuple[Message, str]] = []
+    if target_segment is not None:
+        for message in _messages_from_segment(segment=target_segment, message_lookup=message_lookup):
+            if _message_model_sort_key(message) <= target_position:
+                continue
+            if not _is_within_objective_moment_window(target_message=target_message, message=message):
+                continue
+            candidates.append((message, "immediate_after_target_same_segment"))
+            if len(candidates) >= OBJECTIVE_MOMENT_WINDOW_MESSAGES:
+                return candidates
+    if candidates:
+        return candidates
+
+    next_segment = _next_objective_moment_segment(
+        session=session,
+        segments=segments,
+        target_message=target_message,
+        target_segment_id=target_segment_id,
+        target_topic_ids=target_topic_ids,
+    )
+    if next_segment is None:
+        return []
+    for message in _messages_from_segment(segment=next_segment, message_lookup=message_lookup):
+        if _message_model_sort_key(message) <= target_position:
+            continue
+        if not _is_within_objective_moment_window(target_message=target_message, message=message):
+            continue
+        candidates.append((message, "nearby_after_target_same_topic_segment"))
+        if len(candidates) >= OBJECTIVE_MOMENT_WINDOW_MESSAGES:
+            break
+    return candidates
+
+
+def _messages_from_segment(*, segment: Segment, message_lookup: dict[int, Message]) -> list[Message]:
+    return sorted(
+        [message_lookup[message_id] for message_id in (segment.source_message_ids or []) if message_id in message_lookup],
+        key=_message_model_sort_key,
+    )
+
+
+def _next_objective_moment_segment(
+    *,
+    session,
+    segments: list[Segment],
+    target_message: Message,
+    target_segment_id: int | None,
+    target_topic_ids: set[int],
+) -> Segment | None:
+    if target_segment_id is None or not target_topic_ids:
+        return None
+    ordered_segments = sorted(segments, key=lambda item: (str(item.start_time), int(item.id)))
+    target_index = next((index for index, segment in enumerate(ordered_segments) if int(segment.id) == target_segment_id), None)
+    if target_index is None or target_index + 1 >= len(ordered_segments):
+        return None
+    candidate = ordered_segments[target_index + 1]
+    if not _timestamp_within_minutes(
+        start=target_message.timestamp,
+        end=candidate.start_time,
+        max_minutes=OBJECTIVE_MOMENT_WINDOW_MINUTES,
+    ):
+        return None
+    overlap_topic_id = (
+        session.execute(
+            select(TopicLink.topic_id).where(
+                TopicLink.segment_id == candidate.id,
+                TopicLink.topic_id.in_(target_topic_ids),
+            )
+        )
+        .scalars()
+        .first()
+    )
+    return candidate if overlap_topic_id is not None else None
+
+
+def _build_objective_moment_fact(*, message: Message, time_relation: str) -> dict[str, object] | None:
+    if message.speaker_role != "other" or not _is_style_eligible_message(message):
+        return None
+    text = _style_text(message)
+    fact_kind = _classify_objective_moment_fact(text)
+    if fact_kind is None:
+        return None
+    fact_text = _objective_moment_fact_text(text=text, fact_kind=fact_kind)
+    if fact_text is None:
+        return None
+    return {
+        "fact_kind": fact_kind,
+        "speaker_role": "other",
+        "fact_text": fact_text,
+        "confidence": "medium" if fact_kind == "other_current_mental_focus" else "high",
+        "supporting_message_ids": [message.id],
+        "supporting_sequence_nos": [message.sequence_no],
+        "time_relation_to_target": time_relation,
+        "dialogue_use_policy": "background_only_do_not_quote_or_explain_source",
+    }
+
+
+def _classify_objective_moment_fact(text: str) -> str | None:
+    compact = text.strip()
+    if not compact or len(compact) > 48:
+        return None
+    if any(mark in compact for mark in ("?", "？")):
+        return None
+    if any(signal in compact for signal in FUTURE_OUTCOME_SIGNALS):
+        return None
+    if compact.startswith(ACTIVITY_STARTERS) or any(signal in compact for signal in ("动漫", "作业", "游戏", "番", "视频")):
+        return "other_current_activity"
+    if any(signal in compact for signal in MENTAL_STATE_SIGNALS):
+        return "other_current_mental_focus"
+    return None
+
+
+def _objective_moment_fact_text(*, text: str, fact_kind: str) -> str | None:
+    normalized = text.strip()
+    normalized = normalized.removeprefix("我").strip()
+    if not normalized:
+        return None
+    if fact_kind == "other_current_activity":
+        if normalized.startswith("在"):
+            return f"other 此刻{normalized}"
+        return f"other 此刻正在{normalized}"
+    if fact_kind == "other_current_mental_focus":
+        return f"other 此刻的注意力或情绪背景：{normalized}"
+    return None
+
+
+def _is_within_objective_moment_window(*, target_message: Message, message: Message) -> bool:
+    return _timestamp_within_minutes(
+        start=target_message.timestamp,
+        end=message.timestamp,
+        max_minutes=OBJECTIVE_MOMENT_WINDOW_MINUTES,
+    )
+
+
+def _timestamp_within_minutes(*, start: object, end: object, max_minutes: int) -> bool:
+    start_time = _parse_timestamp(start)
+    end_time = _parse_timestamp(end)
+    if start_time is None or end_time is None:
+        return False
+    delta_seconds = (end_time - start_time).total_seconds()
+    return 0 <= delta_seconds <= max_minutes * 60
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
 
 
 def _find_target_segment_id(*, segments: list[Segment], target_message_id: int) -> int | None:

@@ -294,6 +294,7 @@ def _build_session_memory_pack(*, context_pack: dict) -> dict:
         "layered_context_pack": {
             "cutoff_safe_facts": context_pack.get("cutoff_safe_facts") or {},
             "future_evidence_digests": context_pack.get("future_evidence_digests") or [],
+            "objective_moment_facts": context_pack.get("objective_moment_facts") or {},
             "branch_facts": context_pack.get("branch_facts") or {},
             "evidence_policy": context_pack.get("evidence_policy") or {},
         },

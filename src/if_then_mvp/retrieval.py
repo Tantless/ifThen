@@ -5,6 +5,7 @@ from typing import Any
 DEFAULT_RELATED_TOPIC_DIGEST_LIMIT = 3
 DEFAULT_FUTURE_EVIDENCE_DIGEST_LIMIT = 3
 DEFAULT_SAME_DAY_PRIOR_SEGMENT_LIMIT = 1
+DEFAULT_OBJECTIVE_MOMENT_FACT_LIMIT = 3
 
 
 def _message_position(message: dict[str, Any]) -> tuple[str, int]:
@@ -60,6 +61,7 @@ def build_context_pack(
     base_relationship_snapshot: dict[str, Any] | None,
     persona_self: dict[str, Any] | None,
     persona_other: dict[str, Any] | None,
+    objective_moment_facts: dict[str, Any] | None = None,
     retrieval_trace: dict[str, Any] | None = None,
     retrieval_budget: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -155,7 +157,14 @@ def build_context_pack(
     evidence_policy = {
         "cutoff_safe_facts": "character_known",
         "future_evidence_digests": "modeler_only_not_character_known",
+        "objective_moment_facts": "background_reference_for_other_private_moment_not_dialogue_source",
         "branch_facts": "branch_only_generated_facts",
+    }
+    resolved_objective_moment_facts = objective_moment_facts or {
+        "source_scope": "original_timeline_near_target_window",
+        "use_policy": "background_reference_for_other_private_moment_not_source_disclosure",
+        "dialogue_policy": "use_as_situation_background_only_do_not_quote_or_explain_source",
+        "facts": [],
     }
     branch_facts = {
         "rewrite_target": {
@@ -167,6 +176,7 @@ def build_context_pack(
     resolved_retrieval_trace = {
         "related_topic_digests": [],
         "future_evidence_digests": [],
+        "objective_moment_facts": [],
     }
     if retrieval_trace:
         for key, value in retrieval_trace.items():
@@ -194,6 +204,12 @@ def build_context_pack(
             "selected_count": len(future_evidence_digests),
             "overflow_count": 0,
         },
+        "objective_moment_facts": {
+            "limit": DEFAULT_OBJECTIVE_MOMENT_FACT_LIMIT,
+            "candidate_count": len(resolved_objective_moment_facts.get("facts") or []),
+            "selected_count": len(resolved_objective_moment_facts.get("facts") or []),
+            "overflow_count": 0,
+        },
     }
     if retrieval_budget:
         for key, value in retrieval_budget.items():
@@ -218,6 +234,7 @@ def build_context_pack(
         "base_relationship_snapshot": base_relationship_snapshot,
         "cutoff_safe_facts": cutoff_safe_facts,
         "future_evidence_digests": future_evidence_digests,
+        "objective_moment_facts": resolved_objective_moment_facts,
         "branch_facts": branch_facts,
         "evidence_policy": evidence_policy,
         "moment_state_estimate": moment_state_estimate,

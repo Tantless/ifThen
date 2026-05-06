@@ -73,10 +73,21 @@ def test_build_context_pack_excludes_target_and_future_messages():
     assert context["future_evidence_digests"] == []
     assert context["branch_facts"]["rewrite_target"]["target_message_id"] == 2
     assert context["evidence_policy"]["future_evidence_digests"] == "modeler_only_not_character_known"
-    assert context["retrieval_trace"] == {"related_topic_digests": [], "future_evidence_digests": []}
+    assert context["retrieval_trace"] == {
+        "related_topic_digests": [],
+        "future_evidence_digests": [],
+        "objective_moment_facts": [],
+    }
     assert context["retrieval_budget"]["current_segment_history"]["policy"] == "preserve_all"
     assert context["retrieval_budget"]["related_topic_digests"]["limit"] == 3
     assert context["retrieval_budget"]["future_evidence_digests"]["selected_count"] == 0
+    assert context["retrieval_budget"]["objective_moment_facts"]["selected_count"] == 0
+    assert context["objective_moment_facts"] == {
+        "source_scope": "original_timeline_near_target_window",
+        "use_policy": "background_reference_for_other_private_moment_not_source_disclosure",
+        "dialogue_policy": "use_as_situation_background_only_do_not_quote_or_explain_source",
+        "facts": [],
+    }
     assert context["retrieval_warnings"] == ["related_topic_digests_empty", "future_evidence_digests_empty"]
     assert context["strategy_version"] == "layered-evidence-v1"
 
