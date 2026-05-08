@@ -41,9 +41,8 @@ $env:IF_THEN_DESKTOP_RENDERER_URL = "http://localhost:5173"
 npx electron .
 ```
 
-说明：
+## 注意事项
 
-- Electron 启动后会自动拉起 `python scripts/run_api.py`
-- API 健康检查通过后会自动继续拉起 `python scripts/run_worker.py`
-- 所以这里**不需要**你再手动提前启动后端
-- 如果还没配置模型或导入会话，也可以先把桌面壳拉起来快速看前端页面
+请务必保证QCE导入聊天记录格式遵循`.\tests\fixtures\qq_export_sample.txt`所注明格式
+
+项目提供了三段聊天记录可供体验，位于`.\tests\fixtures\realism_synthetic`下的每个子文件夹的`conversation.txt`文件，每一个子文件夹代表了一种情况，由gpt-5.5生成
