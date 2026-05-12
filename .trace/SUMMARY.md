@@ -29,3 +29,6 @@
 ## 2026/05/06
 - 完成合成语料拟真性 validation-first 收口：新增 `scripts/validate_realism_synthetic_corpus.py` 输出结构化 audit 报告，检查导出时间、强时段词、future evidence 提前出现和重复线索；`tests/test_realism_synthetic_fixtures.py` 接入 audit 并固定 3 个显式 waived debt key；修正 case-01 导出时间和 case-02 晚间“上午”措辞；`scripts/generate_realism_synthetic_corpus.py` 增加强时段词约束和安全导出时间渲染；同步更新 rollout、路线图、backend quality spec、任务 PRD 和 `PRDS/PRD016-语料拟真校验.md`，`PYTHONPATH=src pytest -q` 133 项通过。
 - 完成实时分支“人物彼时现实背景”上下文：新增 `objective_moment_facts` 层，从目标消息后的近目标原时间线窗口提取 `other` 的现实活动或注意力/情绪背景，并接入 context pack、retrieval trace/budget、branch session memory pack 和 realtime branch reply prompt；prompt 明确该层只用于理解处境，不得作为台词素材复述或解释来源；新增“在看动漫吗”API/worker 回归并保留 future evidence 泄漏护栏，同时更新 `docs/realism-quality-rollout.md` 的四层证据合同，`PYTHONPATH=src python -m pytest -q` 134 项通过。
+
+## 2026/05/12
+- 完成三段 synthetic realism `conversation.txt` 全量分段去美式化精修：使用 `llm_config.env` 第二套模型配置 `hy3-preview` 按 180 条消息分块复核完整聊天记录，并在原 txt 路径下保留 `.bak` 备份；三段分别应用 129、117、83 处高置信替换，保留原消息数量和 QQ 导出结构，解析计数为 3523、2584、2385，语料校验脚本通过且仅剩已豁免债务。
